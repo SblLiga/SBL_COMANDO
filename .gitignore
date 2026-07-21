@@ -1,0 +1,42 @@
+# Terraform
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/crash.log
+**/crash.*.log
+**/override.tf
+**/override.tf.json
+**/*_override.tf
+**/*_override.tf.json
+**/secrets.auto.tfvars
+**/*.auto.tfvars
+.terraform.lock.hcl
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+frontend/dist/
+backend/frontend-src/
+backend/static/frontend/*
+!backend/static/frontend/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
+
+# Terraform plan files
+**/tfplan
+**/*.tfplan

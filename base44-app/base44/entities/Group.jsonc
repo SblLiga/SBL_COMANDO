@@ -1,0 +1,71 @@
+{
+  "name": "Group",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "title": "\u05e9\u05dd \u05d4\u05e7\u05d1\u05d5\u05e6\u05d4"
+    },
+    "target": {
+      "type": "string",
+      "enum": [
+        "\u05e9\u05d9\u05d5\u05d5\u05e7",
+        "\u05d0\u05d5\u05d8\u05d5\u05de\u05e6\u05d9\u05d5\u05ea",
+        "\u05de\u05db\u05d9\u05e8\u05d5\u05ea",
+        "\u05e0\u05d9\u05d4\u05d5\u05dc \u05d6\u05de\u05df",
+        "\u05de\u05d2\u05e0\u05d8 \u05dc\u05d9\u05d3\u05d9\u05dd",
+        "\u05e9\u05d9\u05e4\u05d5\u05e8 \u05de\u05d5\u05e6\u05e8 \u05e7\u05d9\u05d9\u05dd",
+        "\u05d1\u05e0\u05d9\u05d9\u05ea \u05de\u05d5\u05e6\u05e8 \u05d7\u05d3\u05e9",
+        "\u05db\u05dc\u05db\u05dc\u05d9",
+        "\u05d0\u05d7\u05e8"
+      ],
+      "title": "\u05ea\u05d7\u05d5\u05dd \u05d9\u05e2\u05d3"
+    },
+    "gender": {
+      "type": "string",
+      "enum": [
+        "male",
+        "female"
+      ],
+      "title": "\u05de\u05d2\u05d3\u05e8 \u05d4\u05e7\u05d1\u05d5\u05e6\u05d4"
+    },
+    "manager_name": {
+      "type": "string",
+      "title": "\u05e9\u05dd \u05d4\u05de\u05e0\u05d4\u05dc/\u05ea"
+    },
+    "manager_id": {
+      "type": "string",
+      "title": "\u05de\u05d6\u05d4\u05d4 \u05de\u05e0\u05d4\u05dc"
+    },
+    "participant_count": {
+      "type": "number",
+      "default": 0,
+      "title": "\u05de\u05e1\u05e4\u05e8 \u05de\u05e9\u05ea\u05ea\u05e4\u05d9\u05dd"
+    },
+    "max_participants": {
+      "type": "number",
+      "default": 5,
+      "title": "\u05de\u05e7\u05e1\u05d9\u05de\u05d5\u05dd \u05de\u05e9\u05ea\u05ea\u05e4\u05d9\u05dd"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "on_track",
+        "needs_attention",
+        "critical"
+      ],
+      "default": "on_track",
+      "title": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05e7\u05d1\u05d5\u05e6\u05d4"
+    },
+    "avg_progress": {
+      "type": "number",
+      "default": 0,
+      "title": "\u05d4\u05ea\u05e7\u05d3\u05de\u05d5\u05ea \u05de\u05de\u05d5\u05e6\u05e2\u05ea (%)"
+    }
+  },
+  "required": [
+    "name",
+    "target",
+    "gender"
+  ]
+}

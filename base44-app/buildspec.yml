@@ -1,0 +1,87 @@
+# =============================================================================
+# AWS CodeBuild — buildspec.yml
+# Builds Docker images, tags with pipeline execution ID, pushes to ECR,
+# generates a deployment-ready Dockerrun.aws.json artifact for Elastic Beanstalk.
+# =============================================================================
+version: 0.2
+
+env:
+  variables:
+    FRONTEND_REPO: sbl-frontend
+    BACKEND_REPO: sbl-backend
+  secrets-manager:
+    JWT_SECRET: "sbl/secrets:JWT_SECRET"
+    DATABASE_URL: "sbl/secrets:DATABASE_URL"
+    GROW_WEBHOOK_SECRET: "sbl/secrets:GROW_WEBHOOK_SECRET"
+
+phases:
+  install:
+    commands:
+      - echo Installing dependencies...
+      - npm ci
+
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+      - REPO_URI_FRONTEND=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$FRONTEND_REPO
+      - REPO_URI_BACKEND=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$BACKEND_REPO
+      - IMAGE_TAG=$(echo $CODEBUILD_BUILD_ID | cut -d':' -f2)
+
+  build:
+    commands:
+      - echo Build started on $(date)
+      - echo Building frontend image...
+      - docker build -t $FRONTEND_REPO:latest -f Dockerfile.frontend .
+      - docker tag $FRONTEND_REPO:latest $REPO_URI_FRONTEND:$IMAGE_TAG
+      - docker tag $FRONTEND_REPO:latest $REPO_URI_FRONTEND:latest
+      - echo Building backend image...
+      - docker build -t $BACKEND_REPO:latest -f Dockerfile.backend .
+      - docker tag $BACKEND_REPO:latest $REPO_URI_BACKEND:$IMAGE_TAG
+      - docker tag $BACKEND_REPO:latest $REPO_URI_BACKEND:latest
+
+  post_build:
+    commands:
+      - echo Pushing images to ECR on $(date)
+      - docker push $REPO_URI_FRONTEND:$IMAGE_TAG
+      - docker push $REPO_URI_FRONTEND:latest
+      - docker push $REPO_URI_BACKEND:$IMAGE_TAG
+      - docker push $REPO_URI_BACKEND:latest
+      - echo Generating Dockerrun.aws.json with resolved ECR URIs...
+      - |
+        cat > Dockerrun.aws.json <<EOF
+        {
+          "AWSEBDockerrunVersion": 2,
+          "containerDefinitions": [
+            {
+              "name": "sbl-frontend",
+              "image": "$REPO_URI_FRONTEND:$IMAGE_TAG",
+              "essential": true,
+              "memory": 256,
+              "portMappings": [{ "hostPort": 80, "containerPort": 80 }]
+            },
+            {
+              "name": "sbl-backend",
+              "image": "$REPO_URI_BACKEND:$IMAGE_TAG",
+              "essential": true,
+              "memory": 512,
+              "portMappings": [{ "hostPort": 8080, "containerPort": 8080 }],
+              "environment": [
+                { "name": "NODE_ENV", "value": "production" },
+                { "name": "PORT", "value": "8080" }
+              ]
+            }
+          ]
+        }
+        EOF
+      - echo Creating deployment artifact...
+      - zip -j deploy.zip Dockerrun.aws.json
+
+artifacts:
+  files:
+    - deploy.zip
+  discard-paths: yes
+
+cache:
+  paths:
+    - node_modules/**/*

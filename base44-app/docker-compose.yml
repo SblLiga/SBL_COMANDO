@@ -1,0 +1,84 @@
+# =============================================================================
+# docker-compose.yml — Master Orchestration (Mirrors AWS RDS Architecture)
+# Services: frontend (Nginx) · backend (Node) · db (PostgreSQL 16)
+# All secrets injected via clean environment variables — never hardcoded.
+# =============================================================================
+
+version: "3.9"
+
+services:
+  # --- PostgreSQL — mirrors AWS RDS configuration ---
+  db:
+    image: postgres:16-alpine
+    container_name: sbl_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sbl_production}
+      POSTGRES_USER: ${POSTGRES_USER:-sbl_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sbl_admin} -d ${POSTGRES_DB:-sbl_production}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sbl_network
+
+  # --- Backend API — Node.js microservice ---
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: sbl_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sbl_admin}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sbl_production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      GROW_WEBHOOK_SECRET: ${GROW_WEBHOOK_SECRET:-}
+      BASE44_APP_ID: ${BASE44_APP_ID:-}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - sbl_network
+
+  # --- Frontend — Nginx SPA ---
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: sbl_frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks:
+      - sbl_network
+
+volumes:
+  pgdata:
+
+networks:
+  sbl_network:
+    driver: bridge

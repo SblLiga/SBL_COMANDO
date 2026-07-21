@@ -1,0 +1,45 @@
+{
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "monthly_reset",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "reset_onboarding": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "monthlyReset",
+            "args": {}
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "\u05d0\u05d9\u05e4\u05d5\u05e1 onboarding \u05d7\u05d5\u05d3\u05e9\u05d9",
+            "description": "\u05d0\u05d9\u05e4\u05d5\u05e1 \u05dc\u05db\u05dc \u05d4\u05de\u05e9\u05ea\u05de\u05e9\u05d9\u05dd \u05d4\u05e8\u05d2\u05d9\u05dc\u05d9\u05dd"
+          }
+        }
+      }
+    ]
+  },
+  "name": "\u05d0\u05d9\u05e4\u05d5\u05e1 \u05d7\u05d5\u05d3\u05e9\u05d9 - \u05d4-25",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "5 0 25 * *",
+      "one_time_date": null,
+      "timezone": "Asia/Jerusalem",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "description": "\u05d1\u05db\u05dc 25 \u05d1\u05d7\u05d5\u05d3\u05e9 \u05d1-00:05 \u05de\u05d0\u05e4\u05e1 \u05d0\u05ea onboarding_completed \u05dc\u05db\u05dc \u05d4\u05de\u05e9\u05ea\u05de\u05e9\u05d9\u05dd \u05d4\u05e8\u05d2\u05d9\u05dc\u05d9\u05dd, \u05e0\u05d5\u05e2\u05dc \u05d2\u05d9\u05e9\u05d4 \u05dc\u05d3\u05e9\u05d1\u05d5\u05e8\u05d3\u05d9\u05dd \u05e2\u05d3 \u05de\u05e2\u05d1\u05e8 \u05d0\u05e9\u05e3 \u05d4\u05d7\u05d5\u05d3\u05e9 \u05d4\u05d7\u05d3\u05e9"
+}

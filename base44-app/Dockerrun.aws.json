@@ -1,0 +1,54 @@
+{
+  "AWSEBDockerrunVersion": 2,
+  "volumes": [],
+  "containerDefinitions": [
+    {
+      "name": "sbl-frontend",
+      "image": "${FRONTEND_ECR_URI}",
+      "essential": true,
+      "memory": 256,
+      "portMappings": [
+        {
+          "hostPort": 80,
+          "containerPort": 80
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/elasticbeanstalk/sbl-frontend",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "sbl"
+        }
+      }
+    },
+    {
+      "name": "sbl-backend",
+      "image": "${BACKEND_ECR_URI}",
+      "essential": true,
+      "memory": 512,
+      "portMappings": [
+        {
+          "hostPort": 8080,
+          "containerPort": 8080
+        }
+      ],
+      "environment": [
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "PORT", "value": "8080" },
+        { "name": "DATABASE_URL", "value": "${DATABASE_URL}" },
+        { "name": "JWT_SECRET", "value": "${JWT_SECRET}" },
+        { "name": "GROW_WEBHOOK_SECRET", "value": "${GROW_WEBHOOK_SECRET}" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/elasticbeanstalk/sbl-backend",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "sbl"
+        }
+      }
+    }
+  ],
+  "family": "sbl-elastic-beanstalk"
+}

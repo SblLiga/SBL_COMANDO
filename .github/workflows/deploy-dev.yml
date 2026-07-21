@@ -1,0 +1,34 @@
+name: Deploy Dev (Trigger CodePipeline)
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-north-1
+  PIPELINE_NAME: sbl-dev-pipeline
+
+jobs:
+  trigger-pipeline:
+    name: Start AWS CodePipeline (dev)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_DEV }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Start CodePipeline execution
+        run: |
+          set -euo pipefail
+          EXECUTION_ID=$(aws codepipeline start-pipeline-execution \
+            --name "$PIPELINE_NAME" \
+            --query 'pipelineExecutionId' \
+            --output text)
+          echo "Started pipeline=$PIPELINE_NAME execution_id=$EXECUTION_ID"

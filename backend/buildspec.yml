@@ -1,0 +1,106 @@
+version: 0.2
+
+# Company guide buildspec (backend root relative to CodePipeline checkout).
+# CodePipeline buildspec_path: backend/buildspec.yml
+#
+# CodeBuild env (from Terraform):
+#   DEPLOY_ENV / APP_ENV  = dev | prod
+#   FRONTEND_BRANCH       = staging (dev) | main (prod)
+#   FRONTEND_REPO         = owner/repo (frontend or monorepo)
+#   GITHUB_TOKEN          = optional (Secrets Manager) for private repos
+
+phases:
+  pre_build:
+    commands:
+      - echo "=== Pre-build | DEPLOY_ENV=$DEPLOY_ENV FRONTEND_BRANCH=$FRONTEND_BRANCH ==="
+      - echo "Setting up tools..."
+      - node --version
+      - npm --version
+      - git --version
+      - |
+        # Resolve backend root whether CodeBuild starts at monorepo root or backend/
+        if [ -f "buildspec.yml" ] && [ -d "app" ]; then
+          echo "$(pwd)" > /tmp/backend_root.txt
+        elif [ -d "backend" ] && [ -f "backend/buildspec.yml" ]; then
+          echo "$(pwd)/backend" > /tmp/backend_root.txt
+        else
+          echo "ERROR: cannot locate backend root (expected app/ + buildspec.yml)"
+          ls -la
+          exit 1
+        fi
+      - echo "BACKEND_ROOT=$(cat /tmp/backend_root.txt)"
+      - |
+        # Map DEPLOY_ENV → frontend branch (company guide), with Terraform override
+        if [ -z "$FRONTEND_BRANCH" ]; then
+          if [ "$DEPLOY_ENV" = "prod" ]; then
+            export FRONTEND_BRANCH="main"
+          else
+            export FRONTEND_BRANCH="staging"
+          fi
+        fi
+        echo "$FRONTEND_BRANCH" > /tmp/frontend_branch.txt
+        echo "Resolved FRONTEND_BRANCH=$FRONTEND_BRANCH"
+
+  build:
+    commands:
+      - BACKEND_ROOT="$(cat /tmp/backend_root.txt)"
+      - FRONTEND_BRANCH="$(cat /tmp/frontend_branch.txt)"
+      - cd "$BACKEND_ROOT"
+      - echo "=== Build | clone frontend ($FRONTEND_REPO @ $FRONTEND_BRANCH) ==="
+      - rm -rf frontend-src static/frontend
+      - mkdir -p static/frontend
+      - |
+        if [ -z "$FRONTEND_REPO" ]; then
+          echo "ERROR: FRONTEND_REPO is not set"
+          exit 1
+        fi
+        if [ -n "$GITHUB_TOKEN" ]; then
+          FRONTEND_GIT_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${FRONTEND_REPO}.git"
+        else
+          FRONTEND_GIT_URL="https://github.com/${FRONTEND_REPO}.git"
+        fi
+        echo "Cloning $FRONTEND_REPO branch $FRONTEND_BRANCH"
+        git clone --depth 1 --branch "$FRONTEND_BRANCH" "$FRONTEND_GIT_URL" frontend-clone
+        # Support separate frontend repo OR monorepo with frontend/ folder
+        if [ -f "frontend-clone/package.json" ]; then
+          mv frontend-clone frontend-src
+        elif [ -d "frontend-clone/frontend" ] && [ -f "frontend-clone/frontend/package.json" ]; then
+          mv frontend-clone/frontend frontend-src
+          rm -rf frontend-clone
+        else
+          echo "ERROR: no package.json found in cloned frontend (repo root or frontend/)"
+          find frontend-clone -maxdepth 2 -type f -name package.json || true
+          exit 1
+        fi
+      - rm -rf frontend-src/node_modules frontend-src/dist
+      - cd frontend-src
+      - npm ci
+      - export VITE_API_URL=""
+      - npm run build
+      - cd "$BACKEND_ROOT"
+      - cp -a frontend-src/dist/. static/frontend/
+      - test -f Dockerfile
+      - test -f static/frontend/index.html
+      - echo "Frontend bundled into backend/static/frontend"
+
+  post_build:
+    commands:
+      - BACKEND_ROOT="$(cat /tmp/backend_root.txt)"
+      - cd "$BACKEND_ROOT"
+      - echo "=== Post-build | Beanstalk artifact preparation ==="
+      - rm -rf frontend-src frontend-clone
+      - find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+      - echo "Artifact contents:"
+      - ls -la
+      - echo "Build completed at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+artifacts:
+  base-directory: backend
+  files:
+    - "**/*"
+  exclude-paths:
+    - frontend-src/**/*
+    - frontend-clone/**/*
+    - "**/__pycache__/**/*"
+    - "**/*.pyc"
+    - .git/**/*
