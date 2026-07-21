@@ -92,9 +92,9 @@ variable "pipeline_source_branch" {
 }
 
 variable "pipeline_frontend_branch" {
-  description = "Frontend branch pulled by CodeBuild (company guide: staging for Dev)"
+  description = "Frontend branch pulled by CodeBuild (monorepo: same as source branch)"
   type        = string
-  default     = "staging"
+  default     = "dev"
 }
 
 variable "github_token_secret_ssm_parameter" {

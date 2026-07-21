@@ -19,7 +19,7 @@ $ErrorActionPreference = "Stop"
 # =============================================================================
 $Region              = "eu-north-1"
 $ConfigPrefix        = "/sbl/prod"
-$GitHubRepo          = "StarUP-Solutions/SBL-ALLAPP"
+$GitHubRepo          = "SblLiga/SBL_COMANDO"
 $CodeStarArn         = ""   # השאירו ריק לגילוי אוטומטי
 $EbSolutionStack     = ""   # השאירו ריק לבחירת AL2023 Docker האחרון
 $ArtifactBucketName  = ""   # השאירו ריק ל-sbl-prod-pipeline-artifacts-<ACCOUNT_ID>

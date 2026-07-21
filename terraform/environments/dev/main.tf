@@ -185,7 +185,7 @@ module "pipeline" {
   environment   = local.environment
   source_repo   = data.aws_ssm_parameter.pipeline_source_repo.value
   source_branch = var.pipeline_source_branch # dev
-  # Company guide: Dev CodeBuild pulls frontend branch "staging"
+  # Company guide: Dev CodeBuild pulls frontend from the same monorepo branch
   frontend_branch         = var.pipeline_frontend_branch
   frontend_repo           = data.aws_ssm_parameter.frontend_repo.value
   github_token_secret_arn = try(data.aws_ssm_parameter.github_token_secret_arn[0].value, null)

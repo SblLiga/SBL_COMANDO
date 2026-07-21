@@ -5,7 +5,7 @@ version: 0.2
 #
 # CodeBuild env (from Terraform):
 #   DEPLOY_ENV / APP_ENV  = dev | prod
-#   FRONTEND_BRANCH       = staging (dev) | main (prod)
+#   FRONTEND_BRANCH       = dev (dev) | prod (prod)
 #   FRONTEND_REPO         = owner/repo (frontend or monorepo)
 #   GITHUB_TOKEN          = optional (Secrets Manager) for private repos
 
@@ -30,12 +30,12 @@ phases:
         fi
       - echo "BACKEND_ROOT=$(cat /tmp/backend_root.txt)"
       - |
-        # Map DEPLOY_ENV → frontend branch (company guide), with Terraform override
+        # Map DEPLOY_ENV → frontend branch (monorepo uses dev/prod branches)
         if [ -z "$FRONTEND_BRANCH" ]; then
           if [ "$DEPLOY_ENV" = "prod" ]; then
-            export FRONTEND_BRANCH="main"
+            export FRONTEND_BRANCH="prod"
           else
-            export FRONTEND_BRANCH="staging"
+            export FRONTEND_BRANCH="dev"
           fi
         fi
         echo "$FRONTEND_BRANCH" > /tmp/frontend_branch.txt
@@ -46,31 +46,42 @@ phases:
       - BACKEND_ROOT="$(cat /tmp/backend_root.txt)"
       - FRONTEND_BRANCH="$(cat /tmp/frontend_branch.txt)"
       - cd "$BACKEND_ROOT"
-      - echo "=== Build | clone frontend ($FRONTEND_REPO @ $FRONTEND_BRANCH) ==="
-      - rm -rf frontend-src static/frontend
+      - echo "=== Build | resolve frontend ($FRONTEND_REPO @ $FRONTEND_BRANCH) ==="
+      - rm -rf frontend-src static/frontend frontend-clone
       - mkdir -p static/frontend
       - |
-        if [ -z "$FRONTEND_REPO" ]; then
-          echo "ERROR: FRONTEND_REPO is not set"
-          exit 1
-        fi
-        if [ -n "$GITHUB_TOKEN" ]; then
-          FRONTEND_GIT_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${FRONTEND_REPO}.git"
+        REPO_ROOT="$(dirname "$BACKEND_ROOT")"
+        if [ -d "$REPO_ROOT/base44-app" ] && [ -f "$REPO_ROOT/base44-app/package.json" ]; then
+          echo "Using local monorepo frontend: base44-app"
+          cp -a "$REPO_ROOT/base44-app" frontend-src
+        elif [ -d "$REPO_ROOT/frontend" ] && [ -f "$REPO_ROOT/frontend/package.json" ]; then
+          echo "Using local monorepo frontend: frontend"
+          cp -a "$REPO_ROOT/frontend" frontend-src
         else
-          FRONTEND_GIT_URL="https://github.com/${FRONTEND_REPO}.git"
-        fi
-        echo "Cloning $FRONTEND_REPO branch $FRONTEND_BRANCH"
-        git clone --depth 1 --branch "$FRONTEND_BRANCH" "$FRONTEND_GIT_URL" frontend-clone
-        # Support separate frontend repo OR monorepo with frontend/ folder
-        if [ -f "frontend-clone/package.json" ]; then
-          mv frontend-clone frontend-src
-        elif [ -d "frontend-clone/frontend" ] && [ -f "frontend-clone/frontend/package.json" ]; then
-          mv frontend-clone/frontend frontend-src
-          rm -rf frontend-clone
-        else
-          echo "ERROR: no package.json found in cloned frontend (repo root or frontend/)"
-          find frontend-clone -maxdepth 2 -type f -name package.json || true
-          exit 1
+          if [ -z "$FRONTEND_REPO" ]; then
+            echo "ERROR: FRONTEND_REPO is not set and no local frontend folder was found"
+            exit 1
+          fi
+          if [ -n "$GITHUB_TOKEN" ]; then
+            FRONTEND_GIT_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${FRONTEND_REPO}.git"
+          else
+            FRONTEND_GIT_URL="https://github.com/${FRONTEND_REPO}.git"
+          fi
+          echo "Cloning $FRONTEND_REPO branch $FRONTEND_BRANCH"
+          git clone --depth 1 --branch "$FRONTEND_BRANCH" "$FRONTEND_GIT_URL" frontend-clone
+          if [ -f "frontend-clone/package.json" ]; then
+            mv frontend-clone frontend-src
+          elif [ -d "frontend-clone/frontend" ] && [ -f "frontend-clone/frontend/package.json" ]; then
+            mv frontend-clone/frontend frontend-src
+            rm -rf frontend-clone
+          elif [ -d "frontend-clone/base44-app" ] && [ -f "frontend-clone/base44-app/package.json" ]; then
+            mv frontend-clone/base44-app frontend-src
+            rm -rf frontend-clone
+          else
+            echo "ERROR: no package.json found in cloned frontend"
+            find frontend-clone -maxdepth 2 -type f -name package.json || true
+            exit 1
+          fi
         fi
       - rm -rf frontend-src/node_modules frontend-src/dist
       - cd frontend-src

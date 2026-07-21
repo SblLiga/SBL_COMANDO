@@ -1,71 +1,339 @@
-# SBL_COMANDO — Unified App + Infrastructure Monorepo
+# SBL_COMANDO — Developer & DevOps Manual
 
-This repository now combines:
+Unified monorepo for the SBL platform: application code, AWS infrastructure (Terraform), and CI/CD automation.
 
-- Application runtime (`backend` + `frontend`) for Elastic Beanstalk deployment.
-- Full infrastructure as code (`terraform`) for AWS RDS/EB/CodePipeline.
-- Base44 exported app source in `base44-app` (kept as-is, not deleted from original repo).
+| Item | Value |
+|------|-------|
+| **GitHub** | `SblLiga/SBL_COMANDO` |
+| **AWS Region** | `eu-north-1` |
+| **Compute** | Elastic Beanstalk (Docker, single container) |
+| **Database** | RDS PostgreSQL 15 |
+| **CI/CD** | GitHub Actions → CodePipeline → CodeBuild → Elastic Beanstalk |
 
-## Repository Structure
+---
+
+## 1. Project Overview
+
+### Architecture
+
+```text
+Developer push (dev/prod)
+        │
+        ▼
+GitHub Actions (OIDC)
+  deploy-dev.yml / deploy-prod.yml
+        │
+        ▼
+AWS CodePipeline
+  Source → Build → Deploy
+        │
+        ├─ CodeBuild (backend/buildspec.yml)
+        │    ├─ Build frontend from base44-app/
+        │    ├─ Bundle into backend/static/frontend
+        │    └─ Package Docker backend artifact
+        │
+        ▼
+Elastic Beanstalk (Docker)
+        │
+        ▼
+RDS PostgreSQL
+```
+
+### Important design notes
+
+- **GitHub Actions do not build Docker images directly.** They only trigger AWS CodePipeline.
+- **ECR is not used** in the current deployment path. The backend is deployed as an Elastic Beanstalk Docker application version.
+- **Database bootstrap is environment-aware:**
+  - `dev` → seeds sample users/goals for testing
+  - `prod` → schema only + secure admin from secrets (`ADMIN_EMAIL`, `ADMIN_PASSWORD`)
+
+---
+
+## 2. Repository Structure
 
 ```text
 SBL_COMANDO/
-├── backend/                 # FastAPI app packaged for EB
-├── frontend/                # React app built into backend/static/frontend
-├── terraform/               # Dev/Prod infrastructure
-├── .github/workflows/       # dev/prod pipeline triggers
-└── base44-app/              # Base44 exported app copy (EliteOrbit)
+├── backend/                 # FastAPI API + EB Docker image
+│   ├── app/                 # Application code (config, models, bootstrap, health)
+│   ├── alembic/             # Database migrations
+│   ├── buildspec.yml        # AWS CodeBuild instructions
+│   ├── Dockerfile           # EB runtime image
+│   └── scripts/start.sh     # Container startup (migrations + gunicorn)
+├── frontend/                # Minimal React scaffold (fallback)
+├── base44-app/              # Base44 exported EliteOrbit app (primary UI)
+├── terraform/               # AWS infrastructure (dev + prod)
+│   ├── environments/dev/
+│   ├── environments/prod/
+│   └── scripts/             # One-time SSM bootstrap scripts
+├── .github/workflows/       # Pipeline trigger workflows
+├── docker-compose.yml       # Local backend + PostgreSQL
+└── .env.example             # Environment variable template
 ```
 
-## Branch Strategy
+### Branch strategy
 
-- `dev` branch → DEV AWS environment and `sbl-dev-pipeline`.
-- `prod` branch → PROD AWS environment and `sbl-prod-pipeline`.
-- `main` branch remains the integration base.
+| Branch | Purpose | AWS Pipeline | EB Environment |
+|--------|---------|--------------|----------------|
+| `main` | Integration / stable base | — | — |
+| `dev` | Development deployments | `sbl-dev-pipeline` | `sbl-dev` |
+| `prod` | Production deployments | `sbl-prod-pipeline` | `sbl-prod` |
 
-`deploy-dev.yml` triggers on push to `dev`.  
-`deploy-prod.yml` triggers on push to `prod`.
+| Workflow | Trigger | Secret required |
+|----------|---------|-----------------|
+| `deploy-dev.yml` | push to `dev` | `AWS_ROLE_ARN_DEV` |
+| `deploy-prod.yml` | push to `prod` | `AWS_ROLE_ARN_PROD` |
 
-## Environment and Database Rules
+---
 
-- DEV keeps test/sample behavior for fast validation (`SEED_DEV_DATA=true` by default).
-- PROD initializes schema only and creates a single admin from `ADMIN_EMAIL` + `ADMIN_PASSWORD` env vars.
-- App DB settings are environment-driven via `DB_*` variables.
-- Migrations and bootstrap run on startup when `RUN_DB_MIGRATIONS=true`.
-- Health endpoints:
-  - `GET /health` — quick status + DB connectivity
-  - `GET /health/validate` — detailed status including table counts
+## 3. Local Development Setup
 
-## Quick Start (DEV First)
+### Option A — Docker Compose (recommended for backend validation)
 
 ```powershell
-# 1) Infrastructure bootstrap parameters/secrets
+cd SBL_COMANDO
+docker compose up --build
+```
+
+Verify:
+
+```powershell
+Invoke-RestMethod http://localhost:8000/health
+Invoke-RestMethod http://localhost:8000/health/validate
+```
+
+Default local DB:
+
+- Host: `localhost:5432`
+- DB: `sbl_dev`
+- User: `sbl_admin`
+- Password: `devpassword`
+
+DEV seed users (created on first startup):
+
+| Email | Password | Role |
+|-------|----------|------|
+| `admin.dev@sbl.local` | `Admin123!` | admin |
+| `manager.dev@sbl.local` | `Manager123!` | manager |
+| `user.dev@sbl.local` | `User123!` | user |
+
+### Option B — Base44 frontend (full UI locally)
+
+```powershell
+cd base44-app
+npm install
+npm run dev
+```
+
+For Base44-only frontend against hosted backend, configure `.env.local` as described in `base44-app/README.md`.
+
+### Option C — Manual backend without Docker
+
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env
+# Edit .env with your local Postgres credentials
+uvicorn app.main:app --reload --port 8000
+```
+
+---
+
+## 4. Environment Variables & Secrets
+
+### Application variables
+
+| Variable | DEV | PROD | Description |
+|----------|-----|------|-------------|
+| `APP_ENV` | `dev` | `prod` | Environment mode |
+| `DB_HOST` | RDS endpoint | RDS endpoint | Injected by Terraform/SSM |
+| `DB_NAME` | `sbl_dev` | `sbl_prod` | Database name |
+| `DB_USER` | `sbl_admin` | `sbl_admin` | DB username |
+| `DB_PASSWORD` | Secrets Manager | Secrets Manager | Never commit |
+| `DB_SSLMODE` | `require` (cloud) | `require` | SSL mode for RDS |
+| `RUN_DB_MIGRATIONS` | `true` | `true` | Run Alembic on startup |
+| `SEED_DEV_DATA` | `true` | `false` | DEV-only sample data |
+| `ADMIN_EMAIL` | — | required | PROD admin bootstrap |
+| `ADMIN_PASSWORD` | — | required | PROD admin bootstrap |
+| `JWT_SECRET` | set locally | AWS secret | Auth signing key |
+
+### GitHub repository secrets (manual setup)
+
+| Secret | Used by |
+|--------|---------|
+| `AWS_ROLE_ARN_DEV` | `deploy-dev.yml` |
+| `AWS_ROLE_ARN_PROD` | `deploy-prod.yml` |
+
+### AWS SSM parameters (created by bootstrap scripts)
+
+Under `/sbl/dev` or `/sbl/prod`:
+
+- `pipeline/source_repo` → `SblLiga/SBL_COMANDO`
+- `pipeline/frontend_repo` → `SblLiga/SBL_COMANDO`
+- `pipeline/codestar_connection_arn`
+- `pipeline/artifact_bucket_name`
+- `eb/solution_stack_name`
+- `app/app_env`, `app/log_level`
+
+RDS credentials are created automatically by Terraform in **AWS Secrets Manager**.
+
+---
+
+## 5. Deployment & CI/CD Guide
+
+### DEV deployment flow
+
+1. Push code to `dev` branch
+2. GitHub Actions runs `deploy-dev.yml`
+3. Action assumes AWS OIDC role (`AWS_ROLE_ARN_DEV`)
+4. Starts `sbl-dev-pipeline`
+5. CodePipeline stages:
+   - **Source** — pulls `SblLiga/SBL_COMANDO@dev` via CodeStar Connection
+   - **Build** — CodeBuild runs `backend/buildspec.yml`
+   - **Deploy** — updates Elastic Beanstalk environment `sbl-dev`
+
+### PROD deployment flow
+
+Same as DEV, but:
+
+- Branch: `prod`
+- Workflow: `deploy-prod.yml`
+- Secret: `AWS_ROLE_ARN_PROD`
+- Pipeline: `sbl-prod-pipeline`
+- Environment: `sbl-prod`
+- No seed data; admin created only from secure env vars
+
+### First-time infrastructure setup
+
+```powershell
+# DEV bootstrap (SSM parameters)
 cd terraform\scripts
 .\bootstrap-dev.ps1
 
-# 2) Provision DEV infra
+# DEV infrastructure
 cd ..\environments\dev
 terraform init
+terraform plan
 terraform apply
 
-# 3) Push app/infra code to trigger deployment pipeline
+# Trigger first deployment
 cd ..\..\..
 git checkout dev
 git push origin dev
 ```
 
-## Deploy Trigger Workflows
+### PROD infrastructure (after DEV is validated)
 
-- `.github/workflows/deploy-dev.yml` starts `sbl-dev-pipeline`.
-- `.github/workflows/deploy-prod.yml` starts `sbl-prod-pipeline`.
+```powershell
+cd terraform\scripts
+.\bootstrap-prod.ps1
 
-Required GitHub secrets:
+cd ..\environments\prod
+terraform init
+terraform apply
 
-- `AWS_ROLE_ARN_DEV`
-- `AWS_ROLE_ARN_PROD`
+git checkout prod
+git merge dev   # or cherry-pick tested commits
+git push origin prod
+```
 
-## Important Notes
+---
 
-- Never commit secrets, `.env`, tfstate, or credentials.
-- Keep PROD data clean: no local test dumps and no mock seeds.
-- Promote to PROD only after DEV health endpoint and core flows pass.
+## 6. Health & Validation API
+
+### `GET /health` — quick check
+
+```powershell
+Invoke-RestMethod https://<eb-url>/health
+```
+
+Example response:
+
+```json
+{
+  "status": "ok",
+  "environment": "dev",
+  "mode": "development",
+  "database": {
+    "connected": true,
+    "responsive": true,
+    "latency_ms": 8.42,
+    "error": null
+  },
+  "bootstrap": {
+    "seed_dev_data_enabled": true
+  }
+}
+```
+
+### `GET /health/validate` — detailed check
+
+Includes table counts (`users`, `admins`, `groups`, `goals`).
+
+```powershell
+Invoke-RestMethod https://<eb-url>/health/validate
+```
+
+Expected in PROD after bootstrap:
+
+- `mode`: `"production"`
+- `users`: `1` (admin only)
+- `goals`: `0`
+
+---
+
+## 7. Pre-Deployment Audit Checklist
+
+### Repository (done in code)
+
+- [x] Unified monorepo structure
+- [x] `dev` / `prod` branch workflows
+- [x] Environment-based DB bootstrap
+- [x] Buildspec uses `base44-app` as primary frontend
+- [x] Bootstrap scripts point to `SblLiga/SBL_COMANDO`
+- [x] Local `docker-compose.yml` for backend testing
+
+### Manual steps (you must do)
+
+- [ ] AWS CLI configured (`aws sts get-caller-identity`)
+- [ ] CodeStar Connection to GitHub is **Available** in AWS Console
+- [ ] Run `terraform\scripts\bootstrap-dev.ps1`
+- [ ] Run `terraform apply` in `terraform\environments\dev`
+- [ ] Create GitHub OIDC IAM roles in AWS for DEV/PROD
+- [ ] Add `AWS_ROLE_ARN_DEV` and `AWS_ROLE_ARN_PROD` in GitHub Secrets
+- [ ] (PROD) Store `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `JWT_SECRET` in AWS Secrets/SSM
+- [ ] Push to `dev` and verify CodePipeline succeeds
+- [ ] Verify `/health` and `/health/validate` on EB URL
+
+### Optional hardening (recommended)
+
+- [ ] Enable branch protection on `prod` (require PR + reviews)
+- [ ] Enable branch protection on `dev` (require PR for merges from `main`)
+- [ ] Configure GitHub Environment `production` with required reviewers
+
+---
+
+## 8. Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| `Repository not found` on git clone | Wrong GitHub account/token | `gh auth switch -u SblLiga` |
+| GitHub Action fails on OIDC | Missing/incorrect `AWS_ROLE_ARN_*` | Fix IAM role trust + secret |
+| CodeBuild cannot find frontend | Wrong branch or repo in SSM | Re-run bootstrap script |
+| `/health` returns 503 | RDS not reachable or migrations failed | Check EB env vars + RDS SG |
+| PROD has seed data | `APP_ENV` not `prod` or `SEED_DEV_DATA=true` | Fix EB env + redeploy |
+
+---
+
+## 9. Related Repositories
+
+| Repo | Purpose |
+|------|---------|
+| `SblLiga/SBL_COMANDO` | **Primary** — unified app + infra |
+| `SblLiga/SBL-ALLAPP` | Infrastructure archive (kept, not deleted) |
+| `SblLiga/eliteorbit` | Base44 source archive (kept, not deleted) |
+
+---
+
+<p align="center"><strong>SBL_COMANDO · AWS eu-north-1 · Terraform · Elastic Beanstalk · RDS · CodePipeline</strong></p>

@@ -118,13 +118,13 @@ variable "pipeline_source_repo" {
 
 variable "pipeline_source_branch" {
   type    = string
-  default = "main"
+  default = "prod"
 }
 
 variable "pipeline_frontend_branch" {
-  description = "Frontend branch pulled by CodeBuild (company guide: main for Prod)"
+  description = "Frontend branch pulled by CodeBuild (monorepo: same as source branch)"
   type        = string
-  default     = "main"
+  default     = "prod"
 }
 
 variable "github_token_secret_ssm_parameter" {

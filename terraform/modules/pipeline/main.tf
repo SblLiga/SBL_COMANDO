@@ -380,6 +380,6 @@ resource "aws_codepipeline" "this" {
 
   tags = merge(var.tags, { Name = var.name })
 
-  # No native CodeStar push trigger — per company guide, GitHub Actions starts
-  # the pipeline on push to the environment branch (dev → Dev, main → Prod).
+  # No native CodeStar push trigger — GitHub Actions starts the pipeline on push
+  # to the environment branch (dev → Dev, prod → Prod).
 }
