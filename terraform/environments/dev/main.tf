@@ -29,6 +29,12 @@ data "aws_subnets" "default" {
     name   = "vpc-id"
     values = [data.aws_vpc.default.id]
   }
+
+  # t4g (Graviton) is not available in every AZ (e.g. us-east-1e)
+  filter {
+    name   = "availability-zone"
+    values = ["us-east-1a", "us-east-1b", "us-east-1c", "us-east-1d", "us-east-1f"]
+  }
 }
 
 locals {
@@ -188,7 +194,7 @@ module "pipeline" {
   # Company guide: Dev CodeBuild pulls frontend from the same monorepo branch
   frontend_branch         = var.pipeline_frontend_branch
   frontend_repo           = data.aws_ssm_parameter.frontend_repo.value
-  github_token_secret_arn = try(data.aws_ssm_parameter.github_token_secret_arn[0].value, null)
+  github_token_secret_arn = null
   codestar_connection_arn = data.aws_ssm_parameter.codestar_connection_arn.value
   artifact_bucket_name    = data.aws_ssm_parameter.pipeline_artifact_bucket_name.value
   buildspec_path          = "backend/buildspec.yml"

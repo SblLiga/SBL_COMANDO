@@ -20,7 +20,7 @@ $ErrorActionPreference = "Stop"
 $Region              = "us-east-1"
 $ConfigPrefix        = "/sbl/dev"
 $GitHubRepo          = "SblLiga/SBL_COMANDO"
-$CodeStarArn         = ""
+$CodeStarArn         = "arn:aws:codeconnections:us-east-1:494506753061:connection/15e0e96c-ab25-44ad-9192-99486e09dc1d"
 $EbSolutionStack     = ""
 $ArtifactBucketName  = ""
 $AppEnv              = "dev"
@@ -34,7 +34,7 @@ if (-not $AccountId) { throw "AWS CLI not connected. Run: aws configure" }
 Write-Host "Account: $AccountId | Region: $Region"
 
 if (-not $ArtifactBucketName) {
-  $ArtifactBucketName = "sbl-dev-pipeline-artifacts-$AccountId"
+  $ArtifactBucketName = "sbl-dev-pipeline-artifacts-use1-$AccountId"
 }
 
 if (-not $CodeStarArn) {

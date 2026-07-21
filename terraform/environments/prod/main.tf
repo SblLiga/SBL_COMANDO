@@ -200,7 +200,7 @@ module "pipeline" {
   # Company guide: Prod CodeBuild pulls frontend branch "main"
   frontend_branch         = var.pipeline_frontend_branch
   frontend_repo           = data.aws_ssm_parameter.frontend_repo.value
-  github_token_secret_arn = try(data.aws_ssm_parameter.github_token_secret_arn[0].value, null)
+  github_token_secret_arn = null
   codestar_connection_arn = data.aws_ssm_parameter.codestar_connection_arn.value
   artifact_bucket_name    = data.aws_ssm_parameter.pipeline_artifact_bucket_name.value
   buildspec_path          = "backend/buildspec.yml"
