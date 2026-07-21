@@ -5,7 +5,7 @@
 
 | | |
 |--|--|
-| **אזור** | `eu-north-1` |
+| **אזור** | `us-east-1` |
 | **Prefix Dev** | `/sbl/dev` |
 | **Prefix Prod** | `/sbl/prod` |
 | **Secret Dev** | `sbl-dev-db/db-credentials` |
@@ -44,8 +44,8 @@ flowchart TD
 העתיקו והתאימו לפני הרצה:
 
 ```powershell
-$env:AWS_REGION = "eu-north-1"
-$env:AWS_DEFAULT_REGION = "eu-north-1"
+$env:AWS_REGION = "us-east-1"
+$env:AWS_DEFAULT_REGION = "us-east-1"
 
 # החליפו בערכים האמיתיים שלכם
 $GITHUB_REPO = "StarUP-Solutions/SBL-ALLAPP"   # owner/repo
@@ -56,7 +56,7 @@ $DEV_ARTIFACT_BUCKET  = "sbl-dev-pipeline-artifacts-$ACCOUNT_ID"
 $PROD_ARTIFACT_BUCKET = "sbl-prod-pipeline-artifacts-$ACCOUNT_ID"
 
 # ARN של CodeStar Connection (ראו פקודת גילוי למטה)
-$CODESTAR_ARN = "arn:aws:codestar-connections:eu-north-1:${ACCOUNT_ID}:connection/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+$CODESTAR_ARN = "arn:aws:codestar-connections:us-east-1:${ACCOUNT_ID}:connection/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 
 # Solution stack — הריצו את פקודת הגילוי ואז העתיקו שם מדויק
 $EB_SOLUTION_STACK = "64bit Amazon Linux 2023 v4.3.0 running Docker"
@@ -69,12 +69,12 @@ $EB_SOLUTION_STACK = "64bit Amazon Linux 2023 v4.3.0 running Docker"
 aws sts get-caller-identity --query Account --output text
 
 # CodeStar Connections
-aws codestar-connections list-connections --region eu-north-1 `
+aws codestar-connections list-connections --region us-east-1 `
   --query "Connections[?ConnectionStatus=='AVAILABLE'].{Name:ConnectionName,Arn:ConnectionArn}" `
   --output table
 
 # Elastic Beanstalk Docker solution stacks (Graviton / AL2023)
-aws elasticbeanstalk list-available-solution-stacks --region eu-north-1 `
+aws elasticbeanstalk list-available-solution-stacks --region us-east-1 `
   --query "SolutionStacks[?contains(@, 'Amazon Linux 2023') && contains(@, 'Docker')]" `
   --output table
 ```
@@ -107,49 +107,49 @@ terraform apply
 ### Dev — SSM Parameter Store
 
 ```powershell
-aws ssm put-parameter --region eu-north-1 `
+aws ssm put-parameter --region us-east-1 `
   --name "/sbl/dev/eb/solution_stack_name" `
   --type "String" `
   --value "64bit Amazon Linux 2023 v4.3.0 running Docker" `
   --overwrite `
   --description "Elastic Beanstalk Docker solution stack (dev)"
 
-aws ssm put-parameter --region eu-north-1 `
+aws ssm put-parameter --region us-east-1 `
   --name "/sbl/dev/pipeline/source_repo" `
   --type "String" `
   --value "StarUP-Solutions/SBL-ALLAPP" `
   --overwrite `
   --description "GitHub monorepo for CodePipeline source"
 
-aws ssm put-parameter --region eu-north-1 `
+aws ssm put-parameter --region us-east-1 `
   --name "/sbl/dev/pipeline/frontend_repo" `
   --type "String" `
   --value "StarUP-Solutions/SBL-ALLAPP" `
   --overwrite `
   --description "Frontend repo for CodeBuild clone (dev → branch staging)"
 
-aws ssm put-parameter --region eu-north-1 `
+aws ssm put-parameter --region us-east-1 `
   --name "/sbl/dev/pipeline/artifact_bucket_name" `
   --type "String" `
   --value "sbl-dev-pipeline-artifacts-036318543774" `
   --overwrite `
   --description "S3 bucket name for CodePipeline artifacts (dev)"
 
-aws ssm put-parameter --region eu-north-1 `
+aws ssm put-parameter --region us-east-1 `
   --name "/sbl/dev/pipeline/codestar_connection_arn" `
   --type "String" `
-  --value "arn:aws:codestar-connections:eu-north-1:036318543774:connection/xxxxxxxx" `
+  --value "arn:aws:codestar-connections:us-east-1:036318543774:connection/xxxxxxxx" `
   --overwrite `
   --description "CodeStar connection ARN for GitHub (dev)"
 
-aws ssm put-parameter --region eu-north-1 `
+aws ssm put-parameter --region us-east-1 `
   --name "/sbl/dev/app/app_env" `
   --type "String" `
   --value "dev" `
   --overwrite `
   --description "Application environment label"
 
-aws ssm put-parameter --region eu-north-1 `
+aws ssm put-parameter --region us-east-1 `
   --name "/sbl/dev/app/log_level" `
   --type "String" `
   --value "DEBUG" `
@@ -160,49 +160,49 @@ aws ssm put-parameter --region eu-north-1 `
 ### Prod — SSM Parameter Store
 
 ```powershell
-aws ssm put-parameter --region eu-north-1 `
+aws ssm put-parameter --region us-east-1 `
   --name "/sbl/prod/eb/solution_stack_name" `
   --type "String" `
   --value "64bit Amazon Linux 2023 v4.3.0 running Docker" `
   --overwrite `
   --description "Elastic Beanstalk Docker solution stack (prod)"
 
-aws ssm put-parameter --region eu-north-1 `
+aws ssm put-parameter --region us-east-1 `
   --name "/sbl/prod/pipeline/source_repo" `
   --type "String" `
   --value "StarUP-Solutions/SBL-ALLAPP" `
   --overwrite `
   --description "GitHub monorepo for CodePipeline source"
 
-aws ssm put-parameter --region eu-north-1 `
+aws ssm put-parameter --region us-east-1 `
   --name "/sbl/prod/pipeline/frontend_repo" `
   --type "String" `
   --value "StarUP-Solutions/SBL-ALLAPP" `
   --overwrite `
   --description "Frontend repo for CodeBuild clone (prod → branch main)"
 
-aws ssm put-parameter --region eu-north-1 `
+aws ssm put-parameter --region us-east-1 `
   --name "/sbl/prod/pipeline/artifact_bucket_name" `
   --type "String" `
   --value "sbl-prod-pipeline-artifacts-036318543774" `
   --overwrite `
   --description "S3 bucket name for CodePipeline artifacts (prod)"
 
-aws ssm put-parameter --region eu-north-1 `
+aws ssm put-parameter --region us-east-1 `
   --name "/sbl/prod/pipeline/codestar_connection_arn" `
   --type "String" `
-  --value "arn:aws:codestar-connections:eu-north-1:036318543774:connection/xxxxxxxx" `
+  --value "arn:aws:codestar-connections:us-east-1:036318543774:connection/xxxxxxxx" `
   --overwrite `
   --description "CodeStar connection ARN for GitHub (prod)"
 
-aws ssm put-parameter --region eu-north-1 `
+aws ssm put-parameter --region us-east-1 `
   --name "/sbl/prod/app/app_env" `
   --type "String" `
   --value "prod" `
   --overwrite `
   --description "Application environment label"
 
-aws ssm put-parameter --region eu-north-1 `
+aws ssm put-parameter --region us-east-1 `
   --name "/sbl/prod/app/log_level" `
   --type "String" `
   --value "INFO" `
@@ -230,13 +230,13 @@ aws ssm put-parameter --region eu-north-1 `
 
 ```powershell
 # Dev
-aws secretsmanager describe-secret --region eu-north-1 --secret-id "sbl-dev-db/db-credentials"
-aws secretsmanager get-secret-value --region eu-north-1 --secret-id "sbl-dev-db/db-credentials" `
+aws secretsmanager describe-secret --region us-east-1 --secret-id "sbl-dev-db/db-credentials"
+aws secretsmanager get-secret-value --region us-east-1 --secret-id "sbl-dev-db/db-credentials" `
   --query "SecretString" --output text | ConvertFrom-Json | Select-Object username, engine, dbname
 
 # Prod
-aws secretsmanager describe-secret --region eu-north-1 --secret-id "sbl-prod-db/db-credentials"
-aws secretsmanager get-secret-value --region eu-north-1 --secret-id "sbl-prod-db/db-credentials" `
+aws secretsmanager describe-secret --region us-east-1 --secret-id "sbl-prod-db/db-credentials"
+aws secretsmanager get-secret-value --region us-east-1 --secret-id "sbl-prod-db/db-credentials" `
   --query "SecretString" --output text | ConvertFrom-Json | Select-Object username, engine, dbname
 ```
 
@@ -245,8 +245,8 @@ aws secretsmanager get-secret-value --region eu-north-1 --secret-id "sbl-prod-db
 ### אימות פרמטרי DB ב-SSM (נוצרים ע"י Terraform)
 
 ```powershell
-aws ssm get-parameters-by-path --region eu-north-1 --path "/sbl/dev/db" --recursive --output table
-aws ssm get-parameters-by-path --region eu-north-1 --path "/sbl/prod/db" --recursive --output table
+aws ssm get-parameters-by-path --region us-east-1 --path "/sbl/dev/db" --recursive --output table
+aws ssm get-parameters-by-path --region us-east-1 --path "/sbl/prod/db" --recursive --output table
 ```
 
 ---
@@ -270,14 +270,14 @@ $DevSecretJson = @{
   dbname   = "sbl_dev"
 } | ConvertTo-Json -Compress
 
-aws secretsmanager create-secret --region eu-north-1 `
+aws secretsmanager create-secret --region us-east-1 `
   --name "sbl-dev-db/db-credentials" `
   --description "PostgreSQL credentials for sbl-dev-db" `
   --secret-string $DevSecretJson `
   --tags Key=Environment,Value=dev Key=Project,Value=SBL Key=ManagedBy,Value=Terraform
 
 # אם ה-Secret כבר קיים — עדכון גרסה:
-aws secretsmanager put-secret-value --region eu-north-1 `
+aws secretsmanager put-secret-value --region us-east-1 `
   --secret-id "sbl-dev-db/db-credentials" `
   --secret-string $DevSecretJson
 
@@ -298,14 +298,14 @@ $ProdSecretJson = @{
   dbname   = "sbl_prod"
 } | ConvertTo-Json -Compress
 
-aws secretsmanager create-secret --region eu-north-1 `
+aws secretsmanager create-secret --region us-east-1 `
   --name "sbl-prod-db/db-credentials" `
   --description "PostgreSQL credentials for sbl-prod-db" `
   --secret-string $ProdSecretJson `
   --recovery-window-in-days 30 `
   --tags Key=Environment,Value=prod Key=Project,Value=SBL Key=ManagedBy,Value=Terraform
 
-aws secretsmanager put-secret-value --region eu-north-1 `
+aws secretsmanager put-secret-value --region us-east-1 `
   --secret-id "sbl-prod-db/db-credentials" `
   --secret-string $ProdSecretJson
 
@@ -324,18 +324,18 @@ Remove-Variable ProdDbPassword, ProdSecretJson -ErrorAction SilentlyContinue
 $NewPassword = -join ((48..57 + 65..90 + 97..122) | Get-Random -Count 28 | ForEach-Object { [char]$_ }) + "!#"
 
 # 2. עדכון ב-RDS (דוגמה dev)
-aws rds modify-db-instance --region eu-north-1 `
+aws rds modify-db-instance --region us-east-1 `
   --db-instance-identifier "sbl-dev-db" `
   --master-user-password $NewPassword `
   --apply-immediately
 
 # 3. עדכון ב-Secrets Manager (שמרו את שאר השדות)
-$Current = aws secretsmanager get-secret-value --region eu-north-1 `
+$Current = aws secretsmanager get-secret-value --region us-east-1 `
   --secret-id "sbl-dev-db/db-credentials" --query SecretString --output text | ConvertFrom-Json
 $Current.password = $NewPassword
 $Updated = $Current | ConvertTo-Json -Compress
 
-aws secretsmanager put-secret-value --region eu-north-1 `
+aws secretsmanager put-secret-value --region us-east-1 `
   --secret-id "sbl-dev-db/db-credentials" `
   --secret-string $Updated
 
@@ -348,7 +348,7 @@ Remove-Variable NewPassword, Current, Updated -ErrorAction SilentlyContinue
 
 ### Dev
 - [ ] כל 7 פרמטרי `/sbl/dev/*` קיימים (`aws ssm get-parameters-by-path --path /sbl/dev`)
-- [ ] `solution_stack_name` תואם ל-stack זמין ב-`eu-north-1`
+- [ ] `solution_stack_name` תואם ל-stack זמין ב-`us-east-1`
 - [ ] `codestar_connection_arn` במצב `Available`
 - [ ] `artifact_bucket_name` ייחודי גלובלית
 - [ ] `terraform init && terraform plan` ב-`environments/dev` ללא שגיאות SSM

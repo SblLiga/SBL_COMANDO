@@ -5,7 +5,7 @@ Unified monorepo for the SBL platform: application code, AWS infrastructure (Ter
 | Item | Value |
 |------|-------|
 | **GitHub** | `SblLiga/SBL_COMANDO` |
-| **AWS Region** | `eu-north-1` |
+| **AWS Region** | `us-east-1` (N. Virginia) |
 | **Compute** | Elastic Beanstalk (Docker, single container) |
 | **Database** | RDS PostgreSQL 15 |
 | **CI/CD** | GitHub Actions → CodePipeline → CodeBuild → Elastic Beanstalk |
@@ -336,4 +336,4 @@ Expected in PROD after bootstrap:
 
 ---
 
-<p align="center"><strong>SBL_COMANDO · AWS eu-north-1 · Terraform · Elastic Beanstalk · RDS · CodePipeline</strong></p>
+<p align="center"><strong>SBL_COMANDO · AWS us-east-1 · Terraform · Elastic Beanstalk · RDS · CodePipeline</strong></p>

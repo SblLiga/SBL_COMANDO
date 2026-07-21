@@ -308,6 +308,16 @@ resource "aws_iam_role_policy" "pipeline" {
         Effect = "Allow"
         Action = ["s3:GetObject", "s3:GetObjectVersion", "s3:ListBucket"]
         Resource = local.eb_deploy_s3_resources
+      },
+      {
+        Sid    = "ResolveEbDynamicReferences"
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = "*"
       }
     ]
   })

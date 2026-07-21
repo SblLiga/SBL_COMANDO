@@ -17,7 +17,7 @@ $ErrorActionPreference = "Stop"
 # =============================================================================
 # Values to customize - edit before running if needed
 # =============================================================================
-$Region              = "eu-north-1"
+$Region              = "us-east-1"
 $ConfigPrefix        = "/sbl/dev"
 $GitHubRepo          = "SblLiga/SBL_COMANDO"
 $CodeStarArn         = ""

@@ -39,4 +39,6 @@ Thumbs.db
 
 # Terraform plan files
 **/tfplan
+**/tfplan-*
 **/*.tfplan
+**/archive-eu-north-1/
