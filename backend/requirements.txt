@@ -5,3 +5,4 @@ sqlalchemy==2.0.40
 psycopg2-binary==2.9.10
 alembic==1.15.2
 pydantic-settings==2.8.1
+passlib[bcrypt]==1.7.4

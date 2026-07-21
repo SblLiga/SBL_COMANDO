@@ -28,10 +28,13 @@ SBL_COMANDO/
 
 ## Environment and Database Rules
 
-- DEV keeps test/sample behavior for fast validation.
-- PROD must use clean data only (no dummy/seed data) and secure secrets from AWS.
+- DEV keeps test/sample behavior for fast validation (`SEED_DEV_DATA=true` by default).
+- PROD initializes schema only and creates a single admin from `ADMIN_EMAIL` + `ADMIN_PASSWORD` env vars.
 - App DB settings are environment-driven via `DB_*` variables.
-- Migrations run on startup when `RUN_DB_MIGRATIONS=true`.
+- Migrations and bootstrap run on startup when `RUN_DB_MIGRATIONS=true`.
+- Health endpoints:
+  - `GET /health` — quick status + DB connectivity
+  - `GET /health/validate` — detailed status including table counts
 
 ## Quick Start (DEV First)
 

@@ -6,8 +6,10 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.bootstrap import run_database_bootstrap
 from app.config import get_settings
 from app.database import check_db_connection, init_db, run_migrations
+from app.health import build_health_payload
 
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path("static/frontend")
@@ -29,24 +31,32 @@ async def lifespan(app: FastAPI):
 
     if check_db_connection():
         logger.info("Database connection verified on startup")
+        from app.database import SessionLocal
+
+        if SessionLocal is not None:
+            with SessionLocal() as session:
+                bootstrap_result = run_database_bootstrap(session, settings)
+                logger.info("Database bootstrap result: %s", bootstrap_result)
     else:
         logger.warning("Database not reachable on startup — /health will report degraded")
 
     yield
 
 
-app = FastAPI(title="SBL Backend", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="SBL Backend", version="0.2.0", lifespan=lifespan)
 
 
 @app.get("/health")
 def health():
-    db_connected = check_db_connection()
-    payload = {
-        "status": "ok" if db_connected else "degraded",
-        "database": "connected" if db_connected else "disconnected",
-        "environment": get_settings().app_env,
-    }
-    status_code = 200 if db_connected else 503
+    payload = build_health_payload(detailed=False)
+    status_code = 200 if payload["status"] == "ok" else 503
+    return JSONResponse(content=payload, status_code=status_code)
+
+
+@app.get("/health/validate")
+def health_validate():
+    payload = build_health_payload(detailed=True)
+    status_code = 200 if payload["status"] == "ok" else 503
     return JSONResponse(content=payload, status_code=status_code)
 
 
