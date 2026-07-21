@@ -109,15 +109,13 @@ Write-Host "`nVerifying parameters ..." -ForegroundColor Green
 aws ssm get-parameters-by-path --region $Region --path $ConfigPrefix --recursive --output table
 
 Write-Host "`n=== PROD bootstrap complete ===" -ForegroundColor Cyan
-Write-Host @"
-
-Next steps:
-  cd ..\environments\prod
-  terraform init
-  terraform plan
-  terraform apply
-
-Secrets Manager (sbl-prod-db/db-credentials) will be created automatically by Terraform.
-Ensure office_cidr_blocks is configured in prod variables before apply.
-See BOOTSTRAP.md for verification commands.
-"@
+Write-Host ""
+Write-Host "Next steps:"
+Write-Host "  cd ..\environments\prod"
+Write-Host "  terraform init"
+Write-Host "  terraform plan"
+Write-Host "  terraform apply"
+Write-Host ""
+Write-Host "Secrets Manager (sbl-prod-db/db-credentials) will be created automatically by Terraform."
+Write-Host "Ensure office_cidr_blocks is configured in prod variables before apply."
+Write-Host "See BOOTSTRAP.md for verification commands."

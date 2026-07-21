@@ -1,11 +1,11 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Bootstrap חד-פעמי — פרמטרי SSM לסביבת Dev (לפני terraform apply).
+  One-time bootstrap - SSM parameters for Dev (before terraform apply).
 
 .DESCRIPTION
-  יוצר את כל פרמטרי SSM הנדרשים תחת /sbl/dev.
-  Secrets Manager ל-RDS נוצר אוטומטית ע"י Terraform — אין צורך להריץ כאן.
+  Creates all required SSM parameters under /sbl/dev.
+  RDS Secrets Manager is created automatically by Terraform.
 
 .EXAMPLE
   cd terraform\scripts
@@ -15,22 +15,22 @@
 $ErrorActionPreference = "Stop"
 
 # =============================================================================
-# ערכים להתאמה — ערכו לפני הרצה
+# Values to customize - edit before running if needed
 # =============================================================================
 $Region              = "eu-north-1"
 $ConfigPrefix        = "/sbl/dev"
 $GitHubRepo          = "SblLiga/SBL_COMANDO"
-$CodeStarArn         = ""   # השאירו ריק לגילוי אוטומטי של החיבור הראשון הזמין
-$EbSolutionStack     = ""   # השאירו ריק לבחירת AL2023 Docker האחרון
-$ArtifactBucketName  = ""   # השאירו ריק ל-sbl-dev-pipeline-artifacts-<ACCOUNT_ID>
+$CodeStarArn         = ""
+$EbSolutionStack     = ""
+$ArtifactBucketName  = ""
 $AppEnv              = "dev"
 $LogLevel            = "DEBUG"
 # =============================================================================
 
-Write-Host "=== SBL Bootstrap — DEV ===" -ForegroundColor Cyan
+Write-Host "=== SBL Bootstrap - DEV ===" -ForegroundColor Cyan
 
 $AccountId = aws sts get-caller-identity --query Account --output text
-if (-not $AccountId) { throw "AWS CLI לא מחובר. הריצו: aws configure" }
+if (-not $AccountId) { throw "AWS CLI not connected. Run: aws configure" }
 Write-Host "Account: $AccountId | Region: $Region"
 
 if (-not $ArtifactBucketName) {
@@ -41,9 +41,13 @@ if (-not $CodeStarArn) {
   $connections = aws codestar-connections list-connections --region $Region `
     --query "Connections[?ConnectionStatus=='AVAILABLE']" --output json | ConvertFrom-Json
   if (-not $connections -or $connections.Count -eq 0) {
-    throw "לא נמצא CodeStar Connection במצב Available. צרו חיבור בקונסול AWS."
+    throw "No Available CodeStar Connection found. Create one in AWS Console."
   }
-  $CodeStarArn = $connections[0].ConnectionArn
+  if ($connections -is [System.Array]) {
+    $CodeStarArn = $connections[0].ConnectionArn
+  } else {
+    $CodeStarArn = $connections.ConnectionArn
+  }
   Write-Host "CodeStar (auto): $CodeStarArn" -ForegroundColor Yellow
 }
 
@@ -54,7 +58,7 @@ if (-not $EbSolutionStack) {
     $_ -match "Amazon Linux 2023" -and $_ -match "Docker"
   } | Select-Object -First 1)
   if (-not $EbSolutionStack) {
-    throw "לא נמצא solution stack של AL2023 Docker. הגדירו EbSolutionStack ידנית."
+    throw "No AL2023 Docker solution stack found. Set EbSolutionStack manually."
   }
   Write-Host "EB Stack (auto): $EbSolutionStack" -ForegroundColor Yellow
 }
@@ -75,7 +79,8 @@ function Put-SsmParameter {
     --description $Description | Out-Null
 }
 
-Write-Host "`nCreating SSM parameters under $ConfigPrefix ..." -ForegroundColor Green
+Write-Host ""
+Write-Host "Creating SSM parameters under $ConfigPrefix ..." -ForegroundColor Green
 
 Put-SsmParameter -Name "$ConfigPrefix/eb/solution_stack_name" `
   -Value $EbSolutionStack `
@@ -87,7 +92,7 @@ Put-SsmParameter -Name "$ConfigPrefix/pipeline/source_repo" `
 
 Put-SsmParameter -Name "$ConfigPrefix/pipeline/frontend_repo" `
   -Value $GitHubRepo `
-  -Description "GitHub repo cloned for frontend (dev). Same monorepo or separate frontend repo."
+  -Description "GitHub repo cloned for frontend (dev)"
 
 Put-SsmParameter -Name "$ConfigPrefix/pipeline/artifact_bucket_name" `
   -Value $ArtifactBucketName `
@@ -105,18 +110,10 @@ Put-SsmParameter -Name "$ConfigPrefix/app/log_level" `
   -Value $LogLevel `
   -Description "Application log level (dev)"
 
-Write-Host "`nVerifying parameters ..." -ForegroundColor Green
+Write-Host ""
+Write-Host "Verifying parameters ..." -ForegroundColor Green
 aws ssm get-parameters-by-path --region $Region --path $ConfigPrefix --recursive --output table
 
-Write-Host "`n=== DEV bootstrap complete ===" -ForegroundColor Cyan
-Write-Host @"
-
-Next steps:
-  cd ..\environments\dev
-  terraform init
-  terraform plan
-  terraform apply
-
-Secrets Manager (sbl-dev-db/db-credentials) will be created automatically by Terraform.
-See BOOTSTRAP.md for verification commands.
-"@
+Write-Host ""
+Write-Host "=== DEV bootstrap complete ===" -ForegroundColor Cyan
+Write-Host "Next: cd ..\environments\dev ; terraform init ; terraform plan ; terraform apply"
