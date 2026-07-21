@@ -178,7 +178,7 @@ module "eb" {
   db_name_ssm_parameter       = aws_ssm_parameter.db_name.name
   db_user_ssm_parameter       = aws_ssm_parameter.db_user.name
   db_secret_arn = module.rds.db_secret_arn
-  db_credentials_secret_id = module.rds.db_secret_arn
+  db_credentials_secret_id = module.rds.db_secret_name
 
   additional_environment_variables = merge(
     var.additional_eb_env_vars,
