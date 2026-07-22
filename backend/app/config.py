@@ -8,10 +8,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 def _password_from_secrets_manager(secret_id: str) -> str:
     """Fetch DB password from Secrets Manager (avoids broken CFN ARN resolve)."""
     import json
+    import os
 
     import boto3
 
-    client = boto3.client("secretsmanager")
+    region = (
+        os.environ.get("AWS_REGION")
+        or os.environ.get("AWS_DEFAULT_REGION")
+        or "us-east-1"
+    )
+    client = boto3.client("secretsmanager", region_name=region)
     raw = client.get_secret_value(SecretId=secret_id)["SecretString"]
     data = json.loads(raw)
     password = data.get("password")

@@ -12,6 +12,8 @@ locals {
     # break CloudFormation dynamic references. App reads password via DB_SECRET_ARN.
     DB_PASSWORD       = ""
     RUN_DB_MIGRATIONS = "true"
+    AWS_REGION        = var.aws_region
+    AWS_DEFAULT_REGION = var.aws_region
   }
 
   environment_variables = merge(local.base_env_vars, var.additional_environment_variables)
