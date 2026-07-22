@@ -1,7 +1,39 @@
-import React from "react";
-import { Users, Check, MessageCircle } from "lucide-react";
+import React, { useEffect } from "react";
+import { Users, Check, MessageCircle, Clock } from "lucide-react";
+import { isUserAssignmentWindow } from "@/lib/calendarRules";
 
 export default function StepManager({ managers, groups, gender, target, manager, setManager }) {
+  const assignmentOpen = isUserAssignmentWindow();
+
+  useEffect(() => {
+    if (!assignmentOpen) {
+      setManager({ id: "waiting_list", name: "רשימת המתנה" });
+    }
+  }, [assignmentOpen, setManager]);
+
+  if (!assignmentOpen) {
+    return (
+      <>
+        <div className="text-center">
+          <Clock className="w-8 h-8 text-primary mx-auto mb-2" />
+          <h2 className="font-display text-xl font-bold">שיבוץ לקבוצה מה־25</h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            ניתן להירשם עכשיו, אך השיבוץ לקבוצה ומנהל/ת מתחיל רק ב־25 לחודש.
+          </p>
+        </div>
+        <div className="card-lux p-4 space-y-2">
+          <p className="text-sm font-bold">נרשמת לרשימת המתנה</p>
+          <p className="text-xs text-muted-foreground">
+            יעד: {target} · {gender === "female" ? "נשים" : "גברים"}. נשבץ אותך אוטומטית מה־25.
+          </p>
+          <div className="flex items-center gap-2 text-xs text-primary">
+            <Check className="w-4 h-4" /> רשימת המתנה נבחרה
+          </div>
+        </div>
+      </>
+    );
+  }
+
   const filteredManagers = managers.filter(
     (m) => m.role === "manager" && (!gender || m.gender === gender) && (!target || m.target === target)
   );
@@ -41,7 +73,8 @@ export default function StepManager({ managers, groups, gender, target, manager,
                   <p className="text-sm font-medium truncate">{m.name}</p>
                   <p className="text-[10px] opacity-70">{cap.count}/5 משתתפים</p>
                 </div>
-                {cap.full && <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">לא זמין</span>}
+                {cap.full && <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">מלא</span>}
+                {!cap.full && manager?.id === m.id && <Check className="w-5 h-5 shrink-0" />}
               </button>
             );
           })}

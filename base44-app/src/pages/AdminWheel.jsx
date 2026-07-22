@@ -33,9 +33,19 @@ export default function AdminWheel() {
       </div>
     );
 
-  const nudge = (name) => {
-    apiClient.entities.Notification.create({ title: "הודעה מהנהלת המערכת", body: "הגיע הזמן לעדכן את הגלגל 🎯", type: "nudge", source: "סופר-אדמין" });
-    toast({ title: "דחיפה נשלחה", description: `אל ${name}` });
+  const nudge = (member) => {
+    if (!member?.user_id) {
+      toast({ title: "שגיאה", description: "לא נמצא משתמש לשליחה", variant: "destructive" });
+      return;
+    }
+    apiClient.entities.Notification.create({
+      target_user_id: member.user_id,
+      title: "הודעה מהנהלת המערכת",
+      body: "הגיע הזמן לעדכן את הגלגל 🎯",
+      type: "nudge",
+      source: "סופר-אדמין",
+    });
+    toast({ title: "דחיפה נשלחה", description: `אל ${member.name}` });
   };
 
   const filteredMembers = members.filter((m) => {
@@ -94,7 +104,7 @@ export default function AdminWheel() {
                         <p className="text-[10px] text-muted-foreground">{m.status} · {m.progress || 0}%</p>
                       </div>
                       <ProgressRing progress={m.progress || 0} size={30} stroke={2.5} />
-                      <button onClick={() => nudge(m.name)} className="p-2 rounded-lg bg-primary/15 text-primary"><Send className="w-3.5 h-3.5" /></button>
+                      <button type="button" onClick={() => nudge(m)} className="p-2 rounded-lg bg-primary/15 text-primary"><Send className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
                 </div>
@@ -120,7 +130,7 @@ export default function AdminWheel() {
                       <p className="text-[10px] text-muted-foreground">{m.status} · {m.progress || 0}%</p>
                     </div>
                     <ProgressRing progress={m.progress || 0} size={30} stroke={2.5} />
-                    <button onClick={() => nudge(m.name)} className="p-2 rounded-lg bg-primary/15 text-primary"><Send className="w-3.5 h-3.5" /></button>
+                    <button type="button" onClick={() => nudge(m)} className="p-2 rounded-lg bg-primary/15 text-primary"><Send className="w-3.5 h-3.5" /></button>
                   </div>
                 ))}
               </div>

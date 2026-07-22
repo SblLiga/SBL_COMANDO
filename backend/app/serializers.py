@@ -46,6 +46,7 @@ def user_to_dict(user: User) -> dict[str, Any]:
             "gender": user.gender,
             "target": user.target,
             "onboarding_completed": user.onboarding_completed,
+            "onboarding_completed_at": _dt(user.onboarding_completed_at),
             "group_id": _sid(user.group_id),
             "focus_target": user.focus_target,
             "focus_month": user.focus_month,
@@ -146,6 +147,7 @@ def notification_to_dict(item: Notification) -> dict[str, Any]:
             "is_read": item.is_read,
             "is_handled": item.is_handled,
             "source": item.source,
+            "source_user_id": _sid(item.source_user_id),
         },
         item.created_at,
     )

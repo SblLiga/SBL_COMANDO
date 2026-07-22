@@ -55,6 +55,7 @@ class UpdateMeRequest(BaseModel):
     gender: str | None = None
     target: str | None = None
     onboarding_completed: bool | None = None
+    onboarding_completed_at: str | None = None
     group_id: str | None = None
     focus_target: str | None = None
     focus_month: str | None = None

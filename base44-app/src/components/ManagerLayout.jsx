@@ -2,7 +2,6 @@ import React from "react";
 import { Outlet } from "react-router-dom";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
-import ManagerFocusModal from "@/components/ManagerFocusModal";
 import ManagerGoalSelection from "@/components/ManagerGoalSelection";
 import { Home, Users, UserCog, Trophy, Calendar, Bell } from "lucide-react";
 
@@ -23,7 +22,6 @@ export default function ManagerLayout() {
         <Outlet />
       </main>
       <BottomNav items={items} />
-      <ManagerFocusModal />
       <ManagerGoalSelection />
     </div>
   );

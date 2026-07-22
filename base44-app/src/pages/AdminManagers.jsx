@@ -43,9 +43,16 @@ export default function AdminManagers() {
   const schedule = () => {
     if (!date || !startTime) return;
     const dayName = new Date(`${date}T${startTime}`).toLocaleDateString("he-IL", { weekday: "long" });
-    toast({ title: "נקבעה פגישה עם שולי", description: `${dayName} בשעה ${startTime} · ${duration} שעות` });
+    const managersOnly = members.filter((m) => m.role === "manager" && m.user_id);
+    toast({ title: "הפגישה נקבעה והתראה נשלחה לכל המנהלות", description: `${dayName} בשעה ${startTime} · ${duration} שעות` });
     apiClient.entities.Notification.bulkCreate(
-      members.map((m) => ({ title: "נקבעה פגישה עם שולי", body: `יום ${dayName} בשעה ${startTime}`, type: "info", source: "סופר-אדמין" }))
+      managersOnly.map((m) => ({
+        target_user_id: m.user_id,
+        title: "נקבעה פגישה עם שולי",
+        body: `נקבעה פגישה עם שולי ל${dayName} ${startTime}`,
+        type: "info",
+        source: "סופר-אדמין",
+      }))
     );
     setShowSched(false);
   };
@@ -59,7 +66,7 @@ export default function AdminManagers() {
 
   return (
     <div className="p-4 space-y-5">
-      <PageHeader badge="אזור מנהל - מנהלים" title="מנהלות" subtitle={`${members.length} משתמשים`} />
+      <PageHeader badge="אזור אדמין" title="מנהלות" subtitle={`${members.filter((m) => m.role === "manager").length} מנהלות`} />
 
       <button onClick={() => setShowSched(!showSched)} className="w-full gold-gradient text-black font-bold rounded-xl py-3 flex items-center justify-center gap-2 text-sm">
         <Calendar className="w-4 h-4" /> קבע פגישה
@@ -96,7 +103,7 @@ export default function AdminManagers() {
       )}
 
       <div className="space-y-2">
-        {members.map((m) => (
+        {members.filter((m) => m.role !== "admin").map((m) => (
           <div key={m.id} className="card-lux p-3 flex items-center gap-3">
             <div className="relative">
               <img src={m.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=1a1a1a&color=C5A880&bold=true`} alt="" className="w-10 h-10 rounded-full ring-1 ring-border" />

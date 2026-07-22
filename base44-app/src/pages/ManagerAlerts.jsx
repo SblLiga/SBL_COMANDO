@@ -30,6 +30,7 @@ const typeStyle = {
 export default function ManagerAlerts() {
   const { toast } = useToast();
   const [notifications, setNotifications] = useState([]);
+  const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [selected, setSelected] = useState(null);
@@ -40,8 +41,12 @@ export default function ManagerAlerts() {
     (async () => {
       try {
         const user = await apiClient.auth.me();
-        const n = await apiClient.entities.Notification.filter({ target_user_id: user.id });
+        const [n, m] = await Promise.all([
+          apiClient.entities.Notification.filter({ target_user_id: user.id }),
+          apiClient.entities.Member.list(),
+        ]);
         setNotifications(n.sort((a, b) => new Date(b.created_date) - new Date(a.created_date)));
+        setMembers(m);
       } finally {
         setLoading(false);
       }
@@ -74,14 +79,21 @@ export default function ManagerAlerts() {
 
   const sendReply = async () => {
     if (!replyMsg.trim() || !replyTo) return;
+    const me = await apiClient.auth.me();
+    const targetId = replyTo.source_user_id;
+    if (!targetId) {
+      toast({ title: "שגיאה", description: "לא ניתן לזהות את השולח", variant: "destructive" });
+      return;
+    }
     await apiClient.entities.Notification.create({
-      target_user_id: replyTo.target_user_id || replyTo.source_user_id,
+      target_user_id: targetId,
       title: "הודעה ממנהל",
       body: replyMsg.trim(),
-      type: "nudge",
-      source: "המנהל/ת שלך",
+      type: "info",
+      source: me.full_name || "מנהל/ת",
+      source_user_id: me.id,
     });
-    toast({ title: "ההודעה נשלחה", description: `ל${replyTo.source}` });
+    toast({ title: "ההודעה נשלחה", description: `ההודעה נשלחה ל${replyTo.source}` });
     setReplyMsg("");
     setReplyTo(null);
   };
@@ -153,13 +165,25 @@ export default function ManagerAlerts() {
                 {n._cat === "inactive" && (
                   <>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setSelected({ name: n.title.replace(" - לא פעיל", ""), user_id: n.target_user_id, goal_id: null, goal_hidden: false }); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const member =
+                          members.find((m) => m.user_id === n.related_user_id || m.name === n.title.replace(" - לא פעיל", "")) ||
+                          members.find((m) => n.body?.includes(m.name));
+                        setSelected(member || { name: n.title.replace(" - לא פעיל", ""), user_id: n.related_user_id, goal_id: null, goal_hidden: false });
+                      }}
                       className="text-[10px] px-2 py-1 rounded-lg bg-muted text-muted-foreground"
                     >
                       פרטים
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setSelected({ name: n.title.replace(" - לא פעיל", ""), user_id: n.target_user_id, goal_id: null, goal_hidden: false }); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const member =
+                          members.find((m) => m.user_id === n.related_user_id || m.name === n.title.replace(" - לא פעיל", "")) ||
+                          members.find((m) => n.body?.includes(m.name));
+                        setSelected(member || { name: n.title.replace(" - לא פעיל", ""), user_id: n.related_user_id, goal_id: null, goal_hidden: false });
+                      }}
                       className="text-[10px] px-2 py-1 rounded-lg bg-primary/15 text-primary flex items-center gap-1"
                     >
                       <Zap className="w-3 h-3" /> דחיפה

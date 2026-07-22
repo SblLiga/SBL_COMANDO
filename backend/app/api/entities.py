@@ -19,6 +19,7 @@ INT_FIELDS = {
     "goal_id",
     "owner_user_id",
     "target_user_id",
+    "source_user_id",
     "manager_id",
 }
 

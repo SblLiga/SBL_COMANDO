@@ -13,6 +13,7 @@ export default function ManagerManagers() {
   const [msgAll, setMsgAll] = useState("");
   const [selectedMgr, setSelectedMgr] = useState(null);
   const [mgrMsg, setMgrMsg] = useState("");
+  const [showPersonalMsg, setShowPersonalMsg] = useState(false);
   const [reports, setReports] = useState([]);
 
   useEffect(() => {
@@ -46,6 +47,7 @@ export default function ManagerManagers() {
           body: msgAll.trim(),
           type: "info",
           source: currentMember.name,
+          source_user_id: currentMember.user_id,
         }))
     );
     toast({ title: "ההודעה נשלחה", description: "ההודעה נשלחה לכל המנהלים" });
@@ -61,10 +63,11 @@ export default function ManagerManagers() {
       body: mgrMsg.trim(),
       type: "info",
       source: currentMember.name,
+      source_user_id: currentMember.user_id,
     });
     toast({ title: "ההודעה נשלחה", description: `ההודעה נשלחה ל${selectedMgr.name}` });
     setMgrMsg("");
-    setSelectedMgr(null);
+    setShowPersonalMsg(false);
   };
 
   if (loading)
@@ -130,26 +133,29 @@ export default function ManagerManagers() {
         </div>
 
         <button
-          onClick={() => { setMgrMsg(""); }}
+          onClick={() => { setMgrMsg(""); setShowPersonalMsg(true); }}
           className="w-full gold-gradient text-black font-bold rounded-xl py-3 flex items-center justify-center gap-2 text-sm"
         >
           <Send className="w-4 h-4" /> שלח הודעה ל{selectedMgr.name}
         </button>
 
-        {selectedMgr && (
-          <div className="card-lux p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold">שלח הודעה ל{selectedMgr.name}</h3>
-            </div>
-            <textarea
-              value={mgrMsg}
-              onChange={(e) => setMgrMsg(e.target.value)}
-              placeholder="כתוב הודעה אישית..."
-              className="w-full bg-input rounded-lg p-2.5 text-sm h-24 resize-none focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-            <div className="flex gap-2">
-              <button onClick={() => setSelectedMgr(null)} className="flex-1 bg-muted rounded-lg py-2.5 text-sm font-medium">ביטול</button>
-              <button onClick={sendToManager} disabled={!mgrMsg.trim()} className="flex-1 gold-bg text-black rounded-lg py-2.5 text-sm font-bold disabled:opacity-40">שלח</button>
+        {showPersonalMsg && (
+          <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center" onClick={() => setShowPersonalMsg(false)}>
+            <div className="card-lux w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold">שלח הודעה ל{selectedMgr.name}</h3>
+                <button type="button" onClick={() => setShowPersonalMsg(false)} className="p-2 rounded-lg bg-muted"><X className="w-4 h-4" /></button>
+              </div>
+              <textarea
+                value={mgrMsg}
+                onChange={(e) => setMgrMsg(e.target.value)}
+                placeholder="כתוב הודעה אישית…"
+                className="w-full bg-input rounded-lg p-2.5 text-sm h-24 resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <div className="flex gap-2">
+                <button onClick={() => setShowPersonalMsg(false)} className="flex-1 bg-muted rounded-lg py-2.5 text-sm font-medium">ביטול</button>
+                <button onClick={sendToManager} disabled={!mgrMsg.trim()} className="flex-1 gold-bg text-black rounded-lg py-2.5 text-sm font-bold disabled:opacity-40">שלח</button>
+              </div>
             </div>
           </div>
         )}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Outlet, Navigate } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { Lock, ExternalLink, ShieldAlert } from "lucide-react";
+import { needsMonthlyOnboarding } from "@/lib/calendarRules";
 
 const GROW_PAYMENT_URL = "https://grow.co.il/subscribe";
 
@@ -29,8 +30,10 @@ export default function SubscriptionGate() {
 
   if (!user) return <Navigate to="/login" replace />;
 
-  // Subscription gate — block inactive participants
-  if (user.subscription_status === "inactive") {
+  // Managers / admins skip participant subscription + monthly onboarding gates
+  const isStaff = user.role === "manager" || user.role === "admin";
+
+  if (!isStaff && user.subscription_status === "inactive") {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="card-gold-rim p-8 text-center max-w-sm w-full">
@@ -39,7 +42,7 @@ export default function SubscriptionGate() {
           </div>
           <h1 className="font-display text-xl font-bold mb-2">המנוי אינו פעיל</h1>
           <p className="text-sm text-muted-foreground mb-6">
-            כדי להמשיך ולהשתמש בפלטפורמת ליגת הכובשים, יש לחדש את המנוי ב-GROW.
+            המנוי שלך הופסק, יש לחדש את התשלום ב-GROW.
           </p>
           <a
             href={GROW_PAYMENT_URL}
@@ -55,8 +58,9 @@ export default function SubscriptionGate() {
     );
   }
 
-  // Onboarding gate — must complete before entering the app
-  if (!user.onboarding_completed) return <Navigate to="/onboarding" replace />;
+  if (!isStaff && (!user.onboarding_completed || needsMonthlyOnboarding(user))) {
+    return <Navigate to="/onboarding" replace />;
+  }
 
   return <Outlet />;
 }

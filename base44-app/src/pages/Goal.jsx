@@ -105,6 +105,16 @@ export default function Goal() {
   const toggleHidden = async (val) => {
     const g = await apiClient.entities.Goal.update(goal.id, { is_hidden: val });
     setGoal(g);
+    try {
+      const user = await apiClient.auth.me();
+      const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
+      const me = myMembers[0];
+      if (me) {
+        await apiClient.entities.Member.update(me.id, { goal_hidden: val });
+      }
+    } catch (err) {
+      console.error("[Goal] Failed to sync member goal_hidden:", err);
+    }
   };
 
   const swapTasks = async (i, j) => {

@@ -128,6 +128,15 @@ def update_me(
     data = payload.model_dump(exclude_unset=True)
     if "group_id" in data and data["group_id"] is not None:
         data["group_id"] = int(data["group_id"])
+    if "onboarding_completed_at" in data and isinstance(data["onboarding_completed_at"], str):
+        try:
+            data["onboarding_completed_at"] = datetime.fromisoformat(
+                data["onboarding_completed_at"].replace("Z", "+00:00")
+            )
+        except ValueError:
+            data.pop("onboarding_completed_at", None)
+    if data.get("onboarding_completed") is True and "onboarding_completed_at" not in data:
+        data["onboarding_completed_at"] = datetime.now(timezone.utc)
     for key, value in data.items():
         setattr(current_user, key, value)
     db.commit()

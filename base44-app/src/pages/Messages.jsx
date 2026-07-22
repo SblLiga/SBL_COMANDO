@@ -3,6 +3,21 @@ import apiClient from "@/api/apiClient";
 import { Bell, CheckCircle2, AlertCircle, Info, Flame, Send, X } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
+const FILTERS = [
+  { id: "all", label: "הכל" },
+  { id: "tasks", label: "עמידה במשימות" },
+  { id: "manager", label: "מנהל / אדמין" },
+  { id: "inactive", label: "חוסר פעילות" },
+];
+
+function getMsgCategory(n) {
+  if (n.type === "warning" || (n.body && n.body.includes("ימים") && n.title?.includes("פעיל"))) return "inactive";
+  if (n.type === "nudge") return "manager";
+  if (n.source && !["המערכת", "אוטומציה", "system"].includes(n.source)) return "manager";
+  if (n.type === "success" || n.title?.includes("משימ") || n.body?.includes("משימ")) return "tasks";
+  return "tasks";
+}
+
 const typeStyle = {
   success: { icon: CheckCircle2, color: "text-green-500", ring: "ring-green-500/20" },
   danger: { icon: AlertCircle, color: "text-red-500", ring: "ring-red-500/20" },
@@ -15,6 +30,7 @@ export default function Messages() {
   const { toast } = useToast();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("all");
   const [showCompose, setShowCompose] = useState(false);
   const [composeTarget, setComposeTarget] = useState("manager");
   const [composeMsg, setComposeMsg] = useState("");
@@ -65,28 +81,38 @@ export default function Messages() {
             body: composeMsg.trim(),
             type: "info",
             source: currentMember.name,
+            source_user_id: currentMember.user_id,
           }))
         );
-        toast({ title: "ההודעה נשלחה 📨", description: `לכל חברי הקבוצה (${targets.length})` });
+        toast({ title: "ההודעה נשלחה", description: `לכל חברי הקבוצה (${targets.length})` });
       } else if (composeTarget === "manager") {
-        // Find the group's manager
         const groups = await apiClient.entities.Group.list();
-        const myGroup = groups.find((g) => g.id === currentMember.group_id);
+        const myGroup = groups.find((g) => String(g.id) === String(currentMember.group_id));
+        let mgr = null;
         if (myGroup?.manager_id) {
-          const mgrMembers = await apiClient.entities.Member.filter({ user_id: myGroup.manager_id });
-          const mgr = mgrMembers[0];
-          if (mgr?.user_id) {
-            await apiClient.entities.Notification.create({
-              target_user_id: mgr.user_id,
-              title: "הודעה ממשתתף/ת",
-              body: composeMsg.trim(),
-              type: "info",
-              source: currentMember.name,
-            });
-            toast({ title: "ההודעה נשלחה 📨", description: `ל${mgr.name}` });
-          } else {
-            toast({ title: "שגיאה", description: "לא נמצא מנהל/ת לקבוצה", variant: "destructive" });
+          const byId = await apiClient.entities.Member.filter({ id: myGroup.manager_id }).catch(() => []);
+          mgr = byId[0];
+          if (!mgr) {
+            const byUser = await apiClient.entities.Member.filter({ user_id: myGroup.manager_id });
+            mgr = byUser[0];
           }
+        }
+        if (!mgr && myGroup?.manager_name) {
+          const all = await apiClient.entities.Member.filter({ role: "manager" });
+          mgr = all.find((m) => m.name === myGroup.manager_name);
+        }
+        if (mgr?.user_id) {
+          await apiClient.entities.Notification.create({
+            target_user_id: mgr.user_id,
+            title: "הודעה ממשתתף/ת",
+            body: composeMsg.trim(),
+            type: "info",
+            source: currentMember.name,
+            source_user_id: currentMember.user_id,
+          });
+          toast({ title: "ההודעה נשלחה", description: `ל${mgr.name}` });
+        } else {
+          toast({ title: "שגיאה", description: "לא נמצא מנהל/ת לקבוצה", variant: "destructive" });
         }
       } else if (composeTarget === "admin") {
         const admins = await apiClient.entities.Member.filter({ role: "admin" });
@@ -99,9 +125,10 @@ export default function Messages() {
               body: composeMsg.trim(),
               type: "info",
               source: currentMember.name,
+              source_user_id: currentMember.user_id,
             }))
           );
-          toast({ title: "ההודעה נשלחה 📨", description: `לאדמין (${targets.length})` });
+          toast({ title: "ההודעה נשלחה", description: `לאדמין (${targets.length})` });
         } else {
           toast({ title: "שגיאה", description: "לא נמצא אדמין", variant: "destructive" });
         }
@@ -123,12 +150,15 @@ export default function Messages() {
     );
   }
 
+  const typed = notifications.map((n) => ({ ...n, _cat: getMsgCategory(n) }));
+  const filtered = filter === "all" ? typed : typed.filter((n) => n._cat === filter);
   const unread = notifications.filter((n) => !n.is_read).length;
 
   return (
     <div className="p-4 space-y-4 pb-4">
       <div className="pt-2 flex items-center justify-between">
         <div>
+          <p className="text-xs text-muted-foreground">הודעות</p>
           <h1 className="font-display text-2xl font-bold">תיבת השטח</h1>
           <p className="text-sm text-muted-foreground">{unread} הודעות חדשות</p>
         </div>
@@ -142,7 +172,6 @@ export default function Messages() {
         </div>
       </div>
 
-      {/* Compose button */}
       <button
         onClick={() => setShowCompose(true)}
         className="w-full gold-gradient text-black font-bold rounded-xl py-3 flex items-center justify-center gap-2 text-sm"
@@ -150,8 +179,22 @@ export default function Messages() {
         <Send className="w-4 h-4" /> שלח הודעה
       </button>
 
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {FILTERS.map((f) => (
+          <button
+            key={f.id}
+            onClick={() => setFilter(f.id)}
+            className={`text-xs px-3 py-1.5 rounded-full whitespace-nowrap font-medium ${
+              filter === f.id ? "gold-bg text-black" : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
       <div className="space-y-2">
-        {notifications.map((n) => {
+        {filtered.map((n) => {
           const st = typeStyle[n.type] || typeStyle.info;
           const Icon = st.icon;
           return (
@@ -182,15 +225,14 @@ export default function Messages() {
             </div>
           );
         })}
-        {notifications.length === 0 && (
+        {filtered.length === 0 && (
           <div className="text-center py-16">
             <Bell className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">אין הודעות עדיין</p>
+            <p className="text-sm text-muted-foreground">אין הודעות והתראות להצגה</p>
           </div>
         )}
       </div>
 
-      {/* Compose modal */}
       {showCompose && (
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center" onClick={() => setShowCompose(false)}>
           <div className="card-lux w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
