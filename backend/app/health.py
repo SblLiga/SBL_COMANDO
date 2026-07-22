@@ -45,7 +45,7 @@ def _bootstrap_status() -> dict:
             "goals": 0,
         }
 
-    with SessionLocal() as session:
+    with database.SessionLocal() as session:
         return {
             "users": session.scalar(select(func.count()).select_from(User)) or 0,
             "admins": session.scalar(
@@ -73,6 +73,9 @@ def build_health_payload(settings: Settings | None = None, detailed: bool = Fals
     }
 
     if detailed and healthy:
-        payload["bootstrap"].update(_bootstrap_status())
+        try:
+            payload["bootstrap"].update(_bootstrap_status())
+        except Exception as exc:
+            payload["bootstrap"]["error"] = str(exc)
 
     return payload

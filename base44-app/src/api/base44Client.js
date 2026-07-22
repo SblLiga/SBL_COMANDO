@@ -1,14 +1,8 @@
-import { createClient } from '@base44/sdk';
-import { appParams } from '@/lib/app-params';
+/**
+ * @deprecated Import from `@/api/apiClient` instead.
+ * Kept temporarily so existing pages keep working during the migration.
+ */
+import apiClient from "@/api/apiClient";
 
-const { appId, token, functionsVersion, appBaseUrl } = appParams;
-
-//Create a client with authentication required
-export const base44 = createClient({
-  appId,
-  token,
-  functionsVersion,
-  serverUrl: '',
-  requiresAuth: false,
-  appBaseUrl
-});
+export const base44 = apiClient;
+export default apiClient;

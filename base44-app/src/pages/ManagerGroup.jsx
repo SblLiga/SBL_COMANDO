@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Flame, Zap, Users } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import KpiCard from "@/components/KpiCard";
@@ -31,15 +31,15 @@ export default function ManagerGroup() {
   useEffect(() => {
     (async () => {
       try {
-        const user = await base44.auth.me();
-        const myMembers = await base44.entities.Member.filter({ user_id: user.id });
+        const user = await apiClient.auth.me();
+        const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
         const me = myMembers[0];
         setCurrentMember(me);
 
         if (me?.group_id) {
           const [groupMembers, groups] = await Promise.all([
-            base44.entities.Member.filter({ group_id: me.group_id }),
-            base44.entities.Group.list(),
+            apiClient.entities.Member.filter({ group_id: me.group_id }),
+            apiClient.entities.Group.list(),
           ]);
           setMembers(groupMembers);
           setGroup(groups.find((g) => g.id === me.group_id) || null);
@@ -65,7 +65,7 @@ export default function ManagerGroup() {
 
   const quickNudge = async (e, m) => {
     e.stopPropagation();
-    await base44.entities.Notification.create({
+    await apiClient.entities.Notification.create({
       target_user_id: m.user_id,
       title: "דחיפה מהירה ⚡",
       body: "הגיע הזמן לעדכן את גלגל המשימות שלך 🎯",

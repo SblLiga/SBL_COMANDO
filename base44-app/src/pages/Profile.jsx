@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import api from "@/api/dataLayer";
 import Header from "@/components/Header";
 import { Button } from "@/components/ui/button";
@@ -44,13 +44,13 @@ export default function Profile() {
     if (!file) return;
     setUploading(true);
     try {
-      const res = await base44.integrations.Core.UploadFile({ file });
+      const res = await apiClient.integrations.Core.UploadFile({ file });
       const url = res.file_url;
       setAvatarUrl(url);
       if (member) {
         await api.entities.Member.update(member.id, { avatar_url: url });
       }
-      await base44.auth.updateMe({ avatar_url: url });
+      await apiClient.auth.updateMe({ avatar_url: url });
       toast({ title: "התמונה עודכנה", description: "תמונת הפרופיל נשמרה בהצלחה." });
     } catch (err) {
       toast({ title: "שגיאה", description: err.message || "העלאת התמונה נכשלה", variant: "destructive" });
@@ -86,7 +86,7 @@ export default function Profile() {
     }
     setChangingPassword(true);
     try {
-      await base44.auth.changePassword({
+      await apiClient.auth.changePassword({
         userId: user.id,
         currentPassword,
         newPassword,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { STEPS } from "@/components/onboarding/onboardingData";
@@ -31,13 +31,13 @@ export default function Onboarding() {
   useEffect(() => {
     (async () => {
       try {
-        const u = await base44.auth.me();
+        const u = await apiClient.auth.me();
         setUser(u);
         if (u?.gender) setGender(u.gender);
         if (u?.target) setTarget(u.target);
         const [m, g] = await Promise.all([
-          base44.entities.Member.list(),
-          base44.entities.Group.list(),
+          apiClient.entities.Member.list(),
+          apiClient.entities.Group.list(),
         ]);
         setManagers(m);
         setGroups(g);
@@ -64,7 +64,7 @@ export default function Onboarding() {
   const uploadReward = async (file) => {
     setUploading(true);
     try {
-      const res = await base44.integrations.Core.UploadFile({ file });
+      const res = await apiClient.integrations.Core.UploadFile({ file });
       setRewardImage(res.file_url);
     } finally {
       setUploading(false);
@@ -74,6 +74,54 @@ export default function Onboarding() {
   const finish = async () => {
     setSubmitting(true);
     try {
+      if (manager?.id === "waiting_list") {
+        const goal = await apiClient.entities.Goal.create({
+          title: goalTitle || `יעד חודשי - ${target}`,
+          target,
+          is_hidden: false,
+          reward_text: rewardText,
+          reward_image: rewardImage,
+          progress: 0,
+          xp_total: 0,
+          streak: 0,
+        });
+
+        await apiClient.entities.Task.bulkCreate(
+          tasks.map((t, i) => ({
+            goal_id: goal.id,
+            title: t,
+            order_index: i,
+            is_completed: false,
+            priority: "בינוני",
+            xp_value: 100,
+          }))
+        );
+
+        await apiClient.entities.Member.create({
+          name: user?.full_name || user?.email || "משתמש חדש",
+          user_id: user.id,
+          goal_id: goal.id,
+          goal_title: goal.title,
+          goal_hidden: false,
+          gender,
+          target,
+          xp: 0,
+          progress: 0,
+          streak: 0,
+          role: "user",
+          status: "דרושה התייחסות",
+        });
+
+        await apiClient.auth.updateMe({
+          gender,
+          target,
+          onboarding_completed: true,
+        });
+
+        navigate("/");
+        return;
+      }
+
       let group = groups.find(
         (g) =>
           g.target === target &&
@@ -82,7 +130,7 @@ export default function Onboarding() {
           (g.participant_count || 0) < 5
       );
       if (!group) {
-        group = await base44.entities.Group.create({
+        group = await apiClient.entities.Group.create({
           name: `${target} - ${manager.name}`,
           target,
           gender,
@@ -94,12 +142,12 @@ export default function Onboarding() {
           avg_progress: 0,
         });
       } else {
-        group = await base44.entities.Group.update(group.id, {
+        group = await apiClient.entities.Group.update(group.id, {
           participant_count: (group.participant_count || 0) + 1,
         });
       }
 
-      const goal = await base44.entities.Goal.create({
+      const goal = await apiClient.entities.Goal.create({
         title: goalTitle || `יעד חודשי - ${target}`,
         target,
         is_hidden: false,
@@ -110,7 +158,7 @@ export default function Onboarding() {
         streak: 0,
       });
 
-      await base44.entities.Task.bulkCreate(
+      await apiClient.entities.Task.bulkCreate(
         tasks.map((t, i) => ({
           goal_id: goal.id,
           title: t,
@@ -121,7 +169,7 @@ export default function Onboarding() {
         }))
       );
 
-      await base44.entities.Member.create({
+      await apiClient.entities.Member.create({
         name: user?.full_name || user?.email || "משתמש חדש",
         user_id: user.id,
         goal_id: goal.id,
@@ -138,7 +186,7 @@ export default function Onboarding() {
         status: "בעקבות",
       });
 
-      await base44.auth.updateMe({
+      await apiClient.auth.updateMe({
         gender,
         target,
         group_id: group.id,

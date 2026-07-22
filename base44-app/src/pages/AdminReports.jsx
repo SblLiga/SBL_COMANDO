@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { FileText, CheckCircle2, Clock, XCircle } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 
@@ -20,7 +20,7 @@ export default function AdminReports() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await base44.entities.Report.list("-created_date", 50);
+        const r = await apiClient.entities.Report.list("-created_date", 50);
         setReports(r);
       } finally {
         setLoading(false);

@@ -4,7 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.models import Goal, Group, User
+from app.models import Goal, Group, Member, SystemSetting, User
 from app.security import hash_password
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,7 @@ def ensure_production_admin(session: Session, settings: Settings) -> bool:
         role="admin",
         subscription_status="active",
         onboarding_completed=True,
+        email_verified=True,
         is_active=True,
     )
     session.add(admin)
@@ -78,6 +79,7 @@ def seed_development_data(session: Session, settings: Settings) -> bool:
             role="admin",
             subscription_status="active",
             onboarding_completed=True,
+            email_verified=True,
             group_id=group.id,
         ),
         User(
@@ -88,6 +90,7 @@ def seed_development_data(session: Session, settings: Settings) -> bool:
             subscription_status="active",
             target="מכירות",
             onboarding_completed=True,
+            email_verified=True,
             group_id=group.id,
             focus_target="שיפור מכירות",
             focus_month="2026-07",
@@ -101,6 +104,7 @@ def seed_development_data(session: Session, settings: Settings) -> bool:
             target="שיווק",
             gender="female",
             onboarding_completed=True,
+            email_verified=True,
             group_id=group.id,
         ),
     ]
@@ -130,6 +134,42 @@ def seed_development_data(session: Session, settings: Settings) -> bool:
         ),
     ]
     session.add_all(goals)
+    session.flush()
+
+    members = [
+        Member(
+            name=users[1].full_name,
+            user_id=users[1].id,
+            group_id=group.id,
+            group_name=group.name,
+            role=users[1].role,
+            target=users[1].target,
+            goal_id=goals[0].id,
+            goal_title=goals[0].title,
+            progress=goals[0].progress,
+            xp=goals[0].xp_total,
+            streak=goals[0].streak,
+        ),
+        Member(
+            name=users[2].full_name,
+            user_id=users[2].id,
+            group_id=group.id,
+            group_name=group.name,
+            role=users[2].role,
+            target=users[2].target,
+            gender=users[2].gender,
+            goal_id=goals[1].id,
+            goal_title=goals[1].title,
+            progress=goals[1].progress,
+            xp=goals[1].xp_total,
+            streak=goals[1].streak,
+        ),
+    ]
+    session.add_all(members)
+
+    if session.scalar(select(func.count()).select_from(SystemSetting)) == 0:
+        session.add(SystemSetting())
+
     session.commit()
     logger.info("Development seed data created (users=%s, goals=%s)", len(users), len(goals))
     return True

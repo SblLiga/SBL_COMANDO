@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Search, ChevronDown, ChevronLeft, Send } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import ProgressRing from "@/components/ProgressRing";
@@ -17,7 +17,7 @@ export default function AdminWheel() {
   useEffect(() => {
     (async () => {
       try {
-        const [m, g] = await Promise.all([base44.entities.Member.list(), base44.entities.Group.list()]);
+        const [m, g] = await Promise.all([apiClient.entities.Member.list(), apiClient.entities.Group.list()]);
         setMembers(m);
         setGroups(g);
       } finally {
@@ -34,7 +34,7 @@ export default function AdminWheel() {
     );
 
   const nudge = (name) => {
-    base44.entities.Notification.create({ title: "הודעה מהנהלת המערכת", body: "הגיע הזמן לעדכן את הגלגל 🎯", type: "nudge", source: "סופר-אדמין" });
+    apiClient.entities.Notification.create({ title: "הודעה מהנהלת המערכת", body: "הגיע הזמן לעדכן את הגלגל 🎯", type: "nudge", source: "סופר-אדמין" });
     toast({ title: "דחיפה נשלחה", description: `אל ${name}` });
   };
 

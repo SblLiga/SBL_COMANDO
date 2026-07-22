@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Megaphone, Send, Users, UserCog, Check, Zap, Bell, AlertTriangle, TrendingUp, Award } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { useToast } from "@/components/ui/use-toast";
@@ -27,8 +27,8 @@ export default function AdminAlerts() {
     (async () => {
       try {
         const [n, m] = await Promise.all([
-          base44.entities.Notification.list("-created_date", 30),
-          base44.entities.Member.list(),
+          apiClient.entities.Notification.list("-created_date", 30),
+          apiClient.entities.Member.list(),
         ]);
         setNotifications(n);
         setMembers(m);
@@ -64,7 +64,7 @@ export default function AdminAlerts() {
       toast({ title: "בחר קהל יעד", variant: "destructive" });
       return;
     }
-    await base44.entities.Notification.bulkCreate(
+    await apiClient.entities.Notification.bulkCreate(
       recipients.map((m) => ({
         title: "שידור מערכתי",
         body: msg,
@@ -79,18 +79,18 @@ export default function AdminAlerts() {
     setTargets({ all: false, managers: false, specificUser: false, specificManager: false });
     setSpecificUserId("");
     setSpecificManagerId("");
-    const n = await base44.entities.Notification.list("-created_date", 30);
+    const n = await apiClient.entities.Notification.list("-created_date", 30);
     setNotifications(n);
   };
 
   const markHandled = async (n) => {
-    await base44.entities.Notification.update(n.id, { is_handled: true });
+    await apiClient.entities.Notification.update(n.id, { is_handled: true });
     setNotifications(notifications.filter((x) => x.id !== n.id));
     toast({ title: "ההתראה טופלה בהצלחה" });
   };
 
   const sendNudge = async (member) => {
-    await base44.entities.Notification.create({
+    await apiClient.entities.Notification.create({
       title: "תזכורת מהנהלת המערכת",
       body: "הגיע הזמן לעדכן את הגלגל 🎯",
       type: "nudge",

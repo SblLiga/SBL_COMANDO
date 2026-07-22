@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Bell, CheckCircle2, AlertCircle, Info, Flame, Send, X } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -24,13 +24,13 @@ export default function Messages() {
   useEffect(() => {
     (async () => {
       try {
-        const user = await base44.auth.me();
-        const myMembers = await base44.entities.Member.filter({ user_id: user.id });
+        const user = await apiClient.auth.me();
+        const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
         const me = myMembers[0];
         setCurrentMember(me);
 
-        const n = await base44.entities.Notification.filter({ target_user_id: user.id });
-        setNotifications(n.sort((a, b) => new Date(b.created_date) - new Date(a.created_date)));
+        const n = await apiClient.entities.Notification.filter({ target_user_id: user.id });
+        setNotifications(n.sort((a, b) => new Date(b.created_date || b.created_at) - new Date(a.created_date || a.created_at)));
       } finally {
         setLoading(false);
       }
@@ -39,8 +39,16 @@ export default function Messages() {
 
   const markRead = async (n) => {
     if (n.is_read) return;
-    const updated = await base44.entities.Notification.update(n.id, { is_read: true });
+    const updated = await apiClient.entities.Notification.update(n.id, { is_read: true });
     setNotifications(notifications.map((x) => (x.id === n.id ? updated : x)));
+  };
+
+  const dismiss = (n, event) => {
+    event?.stopPropagation();
+    setNotifications((prev) => prev.filter((x) => x.id !== n.id));
+    if (!n.is_read) {
+      apiClient.entities.Notification.update(n.id, { is_read: true }).catch(() => {});
+    }
   };
 
   const sendCompose = async () => {
@@ -48,9 +56,9 @@ export default function Messages() {
     setSending(true);
     try {
       if (composeTarget === "group") {
-        const groupMembers = await base44.entities.Member.filter({ group_id: currentMember.group_id });
+        const groupMembers = await apiClient.entities.Member.filter({ group_id: currentMember.group_id });
         const targets = groupMembers.filter((m) => m.user_id && m.user_id !== currentMember.user_id);
-        await base44.entities.Notification.bulkCreate(
+        await apiClient.entities.Notification.bulkCreate(
           targets.map((m) => ({
             target_user_id: m.user_id,
             title: "הודעה מהקבוצה",
@@ -62,13 +70,13 @@ export default function Messages() {
         toast({ title: "ההודעה נשלחה 📨", description: `לכל חברי הקבוצה (${targets.length})` });
       } else if (composeTarget === "manager") {
         // Find the group's manager
-        const groups = await base44.entities.Group.list();
+        const groups = await apiClient.entities.Group.list();
         const myGroup = groups.find((g) => g.id === currentMember.group_id);
         if (myGroup?.manager_id) {
-          const mgrMembers = await base44.entities.Member.filter({ user_id: myGroup.manager_id });
+          const mgrMembers = await apiClient.entities.Member.filter({ user_id: myGroup.manager_id });
           const mgr = mgrMembers[0];
           if (mgr?.user_id) {
-            await base44.entities.Notification.create({
+            await apiClient.entities.Notification.create({
               target_user_id: mgr.user_id,
               title: "הודעה ממשתתף/ת",
               body: composeMsg.trim(),
@@ -81,10 +89,10 @@ export default function Messages() {
           }
         }
       } else if (composeTarget === "admin") {
-        const admins = await base44.entities.Member.filter({ role: "admin" });
+        const admins = await apiClient.entities.Member.filter({ role: "admin" });
         const targets = admins.filter((a) => a.user_id);
         if (targets.length > 0) {
-          await base44.entities.Notification.bulkCreate(
+          await apiClient.entities.Notification.bulkCreate(
             targets.map((a) => ({
               target_user_id: a.user_id,
               title: "הודעה ממשתמש/ת",
@@ -147,21 +155,31 @@ export default function Messages() {
           const st = typeStyle[n.type] || typeStyle.info;
           const Icon = st.icon;
           return (
-            <button
+            <div
               key={n.id}
               onClick={() => markRead(n)}
-              className={`w-full text-right card-lux p-3 flex items-start gap-3 ring-1 ${n.is_read ? "ring-transparent opacity-70" : st.ring}`}
+              className={`w-full text-right card-lux p-3 flex items-start gap-3 ring-1 cursor-pointer ${n.is_read ? "ring-transparent opacity-70" : st.ring}`}
             >
               <Icon className={`w-5 h-5 ${st.color} shrink-0 mt-0.5`} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-bold truncate">{n.title}</p>
-                  {!n.is_read && <span className="w-2 h-2 rounded-full bg-primary shrink-0" />}
+                  <div className="flex items-center gap-1 shrink-0">
+                    {!n.is_read && <span className="w-2 h-2 rounded-full bg-primary" />}
+                    <button
+                      type="button"
+                      onClick={(e) => dismiss(n, e)}
+                      className="p-1 rounded-md hover:bg-muted/80 transition-colors"
+                      aria-label="סגור הודעה"
+                    >
+                      <X className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  </div>
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{n.body}</p>
                 {n.source && <p className="text-[10px] text-primary/70 mt-1">— {n.source}</p>}
               </div>
-            </button>
+            </div>
           );
         })}
         {notifications.length === 0 && (

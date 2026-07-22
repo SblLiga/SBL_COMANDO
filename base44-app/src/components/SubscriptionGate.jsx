@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Outlet, Navigate } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Lock, ExternalLink, ShieldAlert } from "lucide-react";
 
 const GROW_PAYMENT_URL = "https://grow.co.il/subscribe";
@@ -10,7 +10,7 @@ export default function SubscriptionGate() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    base44.auth
+    apiClient.auth
       .me()
       .then((u) => {
         setUser(u);

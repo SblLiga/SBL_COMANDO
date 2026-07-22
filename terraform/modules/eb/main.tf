@@ -14,6 +14,7 @@ locals {
     RUN_DB_MIGRATIONS = "true"
     AWS_REGION        = var.aws_region
     AWS_DEFAULT_REGION = var.aws_region
+    JWT_SECRET        = var.jwt_secret
   }
 
   environment_variables = merge(local.base_env_vars, var.additional_environment_variables)

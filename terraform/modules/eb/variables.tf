@@ -116,3 +116,9 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "jwt_secret" {
+  description = "JWT signing secret for auth tokens"
+  type        = string
+  sensitive   = true
+}

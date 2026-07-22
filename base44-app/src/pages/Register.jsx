@@ -1,13 +1,12 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UserPlus, Mail, Lock, Loader2 } from "lucide-react";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import AuthLayout from "@/components/AuthLayout";
-import GoogleIcon from "@/components/GoogleIcon";
 import { toast } from "@/components/ui/use-toast";
 
 export default function Register() {
@@ -29,7 +28,7 @@ export default function Register() {
     }
     setLoading(true);
     try {
-      await base44.auth.register({ email, password });
+      await apiClient.auth.register({ email, password });
       setShowOtp(true);
     } catch (err) {
       setError(err.message || "ההרשמה נכשלה");
@@ -42,9 +41,9 @@ export default function Register() {
     setError("");
     setLoading(true);
     try {
-      const result = await base44.auth.verifyOtp({ email, otpCode });
+      const result = await apiClient.auth.verifyOtp({ email, otpCode });
       if (result?.access_token) {
-        base44.auth.setToken(result.access_token);
+        apiClient.auth.setToken(result.access_token);
       }
       window.location.href = "/";
     } catch (err) {
@@ -57,7 +56,7 @@ export default function Register() {
   const handleResend = async () => {
     setError("");
     try {
-      await base44.auth.resendOtp(email);
+      await apiClient.auth.resendOtp(email);
       toast({
         title: "הקוד נשלח",
         description: "בדוק/י את תיבת הדוא״ל לקוד החדש.",
@@ -65,10 +64,6 @@ export default function Register() {
     } catch (err) {
       setError(err.message || "שליחת הקוד נכשלה");
     }
-  };
-
-  const handleGoogle = () => {
-    base44.auth.loginWithProvider("google", "/");
   };
 
   if (showOtp) {
@@ -83,6 +78,9 @@ export default function Register() {
             {error}
           </div>
         )}
+        <p className="text-xs text-muted-foreground text-center mb-3">
+          ב-DEV: השתמש/י בקוד <span dir="ltr" className="font-mono">000000</span>
+        </p>
         <div className="flex justify-center mb-6" dir="ltr">
           <InputOTP
             maxLength={6}
@@ -117,7 +115,7 @@ export default function Register() {
         </Button>
         <p className="text-center text-sm text-muted-foreground mt-4">
           לא קיבלת את הקוד?{" "}
-          <button onClick={handleResend} className="text-primary font-medium hover:underline">
+          <button type="button" onClick={handleResend} className="text-primary font-medium hover:underline">
             שלח שוב
           </button>
         </p>
@@ -139,24 +137,6 @@ export default function Register() {
         </>
       }
     >
-      <Button
-        variant="outline"
-        className="w-full h-12 text-sm font-medium mb-6"
-        onClick={handleGoogle}
-      >
-        <GoogleIcon className="w-5 h-5 mr-2" />
-        המשך עם Google
-      </Button>
-
-      <div className="relative mb-6">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-border" />
-        </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-card px-3 text-muted-foreground">או</span>
-        </div>
-      </div>
-
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
           {error}

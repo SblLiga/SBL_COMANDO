@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Calendar, Play, Clock, FileText, ChevronLeft, Send, Lock, X, Edit2 } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import LiveMeeting, { AGENDA } from "@/components/LiveMeeting";
@@ -22,16 +22,16 @@ export default function ManagerMeeting() {
   useEffect(() => {
     (async () => {
       try {
-        const user = await base44.auth.me();
-        const myMembers = await base44.entities.Member.filter({ user_id: user.id });
+        const user = await apiClient.auth.me();
+        const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
         const me = myMembers[0];
         if (me?.group_id) {
-          const groups = await base44.entities.Group.list();
+          const groups = await apiClient.entities.Group.list();
           const g = groups.find((x) => x.id === me.group_id);
           if (g) setGroupName(g.name);
         }
 
-        const m = await base44.entities.Meeting.list("-created_date", 20);
+        const m = await apiClient.entities.Meeting.list("-created_date", 20);
         setMeetings(m);
       } finally {
         setLoading(false);
@@ -40,14 +40,14 @@ export default function ManagerMeeting() {
   }, []);
 
   const refresh = async () => {
-    const m = await base44.entities.Meeting.list("-created_date", 20);
+    const m = await apiClient.entities.Meeting.list("-created_date", 20);
     setMeetings(m);
   };
 
   const scheduleMeeting = async () => {
     if (!schedDate || !schedTime) return;
     const dt = new Date(`${schedDate}T${schedTime}`);
-    const m = await base44.entities.Meeting.create({
+    const m = await apiClient.entities.Meeting.create({
       group_name: groupName,
       scheduled_date: dt.toISOString(),
       status: "scheduled",
@@ -62,7 +62,7 @@ export default function ManagerMeeting() {
   };
 
   const startLive = async () => {
-    const m = await base44.entities.Meeting.create({
+    const m = await apiClient.entities.Meeting.create({
       group_name: groupName,
       scheduled_date: new Date().toISOString(),
       status: "live",
@@ -76,7 +76,7 @@ export default function ManagerMeeting() {
   const endLive = async (reports) => {
     if (liveMeetingId) {
       const summary = reports.map((r, i) => r ? `${i + 1}. ${AGENDA[i].title}: ${r}` : null).filter(Boolean).join("\n");
-      await base44.entities.Meeting.update(liveMeetingId, {
+      await apiClient.entities.Meeting.update(liveMeetingId, {
         status: "completed",
         summary,
         section_reports: JSON.stringify(reports || []),
@@ -89,21 +89,21 @@ export default function ManagerMeeting() {
   };
 
   const sendToAdmin = async (meeting) => {
-    await base44.entities.Report.create({
+    await apiClient.entities.Report.create({
       type: "weekly",
       submitted_by: groupName,
       content: meeting.summary || "דוח פגישה שבועית - " + groupName,
       group_id: meeting.group_id,
       status: "pending",
     });
-    await base44.entities.Meeting.update(meeting.id, { is_locked: true });
+    await apiClient.entities.Meeting.update(meeting.id, { is_locked: true });
     await refresh();
     toast({ title: "הדוח נשלח לאדמין ✓", description: "הרשומה נעולה לעריכה" });
   };
 
   const saveSummaryEdit = async () => {
     if (!editingSummary) return;
-    await base44.entities.Meeting.update(editingSummary.id, { summary: editText });
+    await apiClient.entities.Meeting.update(editingSummary.id, { summary: editText });
     await refresh();
     setEditingSummary(null);
     setEditText("");

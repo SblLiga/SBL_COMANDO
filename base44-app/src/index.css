@@ -64,10 +64,27 @@
     }
   }
 
+  @media (min-width: 1280px) {
+    html {
+      font-size: 19px;
+    }
+  }
+
   body {
     @apply text-foreground font-body antialiased;
     background: linear-gradient(180deg, #1a1a1a 0%, #262626 100%);
     min-height: 100vh;
+  }
+
+  #root {
+    @apply min-h-screen;
+  }
+
+  @media (min-width: 1024px) {
+    #root > div {
+      max-width: 56rem;
+      margin-inline: auto;
+    }
   }
 }
 

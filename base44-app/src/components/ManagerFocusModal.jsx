@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Target, X } from "lucide-react";
 
 const TARGETS = [
@@ -28,7 +28,7 @@ export default function ManagerFocusModal() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    base44.auth
+    apiClient.auth
       .me()
       .then((u) => {
         setUser(u);
@@ -47,7 +47,7 @@ export default function ManagerFocusModal() {
     if (!selected) return;
     setSaving(true);
     try {
-      await base44.auth.updateMe({
+      await apiClient.auth.updateMe({
         focus_target: selected,
         focus_month: currentMonthKey(),
       });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Flame, Zap, Trophy, Gift, AlertCircle, ChevronLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 import KpiCard from "@/components/KpiCard";
@@ -14,16 +14,16 @@ export default function Home() {
   useEffect(() => {
     (async () => {
       try {
-        const user = await base44.auth.me();
-        const goals = await base44.entities.Goal.list();
+        const user = await apiClient.auth.me();
+        const goals = await apiClient.entities.Goal.list();
         let g = goals[0] || null;
         setGoal(g);
 
         // Ensure a Member row is linked to the authenticated user (dynamic sync)
-        let myMembers = await base44.entities.Member.filter({ user_id: user.id });
+        let myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
         let me = myMembers[0];
         if (!me) {
-          me = await base44.entities.Member.create({
+          me = await apiClient.entities.Member.create({
             name: user.full_name || user.email || "משתמש",
             user_id: user.id,
             goal_id: g?.id || null,
@@ -37,7 +37,7 @@ export default function Home() {
             status: "בעקבות",
           });
         } else if (g) {
-          me = await base44.entities.Member.update(me.id, {
+          me = await apiClient.entities.Member.update(me.id, {
             xp: g.xp_total || 0,
             progress: g.progress || 0,
             streak: g.streak || 0,
@@ -50,10 +50,10 @@ export default function Home() {
         setMyMember(me);
 
         if (g) {
-          const t = await base44.entities.Task.filter({ goal_id: g.id });
+          const t = await apiClient.entities.Task.filter({ goal_id: g.id });
           setTasks(t);
         }
-        const m = await base44.entities.Member.list();
+        const m = await apiClient.entities.Member.list();
         setMembers(m);
       } finally {
         setLoading(false);

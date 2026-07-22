@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Search, Flame, Crown, Medal } from "lucide-react";
 import ProgressRing from "@/components/ProgressRing";
 import { Image } from "@/components/ui/image";
@@ -21,8 +21,8 @@ export default function League() {
     (async () => {
       try {
         const [m, u] = await Promise.all([
-          base44.entities.Member.list(),
-          base44.auth.me().catch(() => null),
+          apiClient.entities.Member.list(),
+          apiClient.auth.me().catch(() => null),
         ]);
         setMembers(m);
         if (u) setCurrentUserId(u.id);

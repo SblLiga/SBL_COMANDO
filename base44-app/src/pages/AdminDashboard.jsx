@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Users, Bot, TrendingUp, Flame, AlertTriangle, Flag, Save, Bell, Award } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import KpiCard from "@/components/KpiCard";
@@ -43,11 +43,11 @@ export default function AdminDashboard() {
     (async () => {
       try {
         const [m, g, r, s, n] = await Promise.all([
-          base44.entities.Member.list(),
-          base44.entities.Group.list(),
-          base44.entities.Report.list(),
-          base44.entities.SystemSetting.list(),
-          base44.entities.Notification.list("-created_date", 10),
+          apiClient.entities.Member.list(),
+          apiClient.entities.Group.list(),
+          apiClient.entities.Report.list(),
+          apiClient.entities.SystemSetting.list(),
+          apiClient.entities.Notification.list("-created_date", 10),
         ]);
         setMembers(m);
         setGroups(g);
@@ -55,7 +55,7 @@ export default function AdminDashboard() {
         setAlerts(n);
         let cfg = s[0];
         if (!cfg) {
-          cfg = await base44.entities.SystemSetting.create({ xp_task: 100, xp_meeting: 150, xp_goal: 500 });
+          cfg = await apiClient.entities.SystemSetting.create({ xp_task: 100, xp_meeting: 150, xp_goal: 500 });
         }
         setSetting(cfg);
         setXp({ task: cfg.xp_task ?? 100, meeting: cfg.xp_meeting ?? 150, goal: cfg.xp_goal ?? 500 });
@@ -68,7 +68,7 @@ export default function AdminDashboard() {
   const saveXp = async () => {
     setSaving(true);
     try {
-      const s = await base44.entities.SystemSetting.update(setting.id, {
+      const s = await apiClient.entities.SystemSetting.update(setting.id, {
         xp_task: Number(xp.task),
         xp_meeting: Number(xp.meeting),
         xp_goal: Number(xp.goal),

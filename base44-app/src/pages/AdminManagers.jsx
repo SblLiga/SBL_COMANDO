@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Calendar, Clock, ChevronLeft, Star } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { Switch } from "@/components/ui/switch";
@@ -17,7 +17,7 @@ export default function AdminManagers() {
   useEffect(() => {
     (async () => {
       try {
-        const m = await base44.entities.Member.list();
+        const m = await apiClient.entities.Member.list();
         setMembers(m);
       } finally {
         setLoading(false);
@@ -27,11 +27,11 @@ export default function AdminManagers() {
 
   const toggleRole = async (m) => {
     const newRole = m.role === "manager" ? "user" : "manager";
-    const updated = await base44.entities.Member.update(m.id, { role: newRole });
+    const updated = await apiClient.entities.Member.update(m.id, { role: newRole });
     // Sync the linked User entity so routing/auth reflects the change instantly
     if (m.user_id) {
       try {
-        await base44.entities.User.update(m.user_id, { role: newRole });
+        await apiClient.entities.User.update(m.user_id, { role: newRole });
       } catch (err) {
         console.error("[AdminManagers] User role sync failed:", err);
       }
@@ -44,7 +44,7 @@ export default function AdminManagers() {
     if (!date || !startTime) return;
     const dayName = new Date(`${date}T${startTime}`).toLocaleDateString("he-IL", { weekday: "long" });
     toast({ title: "נקבעה פגישה עם שולי", description: `${dayName} בשעה ${startTime} · ${duration} שעות` });
-    base44.entities.Notification.bulkCreate(
+    apiClient.entities.Notification.bulkCreate(
       members.map((m) => ({ title: "נקבעה פגישה עם שולי", body: `יום ${dayName} בשעה ${startTime}`, type: "info", source: "סופר-אדמין" }))
     );
     setShowSched(false);

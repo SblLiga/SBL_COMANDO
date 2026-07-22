@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Bell, CheckCircle2, AlertCircle, Info, Flame, Zap, FileText, Send, X, Check } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { useToast } from "@/components/ui/use-toast";
@@ -39,8 +39,8 @@ export default function ManagerAlerts() {
   useEffect(() => {
     (async () => {
       try {
-        const user = await base44.auth.me();
-        const n = await base44.entities.Notification.filter({ target_user_id: user.id });
+        const user = await apiClient.auth.me();
+        const n = await apiClient.entities.Notification.filter({ target_user_id: user.id });
         setNotifications(n.sort((a, b) => new Date(b.created_date) - new Date(a.created_date)));
       } finally {
         setLoading(false);
@@ -50,12 +50,12 @@ export default function ManagerAlerts() {
 
   const markRead = async (n) => {
     if (n.is_read) return;
-    const updated = await base44.entities.Notification.update(n.id, { is_read: true });
+    const updated = await apiClient.entities.Notification.update(n.id, { is_read: true });
     setNotifications((prev) => prev.map((x) => (x.id === n.id ? updated : x)));
   };
 
   const markHandled = async (n) => {
-    const updated = await base44.entities.Notification.update(n.id, { is_read: true, is_handled: true });
+    const updated = await apiClient.entities.Notification.update(n.id, { is_read: true, is_handled: true });
     setNotifications((prev) => {
       const updated_list = prev.map((x) => (x.id === n.id ? updated : x));
       // Move handled items to end
@@ -64,9 +64,17 @@ export default function ManagerAlerts() {
     toast({ title: "סומן כטופל", description: "ההתראה טופלה בהצלחה" });
   };
 
+  const dismiss = (n, event) => {
+    event?.stopPropagation();
+    setNotifications((prev) => prev.filter((x) => x.id !== n.id));
+    if (!n.is_read) {
+      apiClient.entities.Notification.update(n.id, { is_read: true }).catch(() => {});
+    }
+  };
+
   const sendReply = async () => {
     if (!replyMsg.trim() || !replyTo) return;
-    await base44.entities.Notification.create({
+    await apiClient.entities.Notification.create({
       target_user_id: replyTo.target_user_id || replyTo.source_user_id,
       title: "הודעה ממנהל",
       body: replyMsg.trim(),
@@ -124,7 +132,17 @@ export default function ManagerAlerts() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] font-bold text-muted-foreground">{cat.label}</span>
-                    {!n.is_read && <span className="w-2 h-2 rounded-full bg-primary shrink-0" />}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {!n.is_read && <span className="w-2 h-2 rounded-full bg-primary" />}
+                      <button
+                        type="button"
+                        onClick={(e) => dismiss(n, e)}
+                        className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        aria-label="סגור התראה"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                   <p className="text-sm font-bold truncate mt-0.5">{n.title}</p>
                   <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{n.body}</p>

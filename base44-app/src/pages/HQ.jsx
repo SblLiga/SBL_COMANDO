@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Users, Flame, Zap, Send, Shield, Check } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import ProgressRing from "@/components/ProgressRing";
@@ -25,22 +25,22 @@ export default function HQ() {
   useEffect(() => {
     (async () => {
       try {
-        const user = await base44.auth.me();
-        const myMembers = await base44.entities.Member.filter({ user_id: user.id });
+        const user = await apiClient.auth.me();
+        const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
         const me = myMembers[0];
         setCurrentMember(me);
 
         if (me?.group_id) {
           const [groupMembers, groups] = await Promise.all([
-            base44.entities.Member.filter({ group_id: me.group_id }),
-            base44.entities.Group.list(),
+            apiClient.entities.Member.filter({ group_id: me.group_id }),
+            apiClient.entities.Group.list(),
           ]);
           setMembers(groupMembers);
           setGroup(groups.find((g) => g.id === me.group_id) || null);
 
           // Check recent nudges sent by this user to group members
           try {
-            const allNudges = await base44.entities.Notification.filter({ type: "nudge" });
+            const allNudges = await apiClient.entities.Notification.filter({ type: "nudge" });
             const myName = me.name || user.full_name;
             const myNudges = allNudges.filter((n) => n.source === myName);
             setNudgedUserIds(new Set(myNudges.map((n) => n.target_user_id)));
@@ -66,7 +66,7 @@ export default function HQ() {
     setSendingMsg(true);
     try {
       const targets = members.filter((m) => m.user_id && m.user_id !== currentMember.user_id);
-      await base44.entities.Notification.bulkCreate(
+      await apiClient.entities.Notification.bulkCreate(
         targets.map((m) => ({
           target_user_id: m.user_id,
           title: "הודעה מהקבוצה",

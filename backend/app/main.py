@@ -3,9 +3,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api.entities import router as entities_router
+from app.api.upload import router as upload_router
+from app.auth.router import router as auth_router
 from app.bootstrap import run_database_bootstrap
 from app.config import get_settings
 from app.database import check_db_connection, init_db, run_migrations
@@ -46,7 +50,29 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="SBL Backend", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="SBL Backend", version="0.3.0", lifespan=lifespan)
+
+settings = get_settings()
+if not settings.is_production:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:8000",
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+app.include_router(auth_router)
+app.include_router(entities_router)
+app.include_router(upload_router)
+
+UPLOAD_DIR = Path("static/uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
 @app.get("/health")

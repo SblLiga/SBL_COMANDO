@@ -13,6 +13,7 @@ export default function StepManager({ managers, groups, gender, target, manager,
   };
 
   const hasManagers = filteredManagers.length > 0;
+  const allFull = hasManagers && filteredManagers.every((m) => managerCapacity(m).full);
 
   return (
     <>
@@ -22,7 +23,7 @@ export default function StepManager({ managers, groups, gender, target, manager,
         <p className="text-xs text-muted-foreground">{target} · {gender === "female" ? "נשים" : "גברים"}</p>
       </div>
 
-      {hasManagers ? (
+      {hasManagers && !allFull ? (
         <div className="space-y-2 max-h-72 overflow-y-auto">
           {filteredManagers.map((m) => {
             const cap = managerCapacity(m);
@@ -48,7 +49,9 @@ export default function StepManager({ managers, groups, gender, target, manager,
       ) : (
         <div className="space-y-3 pt-2">
           <p className="text-center text-sm text-muted-foreground py-2">
-            אין מנהל/ת זמין/ה עבור {target} כרגע.<br />מה תרצה/י לעשות?
+            {allFull
+              ? <>כל המנהלים/ות מלאים כרגע עבור {target}.<br />מה תרצה/י לעשות?</>
+              : <>אין מנהל/ת זמין/ה עבור {target} כרגע.<br />מה תרצה/י לעשות?</>}
           </p>
 
           <button

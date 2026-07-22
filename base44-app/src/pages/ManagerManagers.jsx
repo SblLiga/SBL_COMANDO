@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Send, MessageSquare, X, ChevronLeft, FileText, Users } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { useToast } from "@/components/ui/use-toast";
@@ -18,16 +18,16 @@ export default function ManagerManagers() {
   useEffect(() => {
     (async () => {
       try {
-        const user = await base44.auth.me();
-        const myMembers = await base44.entities.Member.filter({ user_id: user.id });
+        const user = await apiClient.auth.me();
+        const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
         const me = myMembers[0];
         setCurrentMember(me);
 
-        const allMembers = await base44.entities.Member.list();
+        const allMembers = await apiClient.entities.Member.list();
         // Only show managers, exclude current user
         setManagers(allMembers.filter((m) => m.role === "manager" && m.user_id !== user.id));
 
-        const allReports = await base44.entities.Report.list();
+        const allReports = await apiClient.entities.Report.list();
         setReports(allReports);
       } finally {
         setLoading(false);
@@ -37,7 +37,7 @@ export default function ManagerManagers() {
 
   const sendAll = async () => {
     if (!msgAll.trim() || !currentMember) return;
-    await base44.entities.Notification.bulkCreate(
+    await apiClient.entities.Notification.bulkCreate(
       managers
         .filter((m) => m.user_id)
         .map((mgr) => ({
@@ -55,7 +55,7 @@ export default function ManagerManagers() {
 
   const sendToManager = async () => {
     if (!mgrMsg.trim() || !selectedMgr || !currentMember) return;
-    await base44.entities.Notification.create({
+    await apiClient.entities.Notification.create({
       target_user_id: selectedMgr.user_id,
       title: "הודעה ממנהל",
       body: mgrMsg.trim(),

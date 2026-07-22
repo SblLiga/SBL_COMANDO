@@ -51,12 +51,12 @@ phases:
       - mkdir -p static/frontend
       - |
         REPO_ROOT="$(dirname "$BACKEND_ROOT")"
-        # SBL monorepo: ALWAYS deploy the Base44 EliteOrbit app from base44-app/
+        # SBL monorepo: deploy the React app from base44-app/
         if [ -d "$REPO_ROOT/base44-app" ] && [ -f "$REPO_ROOT/base44-app/package.json" ]; then
-          echo "Using Base44 app from monorepo: base44-app"
+          echo "Using SBL frontend from monorepo: base44-app"
           cp -a "$REPO_ROOT/base44-app" frontend-src
         else
-          echo "ERROR: base44-app/ is required (Base44 EliteOrbit frontend)"
+          echo "ERROR: base44-app/ is required (SBL frontend)"
           ls -la "$REPO_ROOT" || true
           exit 1
         fi

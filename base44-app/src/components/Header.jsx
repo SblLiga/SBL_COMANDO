@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/AuthContext";
 import api from "@/api/dataLayer";
 import { Zap } from "lucide-react";
 
-const LOGO_URL = "https://media.base44.com/images/public/6a5c7ec4d58385c27483c814/f35f5d0c9_image.png";
+const LOGO_URL = "/logo.svg";
 
 export default function Header() {
   const navigate = useNavigate();
@@ -26,7 +26,7 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-40 bg-card/95 backdrop-blur-xl border-b border-border" dir="rtl">
-      <div className="flex items-center justify-between px-4 h-14 max-w-md mx-auto">
+      <div className="flex items-center justify-between px-4 h-14 max-w-md lg:max-w-3xl mx-auto">
         {/* Logo — שולי בן לולו */}
         <div className="flex items-center gap-2">
           <img src={LOGO_URL} alt="שולי בן לולו" className="w-9 h-9 rounded-full ring-1 ring-primary/30" />

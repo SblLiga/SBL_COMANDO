@@ -1,6 +1,8 @@
 import logging
 from pathlib import Path
 
+from collections.abc import Generator
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -47,3 +49,14 @@ def run_migrations() -> None:
 
     alembic_cfg = Config(str(BACKEND_ROOT / "alembic.ini"))
     command.upgrade(alembic_cfg, "head")
+
+
+def get_db() -> Generator[Session, None, None]:
+    if SessionLocal is None:
+        init_db()
+    assert SessionLocal is not None
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

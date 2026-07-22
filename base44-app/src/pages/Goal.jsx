@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Zap, Flame, Plus, Check, EyeOff, Eye, GripVertical } from "lucide-react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import SmartWheel from "@/components/SmartWheel";
@@ -26,10 +26,10 @@ export default function Goal() {
   const load = async () => {
     setLoading(true);
     try {
-      const goals = await base44.entities.Goal.list();
+      const goals = await apiClient.entities.Goal.list();
       let g = goals[0];
       if (!g) {
-        g = await base44.entities.Goal.create({
+        g = await apiClient.entities.Goal.create({
           title: "היעד החודשי שלי",
           target: "מכירות",
           is_hidden: false,
@@ -40,10 +40,10 @@ export default function Goal() {
         });
       }
       setGoal(g);
-      const t = await base44.entities.Task.filter({ goal_id: g.id });
+      const t = await apiClient.entities.Task.filter({ goal_id: g.id });
       setTasks(t.sort((a, b) => (a.order_index || 0) - (b.order_index || 0)).slice(0, 9));
       try {
-        const settings = await base44.entities.SystemSetting.list();
+        const settings = await apiClient.entities.SystemSetting.list();
         if (settings[0]?.xp_task) setXpPerTask(settings[0].xp_task);
       } catch (err) {
         console.error("[Goal] Failed to load XP settings:", err);
@@ -61,18 +61,18 @@ export default function Goal() {
   };
 
   const toggleTask = async (task) => {
-    const updated = await base44.entities.Task.update(task.id, { is_completed: !task.is_completed });
+    const updated = await apiClient.entities.Task.update(task.id, { is_completed: !task.is_completed });
     const newTasks = tasks.map((t) => (t.id === task.id ? updated : t));
     setTasks(newTasks);
     const { pct, xp } = recalc(newTasks);
-    const g = await base44.entities.Goal.update(goal.id, { progress: pct, xp_total: xp });
+    const g = await apiClient.entities.Goal.update(goal.id, { progress: pct, xp_total: xp });
     setGoal(g);
     // Sync the linked Member entity (dynamic data sync for leaderboard)
     try {
-      const user = await base44.auth.me();
-      const myMembers = await base44.entities.Member.filter({ user_id: user.id });
+      const user = await apiClient.auth.me();
+      const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
       if (myMembers[0]) {
-        await base44.entities.Member.update(myMembers[0].id, { xp, progress: pct });
+        await apiClient.entities.Member.update(myMembers[0].id, { xp, progress: pct });
       }
     } catch (err) {
       console.error("[Goal] Member sync failed:", err);
@@ -89,7 +89,7 @@ export default function Goal() {
       toast({ title: "מקסימום 9 משימות", description: "הגלגל מוגבל ל-9 משימות בלבד", variant: "destructive" });
       return;
     }
-    const t = await base44.entities.Task.create({
+    const t = await apiClient.entities.Task.create({
       goal_id: goal.id,
       title: newTaskTitle,
       order_index: tasks.length,
@@ -103,7 +103,7 @@ export default function Goal() {
   };
 
   const toggleHidden = async (val) => {
-    const g = await base44.entities.Goal.update(goal.id, { is_hidden: val });
+    const g = await apiClient.entities.Goal.update(goal.id, { is_hidden: val });
     setGoal(g);
   };
 
@@ -113,7 +113,7 @@ export default function Goal() {
     [arr[i], arr[j]] = [arr[j], arr[i]];
     const reordered = arr.map((t, idx) => ({ ...t, order_index: idx }));
     setTasks(reordered);
-    await base44.entities.Task.bulkUpdate(reordered.map((t) => ({ id: t.id, order_index: t.order_index })));
+    await apiClient.entities.Task.bulkUpdate(reordered.map((t) => ({ id: t.id, order_index: t.order_index })));
   };
 
   const reorder = async (taskId, newIndex) => {
@@ -124,12 +124,12 @@ export default function Goal() {
     arr.splice(newIndex, 0, item);
     const reordered = arr.map((t, i) => ({ ...t, order_index: i }));
     setTasks(reordered);
-    await base44.entities.Task.bulkUpdate(reordered.map((t) => ({ id: t.id, order_index: t.order_index })));
+    await apiClient.entities.Task.bulkUpdate(reordered.map((t) => ({ id: t.id, order_index: t.order_index })));
   };
 
   const cyclePriority = async (task) => {
     const next = PRIORITIES[(PRIORITIES.indexOf(task.priority) + 1) % PRIORITIES.length];
-    const updated = await base44.entities.Task.update(task.id, { priority: next });
+    const updated = await apiClient.entities.Task.update(task.id, { priority: next });
     setTasks(tasks.map((t) => (t.id === task.id ? updated : t)));
   };
 
@@ -174,9 +174,12 @@ export default function Goal() {
               </span>
             )}
           </div>
-          <div className="flex flex-col items-center gap-1.5 shrink-0 w-[110px]">
-            <span className="text-[10px] text-muted-foreground text-center leading-tight">
-              {goal.is_hidden ? "יעדך נסתר מאחרים" : "הסתר את היעד שלך מאחרים"}
+          <div className="flex flex-col items-center gap-1.5 shrink-0 w-[120px]">
+            <span className="text-[10px] text-muted-foreground text-center leading-tight font-medium">
+              {goal.is_hidden ? "🔒 היעד מוסתר מהליגה" : "פרטיות יעד"}
+            </span>
+            <span className="text-[9px] text-muted-foreground/80 text-center leading-tight">
+              {goal.is_hidden ? "רק את/ה רואה את היעד" : "הסתר מהמשתתפים האחרים"}
             </span>
             <div className="flex items-center gap-1">
               <Switch checked={goal.is_hidden} onCheckedChange={toggleHidden} />
@@ -273,9 +276,10 @@ export default function Goal() {
                             </p>
                           </div>
                           <button
+                            type="button"
                             onClick={() => cyclePriority(task)}
                             title="לחץ לשינוי עדיפות"
-                            className={`text-[10px] px-2 py-1 rounded-full font-medium cursor-pointer transition-all hover:scale-110 hover:opacity-80 ${priorityColor}`}
+                            className={`text-[10px] px-2.5 py-1 rounded-full font-semibold cursor-pointer transition-all hover:scale-110 hover:ring-2 hover:ring-primary/40 active:scale-95 ${priorityColor}`}
                           >
                             {task.priority}
                           </button>

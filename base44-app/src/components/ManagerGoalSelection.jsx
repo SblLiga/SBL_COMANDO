@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { Target } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -25,8 +25,8 @@ export default function ManagerGoalSelection() {
   useEffect(() => {
     (async () => {
       try {
-        const user = await base44.auth.me();
-        const myMembers = await base44.entities.Member.filter({ user_id: user.id });
+        const user = await apiClient.auth.me();
+        const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
         const me = myMembers[0];
         setMember(me);
 
@@ -60,7 +60,7 @@ export default function ManagerGoalSelection() {
     if (!selected || !member) return;
     setSaving(true);
     try {
-      await base44.entities.Member.update(member.id, {
+      await apiClient.entities.Member.update(member.id, {
         next_month_target: selected,
         next_month_selected_at: new Date().toISOString(),
       });
@@ -108,6 +108,21 @@ export default function ManagerGoalSelection() {
         >
           {saving ? "שומר..." : "אישור ושמירה"}
         </button>
+        <button
+          type="button"
+          onClick={() => setShow(false)}
+          className="w-full mt-2 text-sm text-muted-foreground hover:text-foreground py-2"
+        >
+          דלג לעכשיו
+        </button>
+        <a
+          href="https://wa.me/972500000000"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block text-center text-xs text-primary hover:underline mt-2"
+        >
+          צריכים עזרה? צרו קשר עם שולי
+        </a>
       </div>
     </div>
   );

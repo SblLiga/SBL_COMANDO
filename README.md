@@ -43,6 +43,7 @@ RDS PostgreSQL
 
 - **GitHub Actions do not build Docker images directly.** They only trigger AWS CodePipeline.
 - **ECR is not used** in the current deployment path. The backend is deployed as an Elastic Beanstalk Docker application version.
+- **Self-hosted auth & data** — JWT auth + PostgreSQL via FastAPI (`/api/auth/*`, `/api/entities/*`). No external SaaS runtime.
 - **Database bootstrap is environment-aware:**
   - `dev` → seeds sample users/goals for testing
   - `prod` → schema only + secure admin from secrets (`ADMIN_EMAIL`, `ADMIN_PASSWORD`)
@@ -60,7 +61,8 @@ SBL_COMANDO/
 │   ├── Dockerfile           # EB runtime image
 │   └── scripts/start.sh     # Container startup (migrations + gunicorn)
 ├── frontend/                # Minimal React scaffold (fallback)
-├── base44-app/              # Base44 exported EliteOrbit app (primary UI)
+├── base44-app/              # SBL web application (React + Vite)
+│   ├── src/api/apiClient.js # Self-hosted REST client → FastAPI /api/*
 ├── terraform/               # AWS infrastructure (dev + prod)
 │   ├── environments/dev/
 │   ├── environments/prod/
@@ -116,15 +118,20 @@ DEV seed users (created on first startup):
 | `manager.dev@sbl.local` | `Manager123!` | manager |
 | `user.dev@sbl.local` | `User123!` | user |
 
-### Option B — Base44 frontend (full UI locally)
+### Option B — Full stack UI locally
 
 ```powershell
+# Terminal 1 — backend
+docker compose up --build
+
+# Terminal 2 — frontend
 cd base44-app
+copy .env.example .env.local
 npm install
 npm run dev
 ```
 
-For Base44-only frontend against hosted backend, configure `.env.local` as described in `base44-app/README.md`.
+Open `http://localhost:5173`. The frontend calls `http://localhost:8000/api/*` via `VITE_API_URL`.
 
 ### Option C — Manual backend without Docker
 
@@ -240,6 +247,16 @@ git push origin prod
 
 ---
 
+## API Architecture
+
+| Layer | Endpoint prefix | Purpose |
+|-------|-----------------|---------|
+| Auth | `/api/auth/*` | Login, register, OTP, JWT session, password reset |
+| Entities | `/api/entities/{name}/*` | CRUD for User, Member, Group, Goal, Task, etc. |
+| Upload | `/api/integrations/core/upload-file` | Profile images and attachments |
+
+---
+
 ## 6. Health & Validation API
 
 ### `GET /health` — quick check
@@ -332,7 +349,7 @@ Expected in PROD after bootstrap:
 |------|---------|
 | `SblLiga/SBL_COMANDO` | **Primary** — unified app + infra |
 | `SblLiga/SBL-ALLAPP` | Infrastructure archive (kept, not deleted) |
-| `SblLiga/eliteorbit` | Base44 source archive (kept, not deleted) |
+| `SblLiga/eliteorbit` | Legacy source archive (historical reference only) |
 
 ---
 

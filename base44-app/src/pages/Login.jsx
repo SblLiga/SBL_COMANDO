@@ -1,14 +1,33 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
+import { Link, useSearchParams } from "react-router-dom";
+import apiClient from "@/api/apiClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LogIn, Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
-import GoogleIcon from "@/components/GoogleIcon";
+
+function resolveReturnPath(searchParams) {
+  const raw = searchParams.get("return");
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/";
+  return raw;
+}
+
+function redirectAfterLogin(user, returnPath) {
+  if (user.role === "admin") {
+    window.location.href = returnPath.startsWith("/admin") ? returnPath : "/admin";
+    return;
+  }
+  if (user.role === "manager") {
+    window.location.href = returnPath.startsWith("/manager") ? returnPath : "/manager";
+    return;
+  }
+  window.location.href = returnPath;
+}
 
 export default function Login() {
+  const [searchParams] = useSearchParams();
+  const returnPath = resolveReturnPath(searchParams);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -19,26 +38,21 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await base44.auth.loginViaEmailPassword(email, password);
-      // Role-based redirect
+      await apiClient.auth.loginViaEmailPassword(email, password);
+      const u = await apiClient.auth.me();
       try {
-        const u = await base44.auth.me();
-        if (u.role === "admin") {
-          window.location.href = "/admin";
-          return;
-        }
-        const myMembers = await base44.entities.Member.filter({ user_id: u.id });
+        const myMembers = await apiClient.entities.Member.filter({ user_id: u.id });
         if (myMembers[0]?.role === "manager" || u.role === "manager") {
-          window.location.href = "/manager";
+          window.location.href = returnPath.startsWith("/manager") ? returnPath : "/manager";
           return;
         }
-      } catch (roleErr) {
-        console.error("[Login] Role check failed:", roleErr);
+      } catch {
+        // Role enrichment is optional; fall through to default redirect.
       }
-      window.location.href = "/";
+      redirectAfterLogin(u, returnPath);
     } catch (err) {
       const msg = (err.message || "").toLowerCase();
-      if (msg.includes("verif")) {
+      if (msg.includes("verif") || err.status === 403) {
         window.location.href = `/register?verify=true&email=${encodeURIComponent(email)}`;
         return;
       }
@@ -46,10 +60,6 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleGoogle = () => {
-    base44.auth.loginWithProvider("google", "/");
   };
 
   return (
@@ -66,24 +76,6 @@ export default function Login() {
         </>
       }
     >
-      <Button
-        variant="outline"
-        className="w-full h-12 text-sm font-medium mb-6"
-        onClick={handleGoogle}
-      >
-        <GoogleIcon className="w-5 h-5 mr-2" />
-        המשך עם Google
-      </Button>
-
-      <div className="relative mb-6">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-border" />
-        </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-card px-3 text-muted-foreground">או</span>
-        </div>
-      </div>
-
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
           {error}

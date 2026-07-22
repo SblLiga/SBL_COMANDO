@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import apiClient from "@/api/apiClient";
 import { X, Lock, Flame, Zap, Check, Send, Edit2, CheckCheck } from "lucide-react";
 import ProgressRing from "@/components/ProgressRing";
 import { useToast } from "@/components/ui/use-toast";
@@ -37,7 +37,7 @@ export default function ParticipantModal({ member, onClose, sourceName, onNudgeS
         return;
       }
       try {
-        const t = await base44.entities.Task.filter({ goal_id: member.goal_id });
+        const t = await apiClient.entities.Task.filter({ goal_id: member.goal_id });
         setTasks(t.sort((a, b) => (a.order_index || 0) - (b.order_index || 0)));
       } finally {
         setLoading(false);
@@ -46,7 +46,7 @@ export default function ParticipantModal({ member, onClose, sourceName, onNudgeS
   }, [member]);
 
   const sendNudge = (msg) => {
-    base44.entities.Notification.create({
+    apiClient.entities.Notification.create({
       target_user_id: member.user_id,
       title: sourceName ? "הודעה מהקבוצה" : "הודעה מהמנהל/ת",
       body: msg,
@@ -59,7 +59,7 @@ export default function ParticipantModal({ member, onClose, sourceName, onNudgeS
   };
 
   const updateTask = async (task, patch) => {
-    const updated = await base44.entities.Task.update(task.id, patch);
+    const updated = await apiClient.entities.Task.update(task.id, patch);
     setTasks(tasks.map((t) => (t.id === task.id ? updated : t)));
   };
 

@@ -21,6 +21,7 @@ COPY scripts/start.sh ./scripts/start.sh
 COPY static/ ./static/
 
 RUN chmod +x ./scripts/start.sh
+RUN mkdir -p ./static/uploads
 
 EXPOSE 80
 

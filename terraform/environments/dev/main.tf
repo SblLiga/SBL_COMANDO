@@ -145,6 +145,11 @@ resource "aws_ssm_parameter" "db_user" {
   tags  = local.tags
 }
 
+resource "random_password" "jwt_secret" {
+  length  = 48
+  special = true
+}
+
 module "eb" {
   source = "../../modules/eb"
 
@@ -173,6 +178,7 @@ module "eb" {
   db_user_ssm_parameter    = aws_ssm_parameter.db_user.name
   db_secret_arn            = module.rds.db_secret_arn
   db_credentials_secret_id = module.rds.db_secret_name
+  jwt_secret               = random_password.jwt_secret.result
 
   additional_environment_variables = merge(
     var.additional_eb_env_vars,

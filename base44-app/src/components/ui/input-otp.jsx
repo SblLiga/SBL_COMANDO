@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils"
 const InputOTP = React.forwardRef(({ className, containerClassName, ...props }, ref) => (
   <OTPInput
     ref={ref}
+    inputMode="numeric"
+    pattern="[0-9]*"
     containerClassName={cn("flex items-center gap-2 has-[:disabled]:opacity-50", containerClassName)}
     className={cn("disabled:cursor-not-allowed", className)}
     {...props} />
