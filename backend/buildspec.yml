@@ -51,38 +51,17 @@ phases:
       - mkdir -p static/frontend
       - |
         REPO_ROOT="$(dirname "$BACKEND_ROOT")"
+        # SBL monorepo: ALWAYS deploy the Base44 EliteOrbit app from base44-app/
         if [ -d "$REPO_ROOT/base44-app" ] && [ -f "$REPO_ROOT/base44-app/package.json" ]; then
-          echo "Using local monorepo frontend: base44-app"
+          echo "Using Base44 app from monorepo: base44-app"
           cp -a "$REPO_ROOT/base44-app" frontend-src
-        elif [ -d "$REPO_ROOT/frontend" ] && [ -f "$REPO_ROOT/frontend/package.json" ]; then
-          echo "Using local monorepo frontend: frontend"
-          cp -a "$REPO_ROOT/frontend" frontend-src
         else
-          if [ -z "$FRONTEND_REPO" ]; then
-            echo "ERROR: FRONTEND_REPO is not set and no local frontend folder was found"
-            exit 1
-          fi
-          if [ -n "$GITHUB_TOKEN" ]; then
-            FRONTEND_GIT_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${FRONTEND_REPO}.git"
-          else
-            FRONTEND_GIT_URL="https://github.com/${FRONTEND_REPO}.git"
-          fi
-          echo "Cloning $FRONTEND_REPO branch $FRONTEND_BRANCH"
-          git clone --depth 1 --branch "$FRONTEND_BRANCH" "$FRONTEND_GIT_URL" frontend-clone
-          if [ -f "frontend-clone/package.json" ]; then
-            mv frontend-clone frontend-src
-          elif [ -d "frontend-clone/frontend" ] && [ -f "frontend-clone/frontend/package.json" ]; then
-            mv frontend-clone/frontend frontend-src
-            rm -rf frontend-clone
-          elif [ -d "frontend-clone/base44-app" ] && [ -f "frontend-clone/base44-app/package.json" ]; then
-            mv frontend-clone/base44-app frontend-src
-            rm -rf frontend-clone
-          else
-            echo "ERROR: no package.json found in cloned frontend"
-            find frontend-clone -maxdepth 2 -type f -name package.json || true
-            exit 1
-          fi
+          echo "ERROR: base44-app/ is required (Base44 EliteOrbit frontend)"
+          ls -la "$REPO_ROOT" || true
+          exit 1
         fi
+        test -f frontend-src/package.json
+        echo "Frontend package name:" && node -p "require('./frontend-src/package.json').name" || true
       - rm -rf frontend-src/node_modules frontend-src/dist
       - cd frontend-src
       - npm ci
