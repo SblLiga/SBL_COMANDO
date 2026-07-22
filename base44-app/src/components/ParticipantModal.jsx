@@ -3,6 +3,7 @@ import apiClient from "@/api/apiClient";
 import { X, Lock, Flame, Zap, Check, Send, Edit2, CheckCheck } from "lucide-react";
 import ProgressRing from "@/components/ProgressRing";
 import { useToast } from "@/components/ui/use-toast";
+import UserAvatar from "@/components/UserAvatar";
 
 const statusColor = {
   "בעקבות": "bg-green-500",
@@ -123,10 +124,8 @@ export default function ParticipantModal({
     <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center" onClick={onClose}>
       <div className="card-lux w-full max-w-md rounded-t-3xl sm:rounded-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 bg-card/95 backdrop-blur p-4 flex items-center justify-between border-b border-border z-10">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-full gold-gradient flex items-center justify-center text-black font-bold shrink-0">
-              {(member?.name || "?")[0]}
-            </div>
+            <div className="flex items-center gap-3 min-w-0">
+            <UserAvatar src={member?.avatar_url} name={member?.name || "?"} className="w-10 h-10 ring-2 ring-primary/40" />
             <div className="min-w-0">
               <h3 className="font-bold truncate">{member?.name}</h3>
               <p className="text-[10px] text-muted-foreground truncate">

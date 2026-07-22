@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { Users, Check, MessageCircle, Clock } from "lucide-react";
 import { isUserAssignmentWindow } from "@/lib/calendarRules";
+import UserAvatar from "@/components/UserAvatar";
 
 export default function StepManager({ managers, groups, gender, target, manager, setManager }) {
   const assignmentOpen = isUserAssignmentWindow();
@@ -68,7 +69,7 @@ export default function StepManager({ managers, groups, gender, target, manager,
                   cap.full ? "bg-muted/50 opacity-50 cursor-not-allowed" : manager?.id === m.id ? "gold-bg text-black glow-gold" : "bg-muted"
                 }`}
               >
-                <img src={m.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=1a1a1a&color=C5A880&bold=true`} alt="" className="w-10 h-10 rounded-full ring-1 ring-border" />
+                <UserAvatar src={m.avatar_url} name={m.name} className="w-10 h-10 ring-1 ring-border" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{m.name}</p>
                   <p className="text-[10px] opacity-70">{cap.count}/5 משתתפים</p>

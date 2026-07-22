@@ -5,6 +5,7 @@ import PageHeader from "@/components/PageHeader";
 import ProgressRing from "@/components/ProgressRing";
 import NudgeModal from "@/components/NudgeModal";
 import ParticipantModal from "@/components/ParticipantModal";
+import UserAvatar from "@/components/UserAvatar";
 
 export default function AdminWheel() {
   const [members, setMembers] = useState([]);
@@ -126,14 +127,7 @@ export default function AdminWheel() {
                         className="flex items-center gap-3 flex-1 min-w-0 text-right"
                         onClick={() => setSelected(m)}
                       >
-                        <img
-                          src={
-                            m.avatar_url ||
-                            `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=1a1a1a&color=C5A880&bold=true`
-                          }
-                          alt=""
-                          className="w-8 h-8 rounded-full ring-1 ring-border"
-                        />
+                        <UserAvatar src={m.avatar_url} name={m.name} className="w-8 h-8 ring-1 ring-border" />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium truncate">{m.name}</p>
                           <p className="text-[10px] text-muted-foreground">

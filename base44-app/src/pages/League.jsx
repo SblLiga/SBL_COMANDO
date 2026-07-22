@@ -3,7 +3,7 @@ import apiClient from "@/api/apiClient";
 import { Search, Flame, Crown, Medal, Lock } from "lucide-react";
 import ProgressRing from "@/components/ProgressRing";
 import ParticipantModal from "@/components/ParticipantModal";
-import { Image } from "@/components/ui/image";
+import UserAvatar from "@/components/UserAvatar";
 
 const statusDot = {
   "בעקבות": "bg-green-500",
@@ -90,13 +90,11 @@ export default function League({ zoneBadge = "אזור משתמש", readOnly = t
                 className="flex flex-col items-center gap-2 flex-1 max-w-[120px]"
               >
                 <div className="relative">
-                  <div className={`rounded-full overflow-hidden ${isGold ? "w-16 h-16 ring-2 ring-primary glow-gold" : "w-12 h-12 ring-1 ring-border"}`}>
-                    <Image
-                      src={m.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=1a1a1a&color=C5A880&bold=true`}
-                      alt={m.name}
-                      className="w-full h-full"
-                    />
-                  </div>
+                  <UserAvatar
+                    src={m.avatar_url}
+                    name={m.name}
+                    className={isGold ? "w-16 h-16 ring-2 ring-primary glow-gold" : "w-12 h-12 ring-1 ring-border"}
+                  />
                   <div className={`absolute -bottom-1 left-1/2 -translate-x-1/2 ${isGold ? "w-7 h-7" : "w-6 h-6"} rounded-full gold-gradient flex items-center justify-center text-black font-bold text-xs ring-2 ring-background`}>
                     {place}
                   </div>
@@ -123,13 +121,7 @@ export default function League({ zoneBadge = "אזור משתמש", readOnly = t
             className={`w-full text-right card-lux p-3 flex items-center gap-3 ${isMe(m) ? "border-primary/50" : ""}`}
           >
             <span className="font-display text-lg font-bold text-muted-foreground w-6 text-center">{i + 4}</span>
-            <div className="w-9 h-9 rounded-full overflow-hidden ring-1 ring-border shrink-0">
-              <Image
-                src={m.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=1a1a1a&color=C5A880&bold=true`}
-                alt={m.name}
-                className="w-full h-full"
-              />
-            </div>
+            <UserAvatar src={m.avatar_url} name={m.name} className="w-9 h-9 ring-1 ring-border" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{m.name} {isMe(m) && <span className="text-primary text-[10px]">(את/ה)</span>}</p>
               <p className="text-[10px] text-muted-foreground truncate">{m.group_name}</p>

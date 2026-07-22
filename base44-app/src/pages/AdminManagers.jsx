@@ -4,6 +4,7 @@ import { Calendar, Clock, ChevronLeft, Star } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
+import UserAvatar from "@/components/UserAvatar";
 
 export default function AdminManagers() {
   const { toast } = useToast();
@@ -106,7 +107,7 @@ export default function AdminManagers() {
         {members.filter((m) => m.role !== "admin").map((m) => (
           <div key={m.id} className="card-lux p-3 flex items-center gap-3">
             <div className="relative">
-              <img src={m.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=1a1a1a&color=C5A880&bold=true`} alt="" className="w-10 h-10 rounded-full ring-1 ring-border" />
+              <UserAvatar src={m.avatar_url} name={m.name} className="w-10 h-10 ring-1 ring-border" />
               {m.role === "manager" && <Star className="absolute -top-1 -left-1 w-4 h-4 text-primary fill-primary" />}
             </div>
             <div className="flex-1 min-w-0">

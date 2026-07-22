@@ -4,6 +4,7 @@ import { Users, Flame, Zap, Send, Shield, Check } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import ProgressRing from "@/components/ProgressRing";
 import ParticipantModal from "@/components/ParticipantModal";
+import UserAvatar from "@/components/UserAvatar";
 
 const formatName = (name) => {
   const parts = (name || "").trim().split(/\s+/);
@@ -143,11 +144,7 @@ export default function HQ() {
             >
               <div className="flex items-center gap-3">
                 {/* Identity */}
-                <img
-                  src={m.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=1a1a1a&color=C5A880&bold=true`}
-                  alt={m.name}
-                  className="w-10 h-10 rounded-full ring-1 ring-border shrink-0"
-                />
+                <UserAvatar src={m.avatar_url} name={m.name} className="w-10 h-10 ring-1 ring-border shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold truncate">
                     {formatName(m.name)} {isMe && <span className="text-primary text-[10px]">(אתה)</span>}

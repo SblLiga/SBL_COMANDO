@@ -6,6 +6,7 @@ import KpiCard from "@/components/KpiCard";
 import ProgressRing from "@/components/ProgressRing";
 import ParticipantModal from "@/components/ParticipantModal";
 import NudgeModal from "@/components/NudgeModal";
+import UserAvatar from "@/components/UserAvatar";
 
 const statusColor = {
   "בעקבות": "bg-green-500",
@@ -92,11 +93,7 @@ export default function ManagerDashboard() {
                 onClick={() => setSelected(m)}
                 className="w-full text-right card-lux p-3 flex items-center gap-3 border-destructive/30"
               >
-                <img
-                  src={m.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=1a1a1a&color=C5A880&bold=true`}
-                  alt=""
-                  className="w-9 h-9 rounded-full ring-1 ring-border"
-                />
+                <UserAvatar src={m.avatar_url} name={m.name} className="w-9 h-9 ring-1 ring-border" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{m.name}</p>
                   <p className="text-[10px] text-muted-foreground">

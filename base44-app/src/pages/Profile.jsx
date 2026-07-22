@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/AuthContext";
 import apiClient from "@/api/apiClient";
 import api from "@/api/dataLayer";
 import Header from "@/components/Header";
+import UserAvatar from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +12,7 @@ import { ArrowRight, Camera, Loader2, Lock, User as UserIcon, Mail } from "lucid
 import { useToast } from "@/components/ui/use-toast";
 
 export default function Profile() {
-  const { user } = useAuth();
+  const { user, checkUserAuth } = useAuth();
   const { toast } = useToast();
   const [member, setMember] = useState(null);
   const [name, setName] = useState("");
@@ -27,31 +28,59 @@ export default function Profile() {
   useEffect(() => {
     if (!user?.id) return;
     let cancelled = false;
-    api.entities.Member.filter({ user_id: user.id })
-      .then((res) => {
+    (async () => {
+      try {
+        const res = await api.entities.Member.filter({ user_id: user.id });
         if (cancelled) return;
         const m = res[0] || null;
         setMember(m);
         setName(m?.name || user?.full_name || "");
-        setAvatarUrl(m?.avatar_url || "");
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-    return () => { cancelled = true; };
-  }, [user?.id]);
+        setAvatarUrl(m?.avatar_url || user?.avatar_url || "");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.full_name, user?.avatar_url]);
+
+  const persistAvatar = async (url) => {
+    setAvatarUrl(url);
+    let m = member;
+    if (!m) {
+      m = await api.entities.Member.create({
+        name: name || user?.full_name || user?.email || "משתמש",
+        user_id: user.id,
+        role: user.role || "user",
+        avatar_url: url,
+        status: "בעקבות",
+      });
+      setMember(m);
+    } else {
+      m = await api.entities.Member.update(m.id, { avatar_url: url });
+      setMember(m);
+    }
+    await apiClient.auth.updateMe({ avatar_url: url });
+    await checkUserAuth?.();
+  };
 
   const handleUploadAvatar = async (file) => {
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "שגיאה", description: "יש לבחור קובץ תמונה בלבד", variant: "destructive" });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "שגיאה", description: "גודל מקסימלי 5MB", variant: "destructive" });
+      return;
+    }
     setUploading(true);
     try {
       const res = await apiClient.integrations.Core.UploadFile({ file });
-      const url = res.file_url;
-      setAvatarUrl(url);
-      if (member) {
-        await api.entities.Member.update(member.id, { avatar_url: url });
-      }
-      await apiClient.auth.updateMe({ avatar_url: url });
-      toast({ title: "התמונה עודכנה", description: "תמונת הפרופיל נשמרה בהצלחה." });
+      const url = res.file_url || res.url;
+      await persistAvatar(url);
+      toast({ title: "התמונה עודכנה", description: "תמונת הפרופיל נשמרה ומוצגת בכל המערכת." });
     } catch (err) {
       toast({ title: "שגיאה", description: err.message || "העלאת התמונה נכשלה", variant: "destructive" });
     } finally {
@@ -66,6 +95,8 @@ export default function Profile() {
       if (member) {
         await api.entities.Member.update(member.id, { name: name.trim() });
       }
+      await apiClient.auth.updateMe({ full_name: name.trim() });
+      await checkUserAuth?.();
       toast({ title: "השם עודכן", description: "השם נשמר בהצלחה." });
     } catch (err) {
       toast({ title: "שגיאה", description: err.message || "עדכון השם נכשל", variant: "destructive" });
@@ -87,9 +118,8 @@ export default function Profile() {
     setChangingPassword(true);
     try {
       await apiClient.auth.changePassword({
-        userId: user.id,
-        currentPassword,
-        newPassword,
+        current_password: currentPassword,
+        new_password: newPassword,
       });
       toast({ title: "הסיסמה שונתה", description: "הסיסמה עודכנה בהצלחה." });
       setCurrentPassword("");
@@ -113,8 +143,6 @@ export default function Profile() {
     );
   }
 
-  const avatar = avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1a1a1a&color=C5A880&bold=true`;
-
   return (
     <div className="min-h-screen bg-background pb-12">
       <Header />
@@ -131,7 +159,7 @@ export default function Profile() {
 
         <div className="card-lux p-5 flex flex-col items-center gap-4">
           <div className="relative">
-            <img src={avatar} alt={name} className="w-24 h-24 rounded-full ring-2 ring-primary/30 object-cover" />
+            <UserAvatar src={avatarUrl} name={name} className="w-24 h-24 ring-2 ring-primary/30" />
             <label className="absolute bottom-0 left-0 w-8 h-8 rounded-full gold-bg flex items-center justify-center cursor-pointer shadow-lg">
               {uploading ? (
                 <Loader2 className="w-4 h-4 animate-spin text-black" />
@@ -140,9 +168,9 @@ export default function Profile() {
               )}
               <input
                 type="file"
-                accept="image/*"
+                accept="image/png,image/jpeg,image/webp,image/gif"
                 className="hidden"
-                onChange={(e) => e.target.files[0] && handleUploadAvatar(e.target.files[0])}
+                onChange={(e) => e.target.files?.[0] && handleUploadAvatar(e.target.files[0])}
                 disabled={uploading}
               />
             </label>
@@ -157,24 +185,13 @@ export default function Profile() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="name">שם תצוגה</Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="h-12"
-              placeholder="השם שלך"
-            />
+            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} className="h-12" placeholder="השם שלך" />
           </div>
           <div className="space-y-2">
             <Label htmlFor="email">דוא״ל</Label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                id="email"
-                value={user?.email || ""}
-                readOnly
-                className="pl-10 h-12 bg-muted/50"
-              />
+              <Input id="email" value={user?.email || ""} readOnly className="pl-10 h-12 bg-muted/50" />
             </div>
           </div>
           <Button onClick={handleSaveName} disabled={savingName || !name.trim()} className="w-full h-11">
@@ -189,36 +206,15 @@ export default function Profile() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="current">סיסמה נוכחית</Label>
-            <Input
-              id="current"
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="h-12"
-              required
-            />
+            <Input id="current" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="h-12" required />
           </div>
           <div className="space-y-2">
             <Label htmlFor="new">סיסמה חדשה</Label>
-            <Input
-              id="new"
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="h-12"
-              required
-            />
+            <Input id="new" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="h-12" required />
           </div>
           <div className="space-y-2">
             <Label htmlFor="confirmNew">אישור סיסמה חדשה</Label>
-            <Input
-              id="confirmNew"
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="h-12"
-              required
-            />
+            <Input id="confirmNew" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="h-12" required />
           </div>
           <Button type="submit" disabled={changingPassword || !currentPassword || !newPassword} className="w-full h-11">
             {changingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : "שנה סיסמה"}

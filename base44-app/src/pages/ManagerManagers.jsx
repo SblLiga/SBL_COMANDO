@@ -3,6 +3,7 @@ import apiClient from "@/api/apiClient";
 import { Send, MessageSquare, X, ChevronLeft, FileText, Users } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { useToast } from "@/components/ui/use-toast";
+import UserAvatar from "@/components/UserAvatar";
 
 export default function ManagerManagers() {
   const { toast } = useToast();
@@ -103,11 +104,7 @@ export default function ManagerManagers() {
 
         <div className="card-gold-rim p-5">
           <div className="flex items-center gap-3">
-            <img
-              src={selectedMgr.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedMgr.name)}&background=1a1a1a&color=C5A880&bold=true`}
-              alt={selectedMgr.name}
-              className="w-14 h-14 rounded-full ring-2 ring-primary/40"
-            />
+            <UserAvatar src={selectedMgr.avatar_url} name={selectedMgr.name} className="w-14 h-14 ring-2 ring-primary/40" />
             <div>
               <h2 className="font-bold text-lg">{selectedMgr.name}</h2>
               <p className="text-xs text-muted-foreground">{selectedMgr.group_name || "—"}</p>
@@ -240,11 +237,7 @@ export default function ManagerManagers() {
               onClick={() => setSelectedMgr(m)}
               className="w-full text-right card-lux p-3 flex items-center gap-3 hover:border-primary/30 transition-colors"
             >
-              <img
-                src={m.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=1a1a1a&color=C5A880&bold=true`}
-                alt={m.name}
-                className="w-11 h-11 rounded-full ring-1 ring-border"
-              />
+              <UserAvatar src={m.avatar_url} name={m.name} className="w-11 h-11 ring-1 ring-border" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{m.name}</p>
                 <p className="text-[10px] text-muted-foreground">{m.group_name || "מנהל/ת קבוצה"}</p>
