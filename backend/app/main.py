@@ -2,9 +2,9 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.entities import router as entities_router
@@ -17,6 +17,7 @@ from app.health import build_health_payload
 
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path("static/frontend")
+ASSETS_DIR = STATIC_DIR / "assets"
 
 
 @asynccontextmanager
@@ -89,5 +90,36 @@ def health_validate():
     return JSONResponse(content=payload, status_code=status_code)
 
 
-if STATIC_DIR.exists():
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="frontend")
+def _spa_index() -> FileResponse:
+    index = STATIC_DIR / "index.html"
+    if not index.exists():
+        raise HTTPException(status_code=404, detail="Frontend not built")
+    return FileResponse(index)
+
+
+if ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="frontend-assets")
+
+
+@app.get("/")
+def spa_root():
+    return _spa_index()
+
+
+@app.get("/{full_path:path}")
+def spa_fallback(full_path: str):
+    """Serve the React SPA for client-side routes like /admin, /login, /manager."""
+    # Never shadow API / health / uploads
+    if full_path.startswith(("api/", "health", "uploads/", "docs", "openapi.json", "redoc")):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    # Prefer real static files (favicon, logo.svg, etc.)
+    candidate = (STATIC_DIR / full_path).resolve()
+    try:
+        candidate.relative_to(STATIC_DIR.resolve())
+    except ValueError:
+        return _spa_index()
+    if candidate.is_file():
+        return FileResponse(candidate)
+
+    return _spa_index()
