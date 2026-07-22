@@ -1,27 +1,43 @@
-from pydantic import BaseModel, EmailStr, Field
+from typing import Annotated
+
+from pydantic import AfterValidator, BaseModel, Field
+
+
+def _normalize_email(value: str) -> str:
+    """Accept practical emails including DEV seed domains like *.local."""
+    email = (value or "").strip().lower()
+    if "@" not in email or " " in email:
+        raise ValueError("Invalid email address")
+    local, _, domain = email.partition("@")
+    if not local or not domain or "." not in domain and not domain.endswith("local"):
+        raise ValueError("Invalid email address")
+    return email
+
+
+EmailAddress = Annotated[str, AfterValidator(_normalize_email)]
 
 
 class RegisterRequest(BaseModel):
-    email: EmailStr
+    email: EmailAddress
     password: str = Field(min_length=6)
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: EmailAddress
     password: str
 
 
 class VerifyOtpRequest(BaseModel):
-    email: EmailStr
+    email: EmailAddress
     otpCode: str = Field(min_length=4, max_length=8)
 
 
 class ResendOtpRequest(BaseModel):
-    email: EmailStr
+    email: EmailAddress
 
 
 class ResetPasswordRequest(BaseModel):
-    email: EmailStr
+    email: EmailAddress
 
 
 class ResetPasswordConfirm(BaseModel):
