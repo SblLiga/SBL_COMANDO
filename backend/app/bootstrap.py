@@ -9,6 +9,34 @@ from app.security import hash_password
 
 logger = logging.getLogger(__name__)
 
+# Canonical DEV accounts — repaired on every non-prod startup so login always works.
+DEV_SEED_ACCOUNTS = (
+    {
+        "email": "admin.dev@sbl.local",
+        "password_attr": "dev_admin_password",
+        "password_fallback": "Admin123!",
+        "full_name": "Dev Admin",
+        "role": "admin",
+    },
+    {
+        "email": "manager.dev@sbl.local",
+        "password": "Manager123!",
+        "full_name": "Dev Manager",
+        "role": "manager",
+        "target": "מכירות",
+        "focus_target": "שיפור מכירות",
+        "focus_month": "2026-07",
+    },
+    {
+        "email": "user.dev@sbl.local",
+        "password": "User123!",
+        "full_name": "Dev User",
+        "role": "user",
+        "target": "שיווק",
+        "gender": "female",
+    },
+)
+
 
 def is_production(settings: Settings) -> bool:
     return settings.app_env.lower() in {"prod", "production"}
@@ -30,6 +58,51 @@ def _admin_exists(session: Session) -> bool:
 
 def _any_users_exist(session: Session) -> bool:
     return (session.scalar(select(func.count()).select_from(User)) or 0) > 0
+
+
+def _dev_account_password(account: dict, settings: Settings) -> str:
+    if "password_attr" in account:
+        return getattr(settings, account["password_attr"], None) or account["password_fallback"]
+    return account["password"]
+
+
+def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
+    """
+    Idempotent repair for DEV seed users.
+
+    Existing DBs may predate email_verified / have False defaults. Every DEV
+    startup marks the known seed accounts verified and resets their passwords
+    to the documented credentials so Login always works.
+    """
+    repaired = 0
+    for account in DEV_SEED_ACCOUNTS:
+        email = account["email"]
+        user = session.scalar(select(User).where(User.email == email))
+        if user is None:
+            continue
+
+        password = _dev_account_password(account, settings)
+        user.email_verified = True
+        user.is_active = True
+        user.password_hash = hash_password(password)
+        user.role = account["role"]
+        user.full_name = account.get("full_name") or user.full_name
+        user.subscription_status = "active"
+        user.onboarding_completed = True
+        if "target" in account:
+            user.target = account["target"]
+        if "gender" in account:
+            user.gender = account["gender"]
+        if "focus_target" in account:
+            user.focus_target = account["focus_target"]
+        if "focus_month" in account:
+            user.focus_month = account["focus_month"]
+        repaired += 1
+
+    if repaired:
+        session.commit()
+        logger.info("DEV seed accounts repaired/verified: %s", repaired)
+    return repaired
 
 
 def ensure_production_admin(session: Session, settings: Settings) -> bool:
@@ -74,7 +147,7 @@ def seed_development_data(session: Session, settings: Settings) -> bool:
     users = [
         User(
             email="admin.dev@sbl.local",
-            password_hash=hash_password(settings.dev_admin_password),
+            password_hash=hash_password(_dev_account_password(DEV_SEED_ACCOUNTS[0], settings)),
             full_name="Dev Admin",
             role="admin",
             subscription_status="active",
@@ -175,13 +248,15 @@ def seed_development_data(session: Session, settings: Settings) -> bool:
     return True
 
 
-def run_database_bootstrap(session: Session, settings: Settings) -> dict[str, bool]:
+def run_database_bootstrap(session: Session, settings: Settings) -> dict[str, bool | int]:
     if is_production(settings):
         created_admin = ensure_production_admin(session, settings)
-        return {"seeded": False, "admin_created": created_admin}
+        return {"seeded": False, "admin_created": created_admin, "dev_repaired": 0}
 
     seeded = False
+    repaired = 0
     if should_seed_dev_data(settings):
         seeded = seed_development_data(session, settings)
+        repaired = ensure_dev_seed_accounts(session, settings)
 
-    return {"seeded": seeded, "admin_created": False}
+    return {"seeded": seeded, "admin_created": False, "dev_repaired": repaired}
