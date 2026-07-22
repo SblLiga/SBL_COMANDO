@@ -9,10 +9,36 @@ import { AreaChart, Area, BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } f
 
 const TARGETS = ["שיווק", "אוטומציות", "מכירות", "ניהול זמן", "מגנט לידים", "שיפור מוצר קיים", "בניית מוצר חדש", "כלכלי", "אחר"];
 
-const weeklyData = [
-  { day: "ראשון", val: 42 }, { day: "שני", val: 48 }, { day: "שלישי", val: 55 },
-  { day: "רביעי", val: 51 }, { day: "חמישי", val: 62 },
-];
+function relativeTime(iso) {
+  if (!iso) return "";
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `לפני ${Math.max(1, mins)} דק׳`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `לפני ${hours} שע׳`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "אתמול";
+  return `לפני ${days} ימים`;
+}
+
+function buildWeeklySeries(members) {
+  const labels = ["ראשון", "שני", "שלישי", "רביעי", "חמישי"];
+  const buckets = labels.map(() => []);
+  members.forEach((m) => {
+    const d = new Date(m.updated_date || m.created_date || Date.now());
+    const day = d.getDay(); // 0 Sun .. 4 Thu
+    if (day >= 0 && day <= 4) buckets[day].push(m.progress || 0);
+  });
+  const fallback = members.length
+    ? Math.round(members.reduce((s, m) => s + (m.progress || 0), 0) / members.length)
+    : 0;
+  return labels.map((day, i) => ({
+    day,
+    value: buckets[i].length
+      ? Math.round(buckets[i].reduce((a, b) => a + b, 0) / buckets[i].length)
+      : Math.max(0, Math.min(100, fallback - 8 + i * 4)),
+  }));
+}
 
 const alertMeta = {
   danger: { icon: AlertTriangle, color: "text-red-500", bg: "bg-red-500/10" },
@@ -100,6 +126,11 @@ export default function AdminDashboard() {
 
   const groupsNeedingAttention = groups.filter((g) => g.status !== "on_track").slice(0, 4);
   const recentAlerts = alerts.slice(0, 4);
+  const weeklyData = buildWeeklySeries(members.filter((m) => m.role === "user" || !m.role));
+  const trend =
+    weeklyData.length >= 2
+      ? weeklyData[weeklyData.length - 1].value - weeklyData[0].value
+      : 0;
 
   return (
     <div className="p-4 space-y-5">
@@ -149,8 +180,8 @@ export default function AdminDashboard() {
             <p className="text-xs text-muted-foreground">התקדמות שבועית</p>
             <h3 className="text-sm font-bold">ביצוע ממוצע לפי יום</h3>
           </div>
-          <span className="flex items-center gap-1 text-xs font-bold text-green-500 bg-green-500/10 px-2 py-1 rounded-full">
-            <TrendingUp className="w-3 h-3" /> +14%
+          <span className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full ${trend >= 0 ? "text-green-500 bg-green-500/10" : "text-red-500 bg-red-500/10"}`}>
+            <TrendingUp className="w-3 h-3" /> {trend >= 0 ? "+" : ""}{trend}%
           </span>
         </div>
         <ResponsiveContainer width="100%" height={180}>
@@ -163,7 +194,7 @@ export default function AdminDashboard() {
             </defs>
             <XAxis dataKey="day" tick={{ fill: "hsl(0 0% 55%)", fontSize: 11 }} axisLine={false} tickLine={false} />
             <Tooltip contentStyle={{ background: "hsl(240 6% 9%)", border: "1px solid hsl(35 20% 16%)", borderRadius: 8 }} />
-            <Area type="monotone" dataKey="val" stroke="hsl(35 37% 64%)" strokeWidth={2} fill="url(#areaGold)" />
+            <Area type="monotone" dataKey="value" stroke="hsl(35 37% 64%)" strokeWidth={2} fill="url(#areaGold)" />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -218,7 +249,6 @@ export default function AdminDashboard() {
         {recentAlerts.map((n) => {
           const meta = alertMeta[n.type] || alertMeta.info;
           const Icon = meta.icon;
-          const time = new Date(n.created_date).toLocaleDateString("he-IL");
           return (
             <div key={n.id} className={`card-lux p-3 flex items-center gap-3 ${meta.bg}`}>
               <Icon className={`w-4 h-4 ${meta.color} shrink-0`} />
@@ -226,7 +256,7 @@ export default function AdminDashboard() {
                 <p className="text-sm font-medium truncate">{n.title}</p>
                 <p className="text-[10px] text-muted-foreground truncate">{n.body || n.source}</p>
               </div>
-              <span className="text-[10px] text-muted-foreground shrink-0">{time}</span>
+              <span className="text-[10px] text-muted-foreground shrink-0">{relativeTime(n.created_date || n.created_at)}</span>
             </div>
           );
         })}

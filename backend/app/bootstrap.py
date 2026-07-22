@@ -1,10 +1,11 @@
 import logging
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.models import Goal, Group, Member, SystemSetting, User
+from app.models import Goal, Group, Meeting, Member, Notification, SystemSetting, User
 from app.security import hash_password
 
 logger = logging.getLogger(__name__)
@@ -370,6 +371,110 @@ def seed_development_data(session: Session, settings: Settings) -> bool:
     return True
 
 
+def ensure_manager_operational_alerts(session: Session) -> int:
+    """
+    Create missing operational alerts for managers:
+    - inactive participants (status לא פעיל / קריטי, or stale created_at)
+    - missing weekly report 3+ days after completed meeting
+    Idempotent via title+target_user_id uniqueness check.
+    """
+    created = 0
+    now = datetime.now(timezone.utc)
+    managers = session.scalars(select(Member).where(Member.role == "manager")).all()
+
+    for mgr in managers:
+        if not mgr.user_id:
+            continue
+        if mgr.group_id:
+            peers = session.scalars(
+                select(Member).where(Member.role == "user", Member.group_id == mgr.group_id)
+            ).all()
+        else:
+            peers = session.scalars(
+                select(Member).where(Member.role == "user", Member.group_name == mgr.group_name)
+            ).all()
+
+        for peer in peers:
+            # Prefer explicit inactive/critical status; fall back to stale rows (≥3 days)
+            stamp = peer.created_at
+            age_days = 0
+            if stamp:
+                if stamp.tzinfo is None:
+                    stamp = stamp.replace(tzinfo=timezone.utc)
+                age_days = max(0, (now - stamp).days)
+            inactive = peer.status in ("לא פעיל", "קריטי") or age_days >= 3
+            if not inactive:
+                continue
+            days = max(age_days, 3) if age_days else 3
+            title = f"{peer.name} - לא פעיל"
+            exists = session.scalar(
+                select(Notification).where(
+                    Notification.target_user_id == mgr.user_id,
+                    Notification.title == title,
+                    Notification.is_handled.is_(False),
+                )
+            )
+            if exists:
+                continue
+            session.add(
+                Notification(
+                    target_user_id=mgr.user_id,
+                    title=title,
+                    body=f"{days} ימים ללא פעילות",
+                    type="warning",
+                    source="המערכת",
+                    is_read=False,
+                    is_handled=False,
+                )
+            )
+            created += 1
+
+        meetings = session.scalars(
+            select(Meeting).where(
+                Meeting.group_name == mgr.group_name,
+                Meeting.status == "completed",
+                Meeting.is_locked.is_(False),
+            )
+        ).all()
+        for meeting in meetings:
+            when = meeting.scheduled_date or meeting.created_at
+            if not when:
+                continue
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=timezone.utc)
+            if now - when < timedelta(days=3):
+                continue
+            title = "דוח חסר"
+            body = f"לא שלחת דוח לאדמין לאחר הפגישה · {when.strftime('%d/%m')}"
+            exists = session.scalar(
+                select(Notification).where(
+                    Notification.target_user_id == mgr.user_id,
+                    Notification.title == title,
+                    Notification.body == body,
+                    Notification.is_handled.is_(False),
+                )
+            )
+            if exists:
+                continue
+            session.add(
+                Notification(
+                    target_user_id=mgr.user_id,
+                    title=title,
+                    body=body,
+                    type="info",
+                    source="המערכת",
+                    is_read=False,
+                    is_handled=False,
+                )
+            )
+            created += 1
+
+    if created:
+        session.commit()
+        logger.info("Operational manager alerts created: %s", created)
+    return created
+
+
 def run_database_bootstrap(session: Session, settings: Settings) -> dict[str, bool | int]:
     if is_production(settings):
         created_admin = ensure_production_admin(session, settings)
@@ -377,8 +482,15 @@ def run_database_bootstrap(session: Session, settings: Settings) -> dict[str, bo
 
     seeded = False
     repaired = 0
+    alerts = 0
     if should_seed_dev_data(settings):
         seeded = seed_development_data(session, settings)
         repaired = ensure_dev_seed_accounts(session, settings)
+        alerts = ensure_manager_operational_alerts(session)
 
-    return {"seeded": seeded, "admin_created": False, "dev_repaired": repaired}
+    return {
+        "seeded": seeded,
+        "admin_created": False,
+        "dev_repaired": repaired,
+        "alerts_created": alerts,
+    }
