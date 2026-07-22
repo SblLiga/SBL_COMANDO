@@ -15,13 +15,25 @@ export default function Home() {
     (async () => {
       try {
         const user = await apiClient.auth.me();
-        const goals = await apiClient.entities.Goal.list();
-        let g = goals[0] || null;
-        setGoal(g);
-
-        // Ensure a Member row is linked to the authenticated user (dynamic sync)
         let myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
         let me = myMembers[0];
+
+        let g = null;
+        if (me?.goal_id) {
+          try {
+            g = await apiClient.entities.Goal.get(me.goal_id);
+          } catch {
+            g = null;
+          }
+        }
+        if (!g) {
+          const owned = await apiClient.entities.Goal.filter({ owner_user_id: user.id });
+          g = owned.sort(
+            (a, b) => new Date(b.created_date || 0) - new Date(a.created_date || 0)
+          )[0] || null;
+        }
+        setGoal(g);
+
         if (!me) {
           me = await apiClient.entities.Member.create({
             name: user.full_name || user.email || "משתמש",

@@ -2,22 +2,30 @@ import React, { useState, useEffect } from "react";
 import { Outlet, Navigate } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { Lock, ExternalLink, ShieldAlert } from "lucide-react";
-import { needsMonthlyOnboarding } from "@/lib/calendarRules";
+import { needsMonthlyOnboarding, needsWaitingListAssignment } from "@/lib/calendarRules";
 
 const GROW_PAYMENT_URL = "https://grow.co.il/subscribe";
 
 export default function SubscriptionGate() {
   const [user, setUser] = useState(null);
+  const [member, setMember] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiClient.auth
-      .me()
-      .then((u) => {
+    (async () => {
+      try {
+        const u = await apiClient.auth.me();
         setUser(u);
+        if (u?.role === "user") {
+          const rows = await apiClient.entities.Member.filter({ user_id: u.id });
+          setMember(rows[0] || null);
+        }
+      } catch {
+        setUser(null);
+      } finally {
         setLoading(false);
-      })
-      .catch(() => setLoading(false));
+      }
+    })();
   }, []);
 
   if (loading) {
@@ -30,7 +38,6 @@ export default function SubscriptionGate() {
 
   if (!user) return <Navigate to="/login" replace />;
 
-  // Managers / admins skip participant subscription + monthly onboarding gates
   const isStaff = user.role === "manager" || user.role === "admin";
 
   if (!isStaff && user.subscription_status === "inactive") {
@@ -58,7 +65,12 @@ export default function SubscriptionGate() {
     );
   }
 
-  if (!isStaff && (!user.onboarding_completed || needsMonthlyOnboarding(user))) {
+  if (
+    !isStaff &&
+    (!user.onboarding_completed ||
+      needsMonthlyOnboarding(user) ||
+      needsWaitingListAssignment(user, member))
+  ) {
     return <Navigate to="/onboarding" replace />;
   }
 

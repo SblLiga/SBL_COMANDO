@@ -69,10 +69,13 @@ export default function ManagerAlerts() {
     toast({ title: "סומן כטופל", description: "ההתראה טופלה בהצלחה" });
   };
 
-  const dismiss = (n, event) => {
+  const dismiss = async (n, event) => {
     event?.stopPropagation();
     setNotifications((prev) => prev.filter((x) => x.id !== n.id));
-    if (!n.is_read) {
+    try {
+      await apiClient.entities.Notification.delete(n.id);
+    } catch (err) {
+      console.error("[ManagerAlerts] dismiss failed", err);
       apiClient.entities.Notification.update(n.id, { is_read: true }).catch(() => {});
     }
   };

@@ -68,11 +68,12 @@ def _dev_account_password(account: dict, settings: Settings) -> str:
 
 def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
     """
-    Idempotent repair for DEV seed users.
+    Idempotent repair for DEV seed users + Member/Goal/Group demo graph.
 
     Existing DBs may predate email_verified / have False defaults. Every DEV
     startup marks the known seed accounts verified and resets their passwords
-    to the documented credentials so Login always works.
+    to the documented credentials so Login always works. Also ensures manager
+    and user have Member rows with correct roles for QA flows.
     """
     repaired = 0
     for account in DEV_SEED_ACCOUNTS:
@@ -98,6 +99,127 @@ def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
         if "focus_month" in account:
             user.focus_month = account["focus_month"]
         repaired += 1
+
+    # Ensure demo group
+    group = session.scalar(select(Group).where(Group.name == "Dev Alpha Team"))
+    if group is None:
+        group = Group(
+            name="Dev Alpha Team",
+            description="Sample development group for DEV testing",
+            target="מכירות",
+            gender="female",
+            manager_name="Dev Manager",
+            participant_count=2,
+            max_participants=5,
+            status="on_track",
+            avg_progress=30.0,
+        )
+        session.add(group)
+        session.flush()
+        repaired += 1
+
+    manager = session.scalar(select(User).where(User.email == "manager.dev@sbl.local"))
+    participant = session.scalar(select(User).where(User.email == "user.dev@sbl.local"))
+
+    if manager:
+        manager.group_id = group.id
+        group.manager_id = manager.id
+        group.manager_name = manager.full_name
+        mgr_goal = session.scalar(select(Goal).where(Goal.owner_user_id == manager.id))
+        if mgr_goal is None:
+            mgr_goal = Goal(
+                title="יעד חודשי - מכירות",
+                target="מכירות",
+                reward_text="ארוחת צוות",
+                cycle_month="2026-07",
+                progress=35.0,
+                xp_total=120.0,
+                streak=4,
+                owner_user_id=manager.id,
+            )
+            session.add(mgr_goal)
+            session.flush()
+            repaired += 1
+        mgr_member = session.scalar(select(Member).where(Member.user_id == manager.id))
+        if mgr_member is None:
+            session.add(
+                Member(
+                    name=manager.full_name,
+                    user_id=manager.id,
+                    group_id=group.id,
+                    group_name=group.name,
+                    role="manager",
+                    target=manager.target or "מכירות",
+                    goal_id=mgr_goal.id,
+                    goal_title=mgr_goal.title,
+                    progress=mgr_goal.progress,
+                    xp=mgr_goal.xp_total,
+                    streak=mgr_goal.streak,
+                    status="בעקבות",
+                )
+            )
+            repaired += 1
+        else:
+            mgr_member.role = "manager"
+            mgr_member.group_id = group.id
+            mgr_member.group_name = group.name
+            mgr_member.goal_id = mgr_goal.id
+            mgr_member.goal_title = mgr_goal.title
+            mgr_member.name = manager.full_name
+
+    if participant:
+        participant.group_id = group.id
+        user_goal = session.scalar(select(Goal).where(Goal.owner_user_id == participant.id))
+        if user_goal is None:
+            user_goal = Goal(
+                title="יעד חודשי - שיווק",
+                target="שיווק",
+                reward_text="יום חופש",
+                cycle_month="2026-07",
+                progress=20.0,
+                xp_total=80.0,
+                streak=2,
+                owner_user_id=participant.id,
+            )
+            session.add(user_goal)
+            session.flush()
+            repaired += 1
+        user_member = session.scalar(select(Member).where(Member.user_id == participant.id))
+        if user_member is None:
+            session.add(
+                Member(
+                    name=participant.full_name,
+                    user_id=participant.id,
+                    group_id=group.id,
+                    group_name=group.name,
+                    role="user",
+                    target=participant.target or "שיווק",
+                    gender=participant.gender or "female",
+                    goal_id=user_goal.id,
+                    goal_title=user_goal.title,
+                    progress=user_goal.progress,
+                    xp=user_goal.xp_total,
+                    streak=user_goal.streak,
+                    status="בעקבות",
+                )
+            )
+            repaired += 1
+        else:
+            user_member.role = "user"
+            user_member.group_id = group.id
+            user_member.group_name = group.name
+            user_member.goal_id = user_goal.id
+            user_member.goal_title = user_goal.title
+            user_member.name = participant.full_name
+            user_member.gender = participant.gender or user_member.gender
+
+    # Drop accidental admin Member rows (admin is not a league participant)
+    admin = session.scalar(select(User).where(User.email == "admin.dev@sbl.local"))
+    if admin:
+        admin_members = session.scalars(select(Member).where(Member.user_id == admin.id)).all()
+        for row in admin_members:
+            session.delete(row)
+            repaired += 1
 
     if repaired:
         session.commit()

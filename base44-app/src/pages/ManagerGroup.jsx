@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
 import apiClient from "@/api/apiClient";
-import { Flame, Zap, Users } from "lucide-react";
+import { Flame, Zap, Users, Lock } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import KpiCard from "@/components/KpiCard";
 import ProgressRing from "@/components/ProgressRing";
 import ParticipantModal from "@/components/ParticipantModal";
-import { useToast } from "@/components/ui/use-toast";
+import NudgeModal from "@/components/NudgeModal";
 
 const statusColor = {
   "בעקבות": "bg-green-500",
@@ -21,17 +21,19 @@ const groupStatusBadge = {
 };
 
 export default function ManagerGroup() {
-  const { toast } = useToast();
   const [members, setMembers] = useState([]);
   const [group, setGroup] = useState(null);
   const [currentMember, setCurrentMember] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [nudgeTarget, setNudgeTarget] = useState(null);
 
   useEffect(() => {
     (async () => {
       try {
         const user = await apiClient.auth.me();
+        setCurrentUserId(user.id);
         const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
         const me = myMembers[0];
         setCurrentMember(me);
@@ -41,8 +43,8 @@ export default function ManagerGroup() {
             apiClient.entities.Member.filter({ group_id: me.group_id }),
             apiClient.entities.Group.list(),
           ]);
-          setMembers(groupMembers);
-          setGroup(groups.find((g) => g.id === me.group_id) || null);
+          setMembers(groupMembers.filter((m) => m.role !== "admin"));
+          setGroup(groups.find((g) => String(g.id) === String(me.group_id)) || null);
         }
       } finally {
         setLoading(false);
@@ -63,23 +65,10 @@ export default function ManagerGroup() {
   const target = group?.target || members[0]?.target || "—";
   const badge = groupStatusBadge[group?.status] || groupStatusBadge.on_track;
 
-  const quickNudge = async (e, m) => {
-    e.stopPropagation();
-    await apiClient.entities.Notification.create({
-      target_user_id: m.user_id,
-      title: "דחיפה מהירה ⚡",
-      body: "הגיע הזמן לעדכן את גלגל המשימות שלך 🎯",
-      type: "nudge",
-      source: currentMember?.name || "המנהל/ת שלך",
-    });
-    toast({ title: "דחיפה נשלחה ⚡", description: `אל ${m.name}` });
-  };
-
   return (
     <div className="p-4 space-y-4">
       <PageHeader badge="אזור מנהל" title="הקבוצה שלי" subtitle={`${members.length} לוחמים בשטח`} />
 
-      {/* Group summary card */}
       <div className="card-gold-rim p-5">
         <div className="flex items-center gap-4">
           <ProgressRing progress={avg} size={64} stroke={5} showText />
@@ -96,22 +85,29 @@ export default function ManagerGroup() {
         </div>
       </div>
 
-      {/* KPIs */}
       <div className="grid grid-cols-2 gap-3">
         <KpiCard value={`${avg}%`} label="צביעה ממוצעת" accent />
         <KpiCard icon={Flame} value={redLights.length} label="נורות אדומות" className="border-destructive/30" />
       </div>
 
-      {/* Member list */}
       <div className="space-y-2">
         <h3 className="text-sm font-bold">חברי הקבוצה ({members.length})</h3>
+        {members.length === 0 && (
+          <p className="text-center text-sm text-muted-foreground py-8">אין חברי קבוצה להצגה</p>
+        )}
         {members.map((m) => (
           <div
             key={m.id}
             onClick={() => setSelected(m)}
             className="card-lux p-3 flex items-center gap-3 cursor-pointer hover:border-primary/30 transition-colors"
           >
-            <ProgressRing progress={m.progress || 0} size={36} stroke={3} />
+            {m.goal_hidden ? (
+              <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center" title="יעד חסוי">
+                <Lock className="w-4 h-4 text-muted-foreground" />
+              </div>
+            ) : (
+              <ProgressRing progress={m.progress || 0} size={36} stroke={3} />
+            )}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{m.name}</p>
               <div className="flex items-center gap-2 mt-0.5">
@@ -126,7 +122,11 @@ export default function ManagerGroup() {
               </div>
             </div>
             <button
-              onClick={(e) => quickNudge(e, m)}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setNudgeTarget(m);
+              }}
               className="p-2 rounded-lg bg-primary/15 text-primary shrink-0"
               title="דחיפה"
             >
@@ -136,7 +136,22 @@ export default function ManagerGroup() {
         ))}
       </div>
 
-      {selected && <ParticipantModal member={selected} onClose={() => setSelected(null)} sourceName={currentMember?.name} />}
+      {selected && (
+        <ParticipantModal
+          member={selected}
+          onClose={() => setSelected(null)}
+          sourceName={currentMember?.name}
+          sourceUserId={currentUserId}
+        />
+      )}
+      {nudgeTarget && (
+        <NudgeModal
+          member={nudgeTarget}
+          sourceName={currentMember?.name}
+          sourceUserId={currentUserId}
+          onClose={() => setNudgeTarget(null)}
+        />
+      )}
     </div>
   );
 }

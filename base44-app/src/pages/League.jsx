@@ -12,7 +12,7 @@ const statusDot = {
   "לא פעיל": "bg-gray-500",
 };
 
-export default function League() {
+export default function League({ zoneBadge = "אזור משתמש", readOnly = true }) {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -56,7 +56,7 @@ export default function League() {
   return (
     <div className="p-4 space-y-5 pb-4">
       <div className="pt-2">
-        <p className="text-xs text-muted-foreground">אזור משתמש</p>
+        <p className="text-xs text-muted-foreground">{zoneBadge}</p>
         <h1 className="font-display text-2xl font-bold gold-text">ליגה</h1>
         <p className="text-sm text-muted-foreground">חיפוש משתתפת או קבוצה…</p>
       </div>
@@ -158,7 +158,7 @@ export default function League() {
         <ParticipantModal
           member={selected}
           onClose={() => setSelected(null)}
-          readOnly
+          readOnly={readOnly}
         />
       )}
     </div>

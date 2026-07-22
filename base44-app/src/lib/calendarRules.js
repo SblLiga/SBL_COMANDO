@@ -37,3 +37,11 @@ export function needsMonthlyOnboarding(user, date = new Date()) {
   if (!user.onboarding_completed_at) return false;
   return !sameCalendarMonth(user.onboarding_completed_at, date);
 }
+
+/** Waiting-list users must complete manager/group assignment once day ≥ 25. */
+export function needsWaitingListAssignment(user, member, date = new Date()) {
+  if (!user || user.role !== "user") return false;
+  if (!isUserAssignmentWindow(date)) return false;
+  if (!user.onboarding_completed) return false;
+  return !member?.group_id;
+}

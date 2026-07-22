@@ -59,10 +59,14 @@ export default function Messages() {
     setNotifications(notifications.map((x) => (x.id === n.id ? updated : x)));
   };
 
-  const dismiss = (n, event) => {
+  const dismiss = async (n, event) => {
     event?.stopPropagation();
     setNotifications((prev) => prev.filter((x) => x.id !== n.id));
-    if (!n.is_read) {
+    try {
+      await apiClient.entities.Notification.delete(n.id);
+    } catch (err) {
+      console.error("[Messages] dismiss failed", err);
+      // Fallback: at least mark read so it is less noisy
       apiClient.entities.Notification.update(n.id, { is_read: true }).catch(() => {});
     }
   };

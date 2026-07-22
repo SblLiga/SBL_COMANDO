@@ -74,8 +74,32 @@ export default function Onboarding() {
   const finish = async () => {
     setSubmitting(true);
     try {
-      if (manager?.id === "waiting_list") {
-        const goal = await apiClient.entities.Goal.create({
+      const ownedGoals = await apiClient.entities.Goal.filter({ owner_user_id: user.id });
+      let goal = ownedGoals.sort(
+        (a, b) => new Date(b.created_date || 0) - new Date(a.created_date || 0)
+      )[0];
+      if (goal) {
+        goal = await apiClient.entities.Goal.update(goal.id, {
+          title: goalTitle || goal.title || `יעד חודשי - ${target}`,
+          target,
+          reward_text: rewardText || goal.reward_text,
+          reward_image: rewardImage || goal.reward_image,
+        });
+        const existingTasks = await apiClient.entities.Task.filter({ goal_id: goal.id });
+        if (existingTasks.length === 0 && tasks.length) {
+          await apiClient.entities.Task.bulkCreate(
+            tasks.map((t, i) => ({
+              goal_id: goal.id,
+              title: t,
+              order_index: i,
+              is_completed: false,
+              priority: "בינוני",
+              xp_value: 100,
+            }))
+          );
+        }
+      } else {
+        goal = await apiClient.entities.Goal.create({
           title: goalTitle || `יעד חודשי - ${target}`,
           target,
           is_hidden: false,
@@ -84,8 +108,8 @@ export default function Onboarding() {
           progress: 0,
           xp_total: 0,
           streak: 0,
+          owner_user_id: user.id,
         });
-
         await apiClient.entities.Task.bulkCreate(
           tasks.map((t, i) => ({
             goal_id: goal.id,
@@ -96,21 +120,39 @@ export default function Onboarding() {
             xp_value: 100,
           }))
         );
+      }
 
-        await apiClient.entities.Member.create({
-          name: user?.full_name || user?.email || "משתמש חדש",
-          user_id: user.id,
-          goal_id: goal.id,
-          goal_title: goal.title,
-          goal_hidden: false,
-          gender,
-          target,
-          xp: 0,
-          progress: 0,
-          streak: 0,
-          role: "user",
-          status: "דרושה התייחסות",
-        });
+      if (manager?.id === "waiting_list") {
+        const existing = await apiClient.entities.Member.filter({ user_id: user.id });
+        if (existing[0]) {
+          await apiClient.entities.Member.update(existing[0].id, {
+            name: user?.full_name || user?.email || "משתמש חדש",
+            goal_id: goal.id,
+            goal_title: goal.title,
+            goal_hidden: false,
+            gender,
+            target,
+            group_name: null,
+            group_id: null,
+            role: "user",
+            status: "דרושה התייחסות",
+          });
+        } else {
+          await apiClient.entities.Member.create({
+            name: user?.full_name || user?.email || "משתמש חדש",
+            user_id: user.id,
+            goal_id: goal.id,
+            goal_title: goal.title,
+            goal_hidden: false,
+            gender,
+            target,
+            xp: 0,
+            progress: 0,
+            streak: 0,
+            role: "user",
+            status: "דרושה התייחסות",
+          });
+        }
 
         await apiClient.auth.updateMe({
           gender,
@@ -147,31 +189,9 @@ export default function Onboarding() {
         });
       }
 
-      const goal = await apiClient.entities.Goal.create({
-        title: goalTitle || `יעד חודשי - ${target}`,
-        target,
-        is_hidden: false,
-        reward_text: rewardText,
-        reward_image: rewardImage,
-        progress: 0,
-        xp_total: 0,
-        streak: 0,
-      });
-
-      await apiClient.entities.Task.bulkCreate(
-        tasks.map((t, i) => ({
-          goal_id: goal.id,
-          title: t,
-          order_index: i,
-          is_completed: false,
-          priority: "בינוני",
-          xp_value: 100,
-        }))
-      );
-
-      await apiClient.entities.Member.create({
+      const existing = await apiClient.entities.Member.filter({ user_id: user.id });
+      const memberPayload = {
         name: user?.full_name || user?.email || "משתמש חדש",
-        user_id: user.id,
         goal_id: goal.id,
         goal_title: goal.title,
         goal_hidden: false,
@@ -179,12 +199,20 @@ export default function Onboarding() {
         target,
         group_name: group.name,
         group_id: group.id,
-        xp: 0,
-        progress: 0,
-        streak: 0,
         role: "user",
         status: "בעקבות",
-      });
+      };
+      if (existing[0]) {
+        await apiClient.entities.Member.update(existing[0].id, memberPayload);
+      } else {
+        await apiClient.entities.Member.create({
+          ...memberPayload,
+          user_id: user.id,
+          xp: 0,
+          progress: 0,
+          streak: 0,
+        });
+      }
 
       await apiClient.auth.updateMe({
         gender,

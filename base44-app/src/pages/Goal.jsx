@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
 import apiClient from "@/api/apiClient";
-import { Zap, Flame, Plus, Check, EyeOff, Eye, GripVertical } from "lucide-react";
+import { Zap, Flame, Plus, Check, EyeOff, Eye, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import SmartWheel from "@/components/SmartWheel";
 import KpiCard from "@/components/KpiCard";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
+import { ensureMyGoal } from "@/lib/myGoal";
 
 const PRIORITIES = ["דחוף", "בינוני", "נמוך"];
 
@@ -18,6 +19,8 @@ export default function Goal() {
   const [newTaskPriority, setNewTaskPriority] = useState("בינוני");
   const [showAdd, setShowAdd] = useState(false);
   const [xpPerTask, setXpPerTask] = useState(100);
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [editingTitle, setEditingTitle] = useState("");
 
   useEffect(() => {
     load();
@@ -26,19 +29,7 @@ export default function Goal() {
   const load = async () => {
     setLoading(true);
     try {
-      const goals = await apiClient.entities.Goal.list();
-      let g = goals[0];
-      if (!g) {
-        g = await apiClient.entities.Goal.create({
-          title: "היעד החודשי שלי",
-          target: "מכירות",
-          is_hidden: false,
-          reward_text: "ערב פינוק בספא",
-          progress: 0,
-          xp_total: 0,
-          streak: 3,
-        });
-      }
+      const { goal: g } = await ensureMyGoal(apiClient);
       setGoal(g);
       const t = await apiClient.entities.Task.filter({ goal_id: g.id });
       setTasks(t.sort((a, b) => (a.order_index || 0) - (b.order_index || 0)).slice(0, 9));
@@ -143,6 +134,30 @@ export default function Goal() {
     setTasks(tasks.map((t) => (t.id === task.id ? updated : t)));
   };
 
+  const startEditTask = (task) => {
+    setEditingTaskId(task.id);
+    setEditingTitle(task.title);
+  };
+
+  const saveEditTask = async (task) => {
+    if (!editingTitle.trim()) return;
+    const updated = await apiClient.entities.Task.update(task.id, { title: editingTitle.trim() });
+    setTasks(tasks.map((t) => (t.id === task.id ? updated : t)));
+    setEditingTaskId(null);
+    toast({ title: "המשימה עודכנה" });
+  };
+
+  const deleteTask = async (task) => {
+    await apiClient.entities.Task.delete(task.id);
+    const newTasks = tasks.filter((t) => t.id !== task.id).map((t, i) => ({ ...t, order_index: i }));
+    setTasks(newTasks);
+    await apiClient.entities.Task.bulkUpdate(newTasks.map((t) => ({ id: t.id, order_index: t.order_index })));
+    const { pct, xp } = recalc(newTasks);
+    const g = await apiClient.entities.Goal.update(goal.id, { progress: pct, xp_total: xp });
+    setGoal(g);
+    toast({ title: "המשימה נמחקה" });
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -199,9 +214,9 @@ export default function Goal() {
         </div>
       </div>
 
-      {/* Smart Wheel */}
+      {/* Smart Wheel — own view never blanks on hide; hide only affects peers */}
       <div className="flex justify-center py-2">
-        <SmartWheel tasks={tasks} onToggle={(t) => toggleTask(t)} onSwap={swapTasks} hidden={goal.is_hidden} size={340} />
+        <SmartWheel tasks={tasks} onToggle={(t) => toggleTask(t)} onSwap={swapTasks} hidden={false} size={340} />
       </div>
 
       {/* Task list */}
@@ -281,10 +296,32 @@ export default function Goal() {
                             {task.is_completed && <Check className="w-4 h-4 text-black" strokeWidth={3} />}
                           </button>
                           <div className="flex-1 min-w-0">
-                            <p className={`text-sm ${task.is_completed ? "line-through text-muted-foreground" : ""}`}>
-                              {task.title}
-                            </p>
+                            {editingTaskId === task.id ? (
+                              <input
+                                value={editingTitle}
+                                onChange={(e) => setEditingTitle(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && saveEditTask(task)}
+                                className="w-full bg-input rounded px-2 py-1 text-sm"
+                                autoFocus
+                              />
+                            ) : (
+                              <p className={`text-sm ${task.is_completed ? "line-through text-muted-foreground" : ""}`}>
+                                {task.title}
+                              </p>
+                            )}
                           </div>
+                          {editingTaskId === task.id ? (
+                            <button type="button" onClick={() => saveEditTask(task)} className="p-1.5 text-primary">
+                              <Check className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <button type="button" onClick={() => startEditTask(task)} className="p-1.5 text-muted-foreground hover:text-primary">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button type="button" onClick={() => deleteTask(task)} className="p-1.5 text-muted-foreground hover:text-destructive">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                           <button
                             type="button"
                             onClick={() => cyclePriority(task)}

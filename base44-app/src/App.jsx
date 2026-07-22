@@ -81,7 +81,7 @@ const AuthenticatedApp = () => {
             <Route element={<Layout />}>
               <Route path="/" element={<Home />} />
               <Route path="/goal" element={<GoalPage />} />
-              <Route path="/league" element={<League />} />
+              <Route path="/league" element={<League zoneBadge="אזור משתמש" readOnly />} />
               <Route path="/hq" element={<HQ />} />
               <Route path="/messages" element={<Messages />} />
             </Route>
@@ -94,7 +94,7 @@ const AuthenticatedApp = () => {
             <Route path="/manager" element={<ManagerDashboard />} />
             <Route path="/manager/group" element={<ManagerGroup />} />
             <Route path="/manager/managers" element={<ManagerManagers />} />
-            <Route path="/manager/league" element={<League />} />
+            <Route path="/manager/league" element={<League zoneBadge="אזור מנהל" readOnly={false} />} />
             <Route path="/manager/meeting" element={<ManagerMeeting />} />
             <Route path="/manager/alerts" element={<ManagerAlerts />} />
           </Route>
@@ -105,7 +105,7 @@ const AuthenticatedApp = () => {
           <Route element={<AdminLayout />}>
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/admin/wheel" element={<AdminWheel />} />
-            <Route path="/admin/league" element={<League />} />
+            <Route path="/admin/league" element={<League zoneBadge="אזור אדמין" readOnly={false} />} />
             <Route path="/admin/managers" element={<AdminManagers />} />
             <Route path="/admin/reports" element={<AdminReports />} />
             <Route path="/admin/alerts" element={<AdminAlerts />} />

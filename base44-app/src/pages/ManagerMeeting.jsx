@@ -62,6 +62,13 @@ export default function ManagerMeeting() {
   };
 
   const startLive = async () => {
+    const next = meetings.find((m) => m.status === "scheduled") || meetings.find((m) => m.status === "live");
+    if (next) {
+      const updated = await apiClient.entities.Meeting.update(next.id, { status: "live", current_section: 0 });
+      setLiveMeetingId(updated.id);
+      setLive(true);
+      return;
+    }
     const m = await apiClient.entities.Meeting.create({
       group_name: groupName,
       scheduled_date: new Date().toISOString(),
