@@ -34,9 +34,12 @@ async def lifespan(app: FastAPI):
         from app.database import SessionLocal
 
         if SessionLocal is not None:
-            with SessionLocal() as session:
-                bootstrap_result = run_database_bootstrap(session, settings)
-                logger.info("Database bootstrap result: %s", bootstrap_result)
+            try:
+                with SessionLocal() as session:
+                    bootstrap_result = run_database_bootstrap(session, settings)
+                    logger.info("Database bootstrap result: %s", bootstrap_result)
+            except Exception:
+                logger.exception("Database bootstrap failed")
     else:
         logger.warning("Database not reachable on startup — /health will report degraded")
 
