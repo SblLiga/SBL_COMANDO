@@ -5,6 +5,21 @@ from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _password_from_secrets_manager(secret_id: str) -> str:
+    """Fetch DB password from Secrets Manager (avoids broken CFN ARN resolve)."""
+    import json
+
+    import boto3
+
+    client = boto3.client("secretsmanager")
+    raw = client.get_secret_value(SecretId=secret_id)["SecretString"]
+    data = json.loads(raw)
+    password = data.get("password")
+    if not password:
+        raise ValueError(f"Secret {secret_id} has no 'password' field")
+    return password
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -34,11 +49,18 @@ class Settings(BaseSettings):
     admin_password: str = Field(default="", alias="ADMIN_PASSWORD")
     dev_admin_password: str = Field(default="Admin123!", alias="DEV_ADMIN_PASSWORD")
 
+    def resolved_db_password(self) -> str:
+        # Prefer Secrets Manager when ARN/name is set. EB/CFN dynamic
+        # references with full secret ARNs break on colons and inject a bad password.
+        if self.db_secret_arn:
+            return _password_from_secrets_manager(self.db_secret_arn)
+        return self.db_password
+
     @computed_field
     @property
     def database_url(self) -> str:
         user = quote_plus(self.db_user)
-        password = quote_plus(self.db_password)
+        password = quote_plus(self.resolved_db_password())
         return (
             f"postgresql+psycopg2://{user}:{password}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"

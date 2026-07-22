@@ -8,7 +8,9 @@ locals {
     DB_PORT       = "5432"
     DB_SSLMODE    = "require"
     APP_ENV       = "{{resolve:ssm:${var.app_env_ssm_parameter}}}"
-    DB_PASSWORD   = "{{resolve:secretsmanager:${var.db_credentials_secret_id}:SecretString:password}}"
+    # Do NOT use {{resolve:secretsmanager:...ARN...}} — full ARNs contain colons and
+    # break CloudFormation dynamic references. App reads password via DB_SECRET_ARN.
+    DB_PASSWORD       = ""
     RUN_DB_MIGRATIONS = "true"
   }
 

@@ -6,3 +6,4 @@ psycopg2-binary==2.9.10
 alembic==1.15.2
 pydantic-settings==2.8.1
 passlib[bcrypt]==1.7.4
+boto3==1.38.27
