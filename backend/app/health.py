@@ -2,13 +2,13 @@ import time
 
 from sqlalchemy import func, select, text
 
+from app import database
 from app.config import Settings, get_settings
-from app.database import SessionLocal, engine
 from app.models import Goal, Group, User
 
 
 def _database_status() -> dict:
-    if engine is None:
+    if database.engine is None:
         return {
             "connected": False,
             "responsive": False,
@@ -18,7 +18,7 @@ def _database_status() -> dict:
 
     started = time.perf_counter()
     try:
-        with engine.connect() as connection:
+        with database.engine.connect() as connection:
             connection.execute(text("SELECT 1"))
         latency_ms = round((time.perf_counter() - started) * 1000, 2)
         return {
@@ -37,7 +37,7 @@ def _database_status() -> dict:
 
 
 def _bootstrap_status() -> dict:
-    if SessionLocal is None:
+    if database.SessionLocal is None:
         return {
             "users": 0,
             "admins": 0,
