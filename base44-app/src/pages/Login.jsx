@@ -6,28 +6,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LogIn, Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
+import { homePathForRole } from "@/components/RoleRoute";
 
-function resolveReturnPath(searchParams) {
+function resolveReturnPath(searchParams, role) {
   const raw = searchParams.get("return");
-  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/";
-  return raw;
-}
-
-function redirectAfterLogin(user, returnPath) {
-  if (user.role === "admin") {
-    window.location.href = returnPath.startsWith("/admin") ? returnPath : "/admin";
-    return;
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) {
+    return homePathForRole(role);
   }
-  if (user.role === "manager") {
-    window.location.href = returnPath.startsWith("/manager") ? returnPath : "/manager";
-    return;
-  }
-  window.location.href = returnPath;
+  // Only honor return URL if it belongs to this role's area
+  if (role === "admin" && raw.startsWith("/admin")) return raw;
+  if (role === "manager" && raw.startsWith("/manager")) return raw;
+  if (role === "user" && !raw.startsWith("/admin") && !raw.startsWith("/manager")) return raw;
+  return homePathForRole(role);
 }
 
 export default function Login() {
   const [searchParams] = useSearchParams();
-  const returnPath = resolveReturnPath(searchParams);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -40,16 +34,8 @@ export default function Login() {
     try {
       await apiClient.auth.loginViaEmailPassword(email, password);
       const u = await apiClient.auth.me();
-      try {
-        const myMembers = await apiClient.entities.Member.filter({ user_id: u.id });
-        if (myMembers[0]?.role === "manager" || u.role === "manager") {
-          window.location.href = returnPath.startsWith("/manager") ? returnPath : "/manager";
-          return;
-        }
-      } catch {
-        // Role enrichment is optional; fall through to default redirect.
-      }
-      redirectAfterLogin(u, returnPath);
+      const role = (u?.role || "user").toLowerCase();
+      window.location.href = resolveReturnPath(searchParams, role);
     } catch (err) {
       const msg = (err.message || "").toLowerCase();
       if (msg.includes("verif") || err.status === 403) {

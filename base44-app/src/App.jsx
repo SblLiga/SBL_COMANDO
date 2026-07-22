@@ -9,6 +9,7 @@ import ScrollToTop from './components/ScrollToTop';
 // Add page imports here
 import { Navigate } from "react-router-dom";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import RoleRoute, { homePathForRole } from "@/components/RoleRoute";
 import Layout from "@/components/Layout";
 import ManagerLayout from "@/components/ManagerLayout";
 import AdminLayout from "@/components/AdminLayout";
@@ -34,6 +35,11 @@ import AdminWheel from "@/pages/AdminWheel";
 import AdminManagers from "@/pages/AdminManagers";
 import AdminReports from "@/pages/AdminReports";
 import AdminAlerts from "@/pages/AdminAlerts";
+
+function RoleHomeRedirect() {
+  const { user } = useAuth();
+  return <Navigate to={homePathForRole(user?.role)} replace />;
+}
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -68,31 +74,46 @@ const AuthenticatedApp = () => {
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/profile" element={<Profile />} />
-        <Route element={<SubscriptionGate />}>
-          <Route element={<Layout />}>
-            <Route path="/" element={<Home />} />
-            <Route path="/goal" element={<GoalPage />} />
-            <Route path="/league" element={<League />} />
-            <Route path="/hq" element={<HQ />} />
-            <Route path="/messages" element={<Messages />} />
+
+        {/* USER interface */}
+        <Route element={<RoleRoute allow="user" />}>
+          <Route element={<SubscriptionGate />}>
+            <Route element={<Layout />}>
+              <Route path="/" element={<Home />} />
+              <Route path="/goal" element={<GoalPage />} />
+              <Route path="/league" element={<League />} />
+              <Route path="/hq" element={<HQ />} />
+              <Route path="/messages" element={<Messages />} />
+            </Route>
           </Route>
         </Route>
-        <Route element={<ManagerLayout />}>
-          <Route path="/manager" element={<ManagerDashboard />} />
-          <Route path="/manager/group" element={<ManagerGroup />} />
-          <Route path="/manager/managers" element={<ManagerManagers />} />
-          <Route path="/manager/league" element={<League />} />
-          <Route path="/manager/meeting" element={<ManagerMeeting />} />
-          <Route path="/manager/alerts" element={<ManagerAlerts />} />
+
+        {/* MANAGER interface */}
+        <Route element={<RoleRoute allow="manager" />}>
+          <Route element={<ManagerLayout />}>
+            <Route path="/manager" element={<ManagerDashboard />} />
+            <Route path="/manager/group" element={<ManagerGroup />} />
+            <Route path="/manager/managers" element={<ManagerManagers />} />
+            <Route path="/manager/league" element={<League />} />
+            <Route path="/manager/meeting" element={<ManagerMeeting />} />
+            <Route path="/manager/alerts" element={<ManagerAlerts />} />
+          </Route>
         </Route>
-        <Route element={<AdminLayout />}>
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/admin/wheel" element={<AdminWheel />} />
-          <Route path="/admin/league" element={<League />} />
-          <Route path="/admin/managers" element={<AdminManagers />} />
-          <Route path="/admin/reports" element={<AdminReports />} />
-          <Route path="/admin/alerts" element={<AdminAlerts />} />
+
+        {/* ADMIN interface */}
+        <Route element={<RoleRoute allow="admin" />}>
+          <Route element={<AdminLayout />}>
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/wheel" element={<AdminWheel />} />
+            <Route path="/admin/league" element={<League />} />
+            <Route path="/admin/managers" element={<AdminManagers />} />
+            <Route path="/admin/reports" element={<AdminReports />} />
+            <Route path="/admin/alerts" element={<AdminAlerts />} />
+          </Route>
         </Route>
+
+        {/* Authenticated but unknown path → role home */}
+        <Route path="*" element={<RoleHomeRedirect />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
