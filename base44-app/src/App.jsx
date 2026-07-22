@@ -42,7 +42,7 @@ function RoleHomeRedirect() {
 }
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+  const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
 
   // Show loading spinner while checking app public settings or auth
   if (isLoadingPublicSettings || isLoadingAuth) {
@@ -53,15 +53,10 @@ const AuthenticatedApp = () => {
     );
   }
 
-  // Handle authentication errors
-  if (authError) {
-    if (authError.type === 'user_not_registered') {
-      return <UserNotRegisteredError />;
-    } else if (authError.type === 'auth_required') {
-      // Redirect to login automatically
-      navigateToLogin();
-      return null;
-    }
+  // Never call window.location during render — that causes an infinite reload flicker.
+  // Public auth pages stay reachable; ProtectedRoute handles unauthenticated users.
+  if (authError?.type === "user_not_registered") {
+    return <UserNotRegisteredError />;
   }
 
   // Render the main app

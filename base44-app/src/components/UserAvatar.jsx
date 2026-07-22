@@ -18,7 +18,9 @@ export default function UserAvatar({
       src={resolved}
       alt={alt || name}
       className={`${className} rounded-full object-cover ring-1 ring-border shrink-0 bg-muted`}
-      onError={() => setBroken(true)}
+      onError={() => {
+        if (!broken) setBroken(true);
+      }}
       loading="lazy"
     />
   );

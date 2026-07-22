@@ -37,8 +37,12 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       setUser(null);
       setIsAuthenticated(false);
+      // Stale/invalid token must be cleared or isAuthenticated() keeps retrying forever.
       if (error.status === 401 || error.status === 403) {
+        apiClient.auth.logout();
         setAuthError({ type: "auth_required", message: "Authentication required" });
+      } else {
+        setAuthError(null);
       }
     } finally {
       setIsLoadingAuth(false);
