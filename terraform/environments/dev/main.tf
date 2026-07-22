@@ -211,3 +211,20 @@ module "pipeline" {
 
   depends_on = [module.eb]
 }
+
+# GitHub Actions → assume this role via OIDC → start sbl-dev-pipeline
+# Note: GitHub OIDC sub uses numeric IDs (repo:Org@id/Repo@id:ref:...), not owner/name alone.
+module "github_oidc" {
+  source = "../../modules/github-oidc"
+
+  name_prefix = "sbl-dev"
+  allowed_subs = [
+    "repo:SblLiga@306753603/SBL_COMANDO@1305679068:ref:refs/heads/dev",
+  ]
+  pipeline_arn         = module.pipeline.pipeline_arn
+  create_oidc_provider = true
+
+  tags = local.tags
+
+  depends_on = [module.pipeline]
+}

@@ -26,3 +26,12 @@ output "artifact_bucket_name" {
   value     = module.pipeline.artifact_bucket_name
   sensitive = true
 }
+
+output "github_actions_role_arn" {
+  description = "Paste into GitHub secret AWS_ROLE_ARN_DEV"
+  value       = module.github_oidc.role_arn
+}
+
+output "github_oidc_provider_arn" {
+  value = module.github_oidc.oidc_provider_arn
+}
