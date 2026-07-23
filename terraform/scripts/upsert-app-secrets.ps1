@@ -91,22 +91,24 @@ if ($secretExists) {
   if ($existingJwt) { $payload.jwt_secret = $existingJwt }
 } else {
   Write-Host "Creating secret $secretName ..."
+  $desc = "SBL $Environment app secrets JWT mail GROW admin"
   aws secretsmanager create-secret `
     --region $Region `
     --name $secretName `
-    --description "SBL $Environment app secrets (JWT, mail, GROW, admin)" `
+    --description $desc `
     --secret-string "{}" | Out-Null
 }
 
-$tmp = New-TemporaryFile
+$json = ($payload | ConvertTo-Json -Compress)
+$tmp = Join-Path $env:TEMP ("sbl-app-secret-" + [guid]::NewGuid().ToString() + ".json")
 try {
-  ($payload | ConvertTo-Json -Compress) | Set-Content -Path $tmp.FullName -Encoding utf8NoBOM
+  [System.IO.File]::WriteAllText($tmp, $json)
   aws secretsmanager put-secret-value `
     --region $Region `
     --secret-id $secretName `
-    --secret-string "file://$($tmp.FullName)" | Out-Null
+    --secret-string "file://$tmp" | Out-Null
 } finally {
-  Remove-Item -Force $tmp.FullName -ErrorAction SilentlyContinue
+  Remove-Item -Force $tmp -ErrorAction SilentlyContinue
 }
 
 $secretArn = aws secretsmanager describe-secret --region $Region --secret-id $secretName --query ARN --output text
@@ -125,15 +127,15 @@ $policyDoc = @{
   )
 } | ConvertTo-Json -Depth 6 -Compress
 
-$policyTmp = New-TemporaryFile
+$policyTmp = Join-Path $env:TEMP ("sbl-app-iam-" + [guid]::NewGuid().ToString() + ".json")
 try {
-  $policyDoc | Set-Content -Path $policyTmp.FullName -Encoding utf8NoBOM
+  [System.IO.File]::WriteAllText($policyTmp, $policyDoc)
   aws iam put-role-policy `
     --role-name $roleName `
     --policy-name "$ebEnv-read-app-secrets" `
-    --policy-document "file://$($policyTmp.FullName)" | Out-Null
+    --policy-document "file://$policyTmp" | Out-Null
 } finally {
-  Remove-Item -Force $policyTmp.FullName -ErrorAction SilentlyContinue
+  Remove-Item -Force $policyTmp -ErrorAction SilentlyContinue
 }
 
 # 4) Point EB at Secrets Manager; clear plaintext JWT from environment
