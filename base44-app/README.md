@@ -1,6 +1,7 @@
-# SBL Web Application
+# SBL Web Application (`base44-app/`)
 
-React + Vite frontend for the SBL platform. All auth and data requests go to the self-hosted FastAPI backend (`/api/*`).
+> **Folder name is legacy.** This is the live React + Vite app for שולי בן לולו.  
+> Do **not** rename without updating `backend/buildspec.yml` (CI copies `base44-app/`).
 
 ## Local development
 
@@ -10,17 +11,22 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_URL=http://localhost:8000` in `.env.local` when running the backend via Docker Compose.
+Set `VITE_API_URL=http://localhost:8000` in `.env.local` when the backend runs via root `docker-compose.yml`.
+
+## Layout
+
+| Path | Purpose |
+|------|---------|
+| `src/pages/` | Route screens |
+| `src/components/` | Shared UI |
+| `src/api/apiClient.js` | REST → FastAPI `/api/*` |
+| `src/lib/` | Auth, media URLs, helpers |
+| `public/` | Brand assets (logo, favicons, manifest) |
+
+## Brand / tab icon
+
+Favicons are generated from `public/logo.png` via `scripts/gen_favicon.py`.
 
 ## Build
 
-```powershell
-npm run build
-```
-
-Production builds are produced automatically by `backend/buildspec.yml` during CodePipeline deployment.
-
-## API client
-
-- `src/api/apiClient.js` — REST client for auth, entities, and file uploads
-- `src/lib/AuthContext.jsx` — session state and route guards
+Production builds are produced by `backend/buildspec.yml` during CodePipeline.

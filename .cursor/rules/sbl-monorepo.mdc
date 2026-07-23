@@ -1,0 +1,15 @@
+---
+description: SBL_COMANDO monorepo layout and non-negotiable CI paths
+alwaysApply: true
+---
+
+# SBL_COMANDO structure
+
+- Frontend (live app): `base44-app/` — **do not rename** (CodeBuild copies this path).
+- Backend: `backend/` (FastAPI, Alembic, EB Docker, `buildspec.yml`).
+- Infra: `terraform/`. CI triggers: `.github/workflows/`.
+- `frontend/` is a legacy stub — do not add product code there.
+- Place pages in `base44-app/src/pages/`, components in `base44-app/src/components/`, API routers in `backend/app/api/` or `backend/app/auth/`.
+- Do not dump loose configs in the repo root; keep env templates next to the owning package.
+- Durable media: `/api/media/{id}` + `media_assets` table (not EB ephemeral disk alone).
+- Tab/brand icons: `base44-app/public/logo.png` (+ generated favicons), not text-only SVG.

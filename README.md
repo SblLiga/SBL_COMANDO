@@ -52,26 +52,30 @@ RDS PostgreSQL
 
 ## 2. Repository Structure
 
+See the full map in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
 ```text
 SBL_COMANDO/
-├── backend/                 # FastAPI API + EB Docker image
-│   ├── app/                 # Application code (config, models, bootstrap, health)
+├── backend/                 # FastAPI API + EB Docker image  ★ CI
+│   ├── app/                 # Application code
 │   ├── alembic/             # Database migrations
-│   ├── buildspec.yml        # AWS CodeBuild instructions
+│   ├── buildspec.yml        # AWS CodeBuild (builds base44-app/)
 │   ├── Dockerfile           # EB runtime image
-│   └── scripts/start.sh     # Container startup (migrations + gunicorn)
-├── frontend/                # Minimal React scaffold (fallback)
-├── base44-app/              # SBL web application (React + Vite)
-│   ├── src/api/apiClient.js # Self-hosted REST client → FastAPI /api/*
+│   └── scripts/start.sh     # Migrations + gunicorn
+├── base44-app/              # LIVE React + Vite app (legacy folder name)  ★ CI
+│   ├── public/              # Logo, favicons, PWA manifest
+│   └── src/                 # pages, components, api, lib
+├── frontend/                # Legacy stub — do not use
 ├── terraform/               # AWS infrastructure (dev + prod)
-│   ├── environments/dev/
-│   ├── environments/prod/
-│   └── scripts/             # One-time SSM bootstrap scripts
+├── docs/                    # Architecture & contributor maps
+├── .cursor/rules/           # Cursor always-on project rules
+├── .cursorrules             # Agent organization rules
 ├── .github/workflows/       # Pipeline trigger workflows
 ├── docker-compose.yml       # Local backend + PostgreSQL
 └── .env.example             # Environment variable template
 ```
 
+> **`base44-app/`** is not Base44 SaaS — the name is kept only for CodeBuild path stability.
 ### Branch strategy
 
 | Branch | Purpose | AWS Pipeline | EB Environment |

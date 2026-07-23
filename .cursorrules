@@ -1,0 +1,40 @@
+# SBL_COMANDO — Cursor / Agent Rules
+
+You are working in the **SBL_COMANDO** monorepo (שולי בן לולו — ליגת כובשים יעדים).
+
+## Hard path constraints (do not break CI/CD)
+
+- **Production frontend lives in `base44-app/`** — folder name is legacy; **do not rename** without updating `backend/buildspec.yml` and docs.
+- **Backend lives in `backend/`** — FastAPI + Alembic + EB `Dockerfile` + `buildspec.yml`.
+- **Infrastructure lives in `terraform/`** — do not invent parallel infra folders.
+- **CI triggers:** `.github/workflows/deploy-dev.yml` / `deploy-prod.yml` → CodePipeline. Do not change trigger contracts casually.
+- Root `docker-compose.yml` is the local stack. Prefer it over nested compose files unless explicitly asked.
+- `frontend/` is a **legacy stub only** — never put product features there.
+
+## Where new code goes
+
+| Work | Put it here |
+|------|-------------|
+| React pages | `base44-app/src/pages/` |
+| Shared UI / domain components | `base44-app/src/components/` |
+| API client / auth context / helpers | `base44-app/src/api/`, `base44-app/src/lib/` |
+| Static brand assets | `base44-app/public/` |
+| FastAPI routers | `backend/app/api/` or `backend/app/auth/` |
+| ORM models / serializers | `backend/app/models.py`, `backend/app/serializers.py` |
+| DB migrations | `backend/alembic/versions/` |
+| Ops docs / architecture maps | `docs/` |
+| Env templates | nearest package `.env.example` or root `.env.example` |
+
+## Coding standards
+
+- Prefer small, focused diffs. Do not drive-by refactor unrelated files.
+- Match existing style (React + Vite JS, FastAPI Python).
+- Handle errors with clear user-facing toasts (FE) and HTTPException/logging (BE).
+- Uploads / avatars / rewards: durable storage via `/api/media/{id}` (Postgres `media_assets`) — do not rely on EB local disk alone.
+- Never commit secrets (`.env`, credentials). Respect existing env var names used by EB/Terraform.
+- Do not scatter loose config files in the repo root — use the module that owns them.
+- Keep Hebrew RTL UX intact (`dir="rtl"`, existing copy patterns).
+
+## Brand / tab icon
+
+- Browser tab icon and PWA icons must use the SBL logo assets under `base44-app/public/` (`logo.png`, `favicon-*.png`, `apple-touch-icon.png`) — not the old text-only "SBL" SVG badge as the primary favicon.
