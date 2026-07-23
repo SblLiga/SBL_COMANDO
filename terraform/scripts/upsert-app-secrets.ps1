@@ -61,9 +61,16 @@ $payload = [ordered]@{
 }
 
 $secretExists = $false
-$describeOut = aws secretsmanager describe-secret --region $Region --secret-id $secretName --query ARN --output text 2>$null
-if ($LASTEXITCODE -eq 0 -and $describeOut -and $describeOut -ne "None") {
-  $secretExists = $true
+try {
+  $ErrorActionPreference = "Continue"
+  $describeOut = aws secretsmanager describe-secret --region $Region --secret-id $secretName --query ARN --output text 2>$null
+  if ($LASTEXITCODE -eq 0 -and $describeOut -and $describeOut -ne "None") {
+    $secretExists = $true
+  }
+} catch {
+  $secretExists = $false
+} finally {
+  $ErrorActionPreference = "Stop"
 }
 
 if ($secretExists) {
