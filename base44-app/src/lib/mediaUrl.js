@@ -4,7 +4,7 @@
  */
 export function mediaUrl(url) {
   if (!url) return "";
-  if (/^https?:\/\//i.test(url) || url.startsWith("data:")) return url;
+  if (/^https?:\/\//i.test(url) || url.startsWith("data:") || url.startsWith("blob:")) return url;
   const base = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
   if (url.startsWith("/")) return `${base}${url}`;
   return `${base}/${url}`;

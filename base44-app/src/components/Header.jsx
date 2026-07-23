@@ -23,7 +23,7 @@ export default function Header({ hideUser = false }) {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, hideUser]);
+  }, [user?.id, user?.avatar_url, hideUser]);
 
   const name = member?.name || user?.full_name || "משתמש";
   const avatarSrc = user?.avatar_url || member?.avatar_url || "";

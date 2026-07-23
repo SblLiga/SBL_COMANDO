@@ -69,7 +69,8 @@ export default function Profile() {
     if (!file) return;
     const ext = (file.name || "").split(".").pop()?.toLowerCase() || "";
     const looksLikeImage =
-      (file.type && file.type.startsWith("image/")) ||
+      !file.type ||
+      file.type.startsWith("image/") ||
       ["png", "jpg", "jpeg", "webp", "gif", "heic", "heif"].includes(ext);
     if (!looksLikeImage) {
       toast({ title: "שגיאה", description: "יש לבחור קובץ תמונה בלבד", variant: "destructive" });
@@ -79,17 +80,21 @@ export default function Profile() {
       toast({ title: "שגיאה", description: "גודל מקסימלי 5MB", variant: "destructive" });
       return;
     }
+    const localPreview = URL.createObjectURL(file);
+    setAvatarUrl(localPreview);
     setUploading(true);
     try {
       const res = await apiClient.integrations.Core.UploadFile({ file });
       const url = res.file_url || res.url;
       if (!url) throw new Error("השרת לא החזיר קישור לתמונה");
       await persistAvatar(url);
-      toast({ title: "התמונה עודכנה", description: "תמונת הפרופיל נשמרה ומוצגת בכל המערכת." });
+      toast({ title: "התמונה עודכנה", description: "תמונת הפרופיל נשמרה ומוצגת לכל המשתמשים." });
     } catch (err) {
       console.error("[Profile] avatar upload failed", err);
+      setAvatarUrl(member?.avatar_url || user?.avatar_url || "");
       toast({ title: "שגיאה", description: err.message || "העלאת התמונה נכשלה", variant: "destructive" });
     } finally {
+      URL.revokeObjectURL(localPreview);
       setUploading(false);
     }
   };
@@ -174,9 +179,13 @@ export default function Profile() {
               )}
               <input
                 type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
+                accept="image/*,.heic,.heif,.png,.jpg,.jpeg,.webp,.gif"
                 className="hidden"
-                onChange={(e) => e.target.files?.[0] && handleUploadAvatar(e.target.files[0])}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) handleUploadAvatar(f);
+                }}
                 disabled={uploading}
               />
             </label>

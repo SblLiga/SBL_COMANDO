@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -201,6 +201,22 @@ class PasswordResetToken(Base):
     token: Mapped[str] = mapped_column(String(64), unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     used: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class MediaAsset(Base):
+    """Binary uploads persisted in RDS so EB redeploys do not wipe avatars/rewards."""
+
+    __tablename__ = "media_assets"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    content_type: Mapped[str] = mapped_column(String(128))
+    filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+    byte_size: Mapped[int] = mapped_column(Integer)
+    owner_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
