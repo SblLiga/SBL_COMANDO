@@ -129,13 +129,13 @@ export default function Home() {
         </Link>
       )}
 
-      {goal?.reward_text && (
+      {(goal?.reward_text || goal?.reward_image) && (
         <div className="card-gold-rim p-4 flex items-center gap-3">
           {goal.reward_image ? (
             <img
               src={mediaUrl(goal.reward_image)}
-              alt=""
-              className="w-12 h-12 rounded-xl object-cover shrink-0 ring-1 ring-primary/30"
+              alt="הצ'ופר"
+              className="w-14 h-14 rounded-xl object-cover shrink-0 ring-1 ring-primary/30"
             />
           ) : (
             <div className="w-12 h-12 rounded-xl gold-gradient flex items-center justify-center shrink-0">
@@ -143,8 +143,8 @@ export default function Home() {
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] text-primary font-bold">התגמול שלך ל-100%</p>
-            <p className="text-sm font-medium truncate">{goal.reward_text}</p>
+            <p className="text-[10px] text-primary font-bold">התגמול שלך ל-100% (צ'ופר)</p>
+            <p className="text-sm font-medium truncate">{goal.reward_text || "תמונת תגמול"}</p>
           </div>
           <span className="font-display text-2xl font-bold gold-text">{pct}%</span>
         </div>

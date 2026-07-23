@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "react";
 import apiClient from "@/api/apiClient";
-import { Zap, Flame, Plus, Check, EyeOff, Eye, GripVertical, Pencil, Trash2 } from "lucide-react";
+import { Zap, Flame, Plus, Check, EyeOff, Eye, GripVertical, Pencil, Trash2, Gift } from "lucide-react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import SmartWheel from "@/components/SmartWheel";
 import KpiCard from "@/components/KpiCard";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 import { ensureMyGoal } from "@/lib/myGoal";
+import { mediaUrl } from "@/lib/mediaUrl";
 
 const PRIORITIES = ["דחוף", "בינוני", "נמוך"];
 
@@ -191,6 +192,18 @@ export default function Goal() {
             {goal.reward_text && (
               <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
                 <span className="text-primary">🎁</span> {goal.reward_text}
+              </p>
+            )}
+            {goal.reward_image && (
+              <img
+                src={mediaUrl(goal.reward_image)}
+                alt="הצ'ופר / תגמול"
+                className="mt-3 w-full max-h-40 object-cover rounded-xl ring-1 ring-primary/30"
+              />
+            )}
+            {!goal.reward_text && !goal.reward_image && (
+              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                <Gift className="w-3.5 h-3.5 text-primary" /> אין תגמול מוגדר עדיין
               </p>
             )}
             {goal.is_hidden && (
