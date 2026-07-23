@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.entities import router as entities_router
+from app.api.grow_webhook import router as grow_router
 from app.api.upload import router as upload_router
 from app.auth.router import router as auth_router
 from app.bootstrap import run_database_bootstrap
@@ -70,6 +71,7 @@ if not settings.is_production:
 app.include_router(auth_router)
 app.include_router(entities_router)
 app.include_router(upload_router)
+app.include_router(grow_router)
 
 UPLOAD_DIR = Path("static/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -109,7 +111,7 @@ def spa_root():
 @app.get("/{full_path:path}")
 def spa_fallback(full_path: str):
     """Serve the React SPA for client-side routes like /admin, /login, /manager."""
-    # Never shadow API / health / uploads
+    # SPA fallback: never shadow API / health / uploads / GROW
     if full_path.startswith(("api/", "health", "uploads/", "docs", "openapi.json", "redoc")):
         raise HTTPException(status_code=404, detail="Not Found")
 

@@ -4,7 +4,8 @@ import apiClient from "@/api/apiClient";
 import { Lock, ExternalLink, ShieldAlert } from "lucide-react";
 import { needsMonthlyOnboarding, needsWaitingListAssignment } from "@/lib/calendarRules";
 
-const GROW_PAYMENT_URL = "https://grow.co.il/subscribe";
+const GROW_PAYMENT_URL =
+  import.meta.env.VITE_GROW_PAYMENT_URL || "https://grow.co.il/subscribe";
 
 export default function SubscriptionGate() {
   const [user, setUser] = useState(null);
