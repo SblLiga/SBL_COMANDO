@@ -60,6 +60,13 @@ class Settings(BaseSettings):
     app_public_url: str = Field(default="", alias="APP_PUBLIC_URL")
     aws_region: str = Field(default="", alias="AWS_REGION")
 
+    # GROW payments — wire secrets tomorrow morning
+    grow_webhook_secret: str = Field(default="", alias="GROW_WEBHOOK_SECRET")
+    grow_payment_url: str = Field(
+        default="https://grow.co.il/subscribe",
+        alias="GROW_PAYMENT_URL",
+    )
+
     def resolved_db_password(self) -> str:
         # Prefer Secrets Manager when ARN/name is set. EB/CFN dynamic
         # references with full secret ARNs break on colons and inject a bad password.
