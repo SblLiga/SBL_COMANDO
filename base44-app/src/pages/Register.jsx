@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,23 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [showOtp, setShowOtp] = useState(params.get("verify") === "true");
   const [otpCode, setOtpCode] = useState("");
+  const [devOtp, setDevOtp] = useState("");
+  const [emailSent, setEmailSent] = useState(false);
+
+  useEffect(() => {
+    // Coming from login (unverified) — auto-resend a fresh code
+    if (params.get("verify") === "true" && params.get("email") && params.get("resend") !== "0") {
+      const addr = params.get("email");
+      apiClient.auth
+        .resendOtp(addr)
+        .then((res) => {
+          setEmailSent(Boolean(res?.email_sent));
+          if (res?.dev_otp) setDevOtp(res.dev_otp);
+        })
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -26,10 +43,26 @@ export default function Register() {
       setError("הסיסמאות אינן תואמות");
       return;
     }
+    if (password.length < 6) {
+      setError("הסיסמה חייבת להכיל לפחות 6 תווים");
+      return;
+    }
     setLoading(true);
     try {
-      await apiClient.auth.register({ email, password });
+      const res = await apiClient.auth.register({ email, password });
+      setEmailSent(Boolean(res?.email_sent));
+      if (res?.dev_otp) setDevOtp(res.dev_otp);
       setShowOtp(true);
+      if (res?.email_sent) {
+        toast({ title: "הקוד נשלח", description: `נשלח ל-${email}` });
+      } else {
+        toast({
+          title: "קוד אימות נוצר",
+          description: res?.dev_otp
+            ? `המייל עדיין לא מוגדר בשרת — השתמשי בקוד: ${res.dev_otp}`
+            : "בדקי את תיבת הדוא״ל או השתמשי בקוד 000000 בסביבת DEV",
+        });
+      }
     } catch (err) {
       setError(err.message || "ההרשמה נכשלה");
     } finally {
@@ -56,10 +89,16 @@ export default function Register() {
   const handleResend = async () => {
     setError("");
     try {
-      await apiClient.auth.resendOtp(email);
+      const res = await apiClient.auth.resendOtp(email);
+      setEmailSent(Boolean(res?.email_sent));
+      if (res?.dev_otp) setDevOtp(res.dev_otp);
       toast({
-        title: "הקוד נשלח",
-        description: "בדוק/י את תיבת הדוא״ל לקוד החדש.",
+        title: res?.email_sent ? "הקוד נשלח למייל" : "קוד חדש נוצר",
+        description: res?.email_sent
+          ? `בדוק/י את תיבת הדוא״ל של ${email}`
+          : res?.dev_otp
+            ? `קוד DEV: ${res.dev_otp}`
+            : "השתמש/י ב-000000 בסביבת DEV",
       });
     } catch (err) {
       setError(err.message || "שליחת הקוד נכשלה");
@@ -71,16 +110,33 @@ export default function Register() {
       <AuthLayout
         icon={Mail}
         title="אימות דוא״ל"
-        subtitle={`שלחנו קוד ל-${email}`}
+        subtitle={emailSent ? `שלחנו קוד ל-${email}` : `קוד אימות עבור ${email}`}
+        footer={
+          <>
+            כבר יש לך חשבון מאומת?{" "}
+            <Link to="/login" className="text-primary font-medium hover:underline relative z-10">
+              חזרה להתחברות
+            </Link>
+          </>
+        }
       >
         {error && (
           <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
             {error}
           </div>
         )}
-        <p className="text-xs text-muted-foreground text-center mb-3">
-          ב-DEV: השתמש/י בקוד <span dir="ltr" className="font-mono">000000</span>
-        </p>
+        {devOtp ? (
+          <p className="text-xs text-center mb-3 p-2 rounded-lg bg-primary/10 text-primary" dir="ltr">
+            קוד DEV להדגמה: <span className="font-mono font-bold tracking-widest">{devOtp}</span>
+            <span className="block text-muted-foreground mt-1">(או 000000)</span>
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground text-center mb-3">
+            {emailSent
+              ? "בדק/י את תיבת הדוא״ל (וגם ספאם)."
+              : <>ב-DEV אפשר גם קוד <span dir="ltr" className="font-mono">000000</span></>}
+          </p>
+        )}
         <div className="flex justify-center mb-6" dir="ltr">
           <InputOTP
             maxLength={6}
@@ -119,6 +175,14 @@ export default function Register() {
             שלח שוב
           </button>
         </p>
+        <div className="mt-6 pt-4 border-t border-border text-center">
+          <Link
+            to="/login"
+            className="inline-flex items-center justify-center w-full h-11 rounded-xl bg-muted text-sm font-medium hover:bg-accent transition-colors"
+          >
+            חזרה למשתמש קיים — התחברות
+          </Link>
+        </div>
       </AuthLayout>
     );
   }
@@ -131,7 +195,7 @@ export default function Register() {
       footer={
         <>
           כבר יש לך חשבון?{" "}
-          <Link to="/login" className="text-primary font-medium hover:underline">
+          <Link to="/login" className="text-primary font-medium hover:underline relative z-10">
             התחבר/י
           </Link>
         </>
@@ -203,6 +267,12 @@ export default function Register() {
             "צור חשבון"
           )}
         </Button>
+        <Link
+          to="/login"
+          className="inline-flex items-center justify-center w-full h-11 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors"
+        >
+          חזרה למשתמש קיים
+        </Link>
       </form>
     </AuthLayout>
   );

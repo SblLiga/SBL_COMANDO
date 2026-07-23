@@ -119,12 +119,12 @@ export default function Messages() {
           toast({ title: "שגיאה", description: "לא נמצא מנהל/ת לקבוצה", variant: "destructive" });
         }
       } else if (composeTarget === "admin") {
-        const admins = await apiClient.entities.Member.filter({ role: "admin" });
-        const targets = admins.filter((a) => a.user_id);
+        const admins = await apiClient.entities.User.filter({ role: "admin" });
+        const targets = (admins || []).filter((a) => a.id);
         if (targets.length > 0) {
           await apiClient.entities.Notification.bulkCreate(
             targets.map((a) => ({
-              target_user_id: a.user_id,
+              target_user_id: a.id,
               title: "הודעה ממשתמש/ת",
               body: composeMsg.trim(),
               type: "info",

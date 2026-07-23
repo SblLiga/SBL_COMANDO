@@ -56,7 +56,7 @@ export default function Login() {
       footer={
         <>
           אין לך חשבון?{" "}
-          <Link to="/register" className="text-primary font-medium hover:underline">
+          <Link to="/register" className="text-primary font-medium hover:underline relative z-10">
             צר/י חשבון
           </Link>
         </>
@@ -89,7 +89,7 @@ export default function Login() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label htmlFor="password">סיסמה</Label>
-            <Link to="/forgot-password" className="text-xs text-primary hover:underline">
+            <Link to="/forgot-password" className="text-xs text-primary hover:underline relative z-10">
               שכחת סיסמה?
             </Link>
           </div>
@@ -117,6 +117,12 @@ export default function Login() {
             "התחבר/י"
           )}
         </Button>
+        <Link
+          to="/register"
+          className="inline-flex items-center justify-center w-full h-11 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors relative z-10"
+        >
+          משתמש חדש — צר/י חשבון
+        </Link>
       </form>
     </AuthLayout>
   );

@@ -9,6 +9,7 @@ import StepGender from "@/components/onboarding/StepGender";
 import StepManager from "@/components/onboarding/StepManager";
 import StepTasks from "@/components/onboarding/StepTasks";
 import StepReward from "@/components/onboarding/StepReward";
+import { toast } from "@/components/ui/use-toast";
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -222,6 +223,13 @@ export default function Onboarding() {
       });
 
       navigate("/");
+    } catch (err) {
+      console.error("[Onboarding] finish failed", err);
+      toast({
+        title: "שגיאה בסיום ההרשמה",
+        description: err.message || "לא הצלחנו לשמור. נסו שוב.",
+        variant: "destructive",
+      });
     } finally {
       setSubmitting(false);
     }

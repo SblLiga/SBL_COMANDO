@@ -4,19 +4,24 @@ import apiClient from "@/api/apiClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Mail, ArrowLeft, Loader2 } from "lucide-react";
+import { Mail, ArrowRight, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [resetUrl, setResetUrl] = useState("");
+  const [emailSent, setEmailSent] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await apiClient.auth.resetPasswordRequest(email);
+      const res = await apiClient.auth.resetPasswordRequest(email);
+      setEmailSent(Boolean(res?.email_sent));
+      if (res?.reset_url) setResetUrl(res.reset_url);
+      else if (res?.reset_token) setResetUrl(`/reset-password?token=${encodeURIComponent(res.reset_token)}`);
     } catch {
       // Always show success regardless
     } finally {
@@ -28,22 +33,46 @@ export default function ForgotPassword() {
   return (
     <AuthLayout
       icon={Mail}
-      title="Reset password"
-      subtitle="We'll send you a link to reset it"
+      title="איפוס סיסמה"
+      subtitle="נשלח אליך קישור לאיפוס"
       footer={
-        <Link to="/login" className="text-primary font-medium hover:underline">
-          <ArrowLeft className="w-3 h-3 inline mr-1" />Back to log in
+        <Link to="/login" className="text-primary font-medium hover:underline inline-flex items-center gap-1">
+          <ArrowRight className="w-3 h-3" />
+          חזרה להתחברות
         </Link>
       }
     >
       {sent ? (
-        <p className="text-sm text-foreground text-center">
-          If an account exists with that email, you'll receive a password reset link shortly.
-        </p>
+        <div className="space-y-3 text-sm text-center">
+          <p className="text-foreground">
+            {emailSent
+              ? "אם קיים חשבון עם כתובת זו — נשלח מייל עם קישור לאיפוס."
+              : "אם קיים חשבון עם כתובת זו — נוצר קישור לאיפוס."}
+          </p>
+          {resetUrl && (
+            <p className="text-xs break-all p-3 rounded-lg bg-primary/10 text-primary text-right">
+              קישור DEV:{" "}
+              <Link
+                to={(() => {
+                  try {
+                    if (resetUrl.startsWith("http")) return new URL(resetUrl).pathname + new URL(resetUrl).search;
+                  } catch {
+                    /* ignore */
+                  }
+                  return resetUrl.startsWith("/") ? resetUrl : `/${resetUrl}`;
+                })()}
+                className="underline font-medium"
+                dir="ltr"
+              >
+                לחצ/י כאן לאיפוס
+              </Link>
+            </p>
+          )}
+        </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Email address</Label>
+            <Label htmlFor="email">דוא״ל</Label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
               <Input
@@ -63,10 +92,10 @@ export default function ForgotPassword() {
             {loading ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Sending...
+                שולח...
               </>
             ) : (
-              "Send reset link"
+              "שלח קישור לאיפוס"
             )}
           </Button>
         </form>

@@ -157,6 +157,8 @@ def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
                     xp=mgr_goal.xp_total,
                     streak=mgr_goal.streak,
                     status="בעקבות",
+                    next_month_target=manager.target or "מכירות",
+                    next_month_selected_at=datetime.now(timezone.utc),
                 )
             )
             repaired += 1
@@ -167,6 +169,11 @@ def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
             mgr_member.goal_id = mgr_goal.id
             mgr_member.goal_title = mgr_goal.title
             mgr_member.name = manager.full_name
+            # Avoid blocking the manager UI on demo days (≥23) with an empty next-month modal
+            if not mgr_member.next_month_selected_at:
+                mgr_member.next_month_target = mgr_member.target or manager.target or "מכירות"
+                mgr_member.next_month_selected_at = datetime.now(timezone.utc)
+                repaired += 1
 
     if participant:
         participant.group_id = group.id

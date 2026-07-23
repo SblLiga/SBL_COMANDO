@@ -23,6 +23,21 @@ INT_FIELDS = {
     "manager_id",
 }
 
+# Non-admins must not escalate privileges via entity CRUD
+_PRIVILEGED_USER_FIELDS = {"role", "subscription_status", "email_verified", "password_hash", "email"}
+
+
+def _strip_privileged(entity_name: str, data: dict[str, Any], actor: User) -> dict[str, Any]:
+    if actor.role == "admin":
+        return data
+    if entity_name == "User":
+        return {k: v for k, v in data.items() if k not in _PRIVILEGED_USER_FIELDS}
+    if entity_name == "Member" and "role" in data:
+        cleaned = dict(data)
+        cleaned.pop("role", None)
+        return cleaned
+    return data
+
 
 def _coerce_payload(data: dict[str, Any]) -> dict[str, Any]:
     cleaned: dict[str, Any] = {}
@@ -146,7 +161,7 @@ def update_entity(
     entity_id: str,
     payload: dict[str, Any],
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     model = MODEL_MAP.get(entity_name)
     if model is None:
@@ -156,7 +171,7 @@ def update_entity(
     if row is None:
         raise HTTPException(status_code=404, detail="Not found")
 
-    data = _coerce_payload(payload)
+    data = _strip_privileged(entity_name, _coerce_payload(payload), current_user)
     allowed = {c.name for c in model.__table__.columns} - {"id", "created_at"}
     for key, value in data.items():
         if key in allowed:

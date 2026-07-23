@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     admin_password: str = Field(default="", alias="ADMIN_PASSWORD")
     dev_admin_password: str = Field(default="Admin123!", alias="DEV_ADMIN_PASSWORD")
 
+    # Transactional email (Amazon SES). Empty MAIL_FROM = log-only fallback.
+    mail_from: str = Field(default="", alias="MAIL_FROM")
+    app_public_url: str = Field(default="", alias="APP_PUBLIC_URL")
+    aws_region: str = Field(default="", alias="AWS_REGION")
+
     def resolved_db_password(self) -> str:
         # Prefer Secrets Manager when ARN/name is set. EB/CFN dynamic
         # references with full secret ARNs break on colons and inject a bad password.

@@ -60,8 +60,7 @@ class UpdateMeRequest(BaseModel):
     focus_target: str | None = None
     focus_month: str | None = None
     avatar_url: str | None = None
-    subscription_status: str | None = None
-    role: str | None = None
+    # role / subscription_status intentionally omitted — not self-service
 
 
 class TokenResponse(BaseModel):

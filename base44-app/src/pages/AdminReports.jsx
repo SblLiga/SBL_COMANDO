@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import apiClient from "@/api/apiClient";
 import { FileText, CheckCircle2, Clock, XCircle, Search } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
+import { useToast } from "@/components/ui/use-toast";
 
 const statusMeta = {
   approved: { icon: CheckCircle2, color: "text-green-500", bg: "bg-green-500/15", label: "אושר" },
@@ -12,11 +13,13 @@ const statusMeta = {
 const typeLabel = { weekly: "סיכום שבועי", monthly: "סיכום חודשי", progress: "דוח התקדמות", anomaly: "דוח חריגות" };
 
 export default function AdminReports() {
+  const { toast } = useToast();
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [query, setQuery] = useState("");
+  const [busyId, setBusyId] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -28,6 +31,19 @@ export default function AdminReports() {
       }
     })();
   }, []);
+
+  const setStatus = async (report, status) => {
+    setBusyId(report.id);
+    try {
+      const updated = await apiClient.entities.Report.update(report.id, { status });
+      setReports((prev) => prev.map((x) => (x.id === report.id ? updated : x)));
+      toast({ title: status === "approved" ? "הדוח אושר" : "הדוח נדחה" });
+    } catch (err) {
+      toast({ title: "שגיאה", description: err.message || "עדכון הדוח נכשל", variant: "destructive" });
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   if (loading)
     return (
@@ -109,7 +125,7 @@ export default function AdminReports() {
           const st = statusMeta[r.status] || statusMeta.pending;
           const Icon = st.icon;
           return (
-            <div key={r.id} className="card-lux p-3">
+            <div key={r.id} className="card-lux p-3 space-y-2">
               <div className="flex items-center gap-3">
                 <div className={`w-9 h-9 rounded-lg ${st.bg} flex items-center justify-center`}>
                   <Icon className={`w-4 h-4 ${st.color}`} />
@@ -122,7 +138,27 @@ export default function AdminReports() {
                 </div>
                 <span className={`text-[10px] px-2 py-0.5 rounded-full ${st.bg} ${st.color} font-bold`}>{st.label}</span>
               </div>
-              {r.content && <p className="text-xs text-muted-foreground mt-2 leading-snug line-clamp-2">{r.content}</p>}
+              {r.content && <p className="text-xs text-muted-foreground leading-snug line-clamp-3">{r.content}</p>}
+              {(r.status === "pending" || !r.status) && (
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={busyId === r.id}
+                    onClick={() => setStatus(r, "approved")}
+                    className="flex-1 text-xs py-2 rounded-lg bg-green-500/15 text-green-500 font-bold disabled:opacity-40"
+                  >
+                    אישור
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyId === r.id}
+                    onClick={() => setStatus(r, "rejected")}
+                    className="flex-1 text-xs py-2 rounded-lg bg-red-500/15 text-red-500 font-bold disabled:opacity-40"
+                  >
+                    דחייה
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}

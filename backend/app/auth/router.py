@@ -1,6 +1,7 @@
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -21,12 +22,16 @@ from app.auth.schemas import (
 )
 from app.config import get_settings
 from app.database import get_db
+from app.mailer import send_otp_email, send_password_reset_email
 from app.models import EmailVerificationToken, PasswordResetToken, User
 from app.security import hash_password, verify_password
 from app.serializers import user_to_dict
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# Fields users may never self-assign via PATCH /me
+_FORBIDDEN_ME_FIELDS = {"role", "subscription_status", "email", "password_hash", "email_verified"}
 
 
 def _issue_otp(db: Session, user: User) -> str:
@@ -37,8 +42,29 @@ def _issue_otp(db: Session, user: User) -> str:
     ).delete()
     db.add(EmailVerificationToken(user_id=user.id, code=code, expires_at=expires))
     db.commit()
-    logger.info("OTP issued for %s", user.email)
+    logger.info("OTP issued for %s code=%s", user.email, code)
     return code
+
+
+def _otp_response(email: str, code: str, sent: bool) -> dict:
+    settings = get_settings()
+    payload: dict = {
+        "message": "Verification code sent" if sent else "Verification code created",
+        "email": email,
+        "email_sent": sent,
+    }
+    # Always expose OTP outside production so DEV/demo can verify without SES.
+    if not settings.is_production:
+        payload["dev_otp"] = code
+        if not sent:
+            payload["hint"] = "Email provider not configured — use dev_otp or 000000"
+    return payload
+
+
+def _deliver_otp(db: Session, user: User) -> dict:
+    code = _issue_otp(db, user)
+    sent = send_otp_email(get_settings(), to=user.email, code=code)
+    return _otp_response(user.email, code, sent)
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
@@ -46,7 +72,12 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     email = payload.email.strip().lower()
     existing = db.scalar(select(User).where(User.email == email))
     if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
+        if existing.email_verified:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        # Unverified account: refresh password + re-issue OTP (recovery path)
+        existing.password_hash = hash_password(payload.password)
+        db.commit()
+        return _deliver_otp(db, existing)
 
     user = User(
         email=email,
@@ -59,8 +90,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    _issue_otp(db, user)
-    return {"message": "Verification code sent", "email": email}
+    return _deliver_otp(db, user)
 
 
 @router.post("/verify-otp", response_model=TokenResponse)
@@ -95,9 +125,10 @@ def resend_otp(payload: ResendOtpRequest, db: Session = Depends(get_db)):
     email = payload.email.strip().lower()
     user = db.scalar(select(User).where(User.email == email))
     if user is None:
-        return {"message": "If the email exists, a new code was sent"}
-    _issue_otp(db, user)
-    return {"message": "Verification code sent"}
+        return {"message": "If the email exists, a new code was sent", "email_sent": False}
+    if user.email_verified:
+        return {"message": "Email already verified", "email_sent": False}
+    return _deliver_otp(db, user)
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -126,6 +157,8 @@ def update_me(
     db: Session = Depends(get_db),
 ):
     data = payload.model_dump(exclude_unset=True)
+    for forbidden in _FORBIDDEN_ME_FIELDS:
+        data.pop(forbidden, None)
     if "group_id" in data and data["group_id"] is not None:
         data["group_id"] = int(data["group_id"])
     if "onboarding_completed_at" in data and isinstance(data["onboarding_completed_at"], str):
@@ -162,17 +195,25 @@ def reset_password_request(payload: ResetPasswordRequest, db: Session = Depends(
     email = payload.email.strip().lower()
     user = db.scalar(select(User).where(User.email == email))
     if user is None:
-        return {"message": "If the email exists, reset instructions were sent"}
+        return {"message": "If the email exists, reset instructions were sent", "email_sent": False}
 
     token = secrets.token_urlsafe(32)
     expires = datetime.now(timezone.utc) + timedelta(hours=1)
     db.add(PasswordResetToken(user_id=user.id, token=token, expires_at=expires))
     db.commit()
+
     settings = get_settings()
-    response: dict[str, str] = {"message": "If the email exists, reset instructions were sent"}
+    base = (settings.app_public_url or "").rstrip("/")
+    reset_url = f"{base}/reset-password?token={quote(token)}" if base else f"/reset-password?token={quote(token)}"
+    sent = send_password_reset_email(settings, to=email, reset_url=reset_url)
+
+    response: dict = {
+        "message": "If the email exists, reset instructions were sent",
+        "email_sent": sent,
+    }
     if not settings.is_production:
-        logger.info("Password reset token issued for %s", email)
         response["reset_token"] = token
+        response["reset_url"] = reset_url
     return response
 
 

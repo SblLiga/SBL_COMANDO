@@ -135,6 +135,20 @@ resource "aws_iam_role_policy" "eb_read_db_secret" {
   })
 }
 
+resource "aws_iam_role_policy" "eb_ses_send" {
+  name = "${var.environment_name}-eb-ses-send"
+  role = aws_iam_role.ec2.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["ses:SendEmail", "ses:SendRawEmail"]
+      Resource = "*"
+    }]
+  })
+}
+
 resource "aws_iam_instance_profile" "ec2" {
   name = "${var.environment_name}-eb-ec2-profile"
   role = aws_iam_role.ec2.name
