@@ -1,17 +1,7 @@
-<#
-.SYNOPSIS
-  Migrate SBL app secrets into AWS Secrets Manager (never commits values to git).
-
-.DESCRIPTION
-  - Creates/updates secret: sbl/<env>/app-secrets
-  - Migrates current EB JWT_SECRET into the secret (no console print of values)
-  - Grants EB instance role GetSecretValue on the app secret
-  - Sets EB env APP_SECRET_ARN and clears plaintext JWT_SECRET from EB
-
-.EXAMPLE
-  .\upsert-app-secrets.ps1 -Environment dev
-  .\upsert-app-secrets.ps1 -Environment prod -MailFrom "noreply@example.com" -AppPublicUrl "https://app.example.com"
-#>
+# Migrate SBL app secrets into AWS Secrets Manager (values never go to git).
+# Usage:
+#   .\upsert-app-secrets.ps1 -Environment dev
+#   .\upsert-app-secrets.ps1 -Environment prod -MailFrom "noreply@example.com" -AppPublicUrl "https://app.example.com"
 param(
   [ValidateSet("dev", "prod")]
   [string]$Environment = "dev",
@@ -25,38 +15,40 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$ebApp = if ($Environment -eq "dev") { "sbl-dev-app" } else { "sbl-prod-app" }
-$ebEnv = if ($Environment -eq "dev") { "sbl-dev" } else { "sbl-prod" }
+if ($Environment -eq "dev") {
+  $ebApp = "sbl-dev-app"
+  $ebEnv = "sbl-dev"
+} else {
+  $ebApp = "sbl-prod-app"
+  $ebEnv = "sbl-prod"
+}
+
 $secretName = "sbl/$Environment/app-secrets"
 $roleName = "$ebEnv-eb-ec2-role"
 
-Write-Host "=== SBL secrets → Secrets Manager ($Environment) ==="
+Write-Host "=== SBL secrets to Secrets Manager ($Environment) ==="
 Write-Host "Secret name: $secretName"
 Write-Host "EB: $ebApp / $ebEnv"
 
-# 1) Read current JWT from EB (do not print value)
-$opts = aws elasticbeanstalk describe-configuration-settings `
-  --region $Region `
-  --application-name $ebApp `
-  --environment-name $ebEnv `
-  --query "ConfigurationSettings[0].OptionSettings[?Namespace=='aws:elasticbeanstalk:application:environment']" `
-  --output json | ConvertFrom-Json
+$optsJson = aws elasticbeanstalk describe-configuration-settings --region $Region --application-name $ebApp --environment-name $ebEnv --query "ConfigurationSettings[0].OptionSettings[?Namespace=='aws:elasticbeanstalk:application:environment']" --output json
+$opts = $optsJson | ConvertFrom-Json
 
 function Get-EbOpt([string]$name) {
-  ($opts | Where-Object { $_.OptionName -eq $name } | Select-Object -First 1).Value
+  $hit = $opts | Where-Object { $_.OptionName -eq $name } | Select-Object -First 1
+  if ($null -eq $hit) { return "" }
+  return [string]$hit.Value
 }
 
 $existingJwt = Get-EbOpt "JWT_SECRET"
 $existingAppArn = Get-EbOpt "APP_SECRET_ARN"
 
-if (-not $existingJwt -and -not $existingAppArn) {
-  Write-Host "WARN: No JWT_SECRET on EB — generating a new one."
+if ([string]::IsNullOrWhiteSpace($existingJwt) -and [string]::IsNullOrWhiteSpace($existingAppArn)) {
+  Write-Host "WARN: No JWT_SECRET on EB - generating a new one."
   $bytes = New-Object byte[] 48
   [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
   $existingJwt = [Convert]::ToBase64String($bytes)
 }
 
-# 2) Merge with existing secret if present
 $payload = [ordered]@{
   jwt_secret          = $existingJwt
   mail_from           = $MailFrom
@@ -68,12 +60,10 @@ $payload = [ordered]@{
   dev_admin_password  = ""
 }
 
-$secretExists = $true
-try {
-  $currentArn = aws secretsmanager describe-secret --region $Region --secret-id $secretName --query ARN --output text 2>$null
-  if (-not $currentArn) { $secretExists = $false }
-} catch {
-  $secretExists = $false
+$secretExists = $false
+$describeOut = aws secretsmanager describe-secret --region $Region --secret-id $secretName --query ARN --output text 2>$null
+if ($LASTEXITCODE -eq 0 -and $describeOut -and $describeOut -ne "None") {
+  $secretExists = $true
 }
 
 if ($secretExists) {
@@ -83,30 +73,25 @@ if ($secretExists) {
   foreach ($p in $prev.PSObject.Properties) {
     $k = $p.Name
     $v = [string]$p.Value
-    if ($v -and (-not $payload.Contains($k) -or [string]::IsNullOrEmpty([string]$payload[$k]))) {
+    $cur = ""
+    if ($payload.Contains($k)) { $cur = [string]$payload[$k] }
+    if ($v -and [string]::IsNullOrEmpty($cur)) {
       $payload[$k] = $v
     }
   }
-  # Prefer migrating live EB JWT if present
-  if ($existingJwt) { $payload.jwt_secret = $existingJwt }
+  if (-not [string]::IsNullOrWhiteSpace($existingJwt)) {
+    $payload["jwt_secret"] = $existingJwt
+  }
 } else {
   Write-Host "Creating secret $secretName ..."
-  $desc = "SBL $Environment app secrets JWT mail GROW admin"
-  aws secretsmanager create-secret `
-    --region $Region `
-    --name $secretName `
-    --description $desc `
-    --secret-string "{}" | Out-Null
+  aws secretsmanager create-secret --region $Region --name $secretName --description "SBL app secrets" --secret-string "{}" | Out-Null
 }
 
 $json = ($payload | ConvertTo-Json -Compress)
 $tmp = Join-Path $env:TEMP ("sbl-app-secret-" + [guid]::NewGuid().ToString() + ".json")
 try {
   [System.IO.File]::WriteAllText($tmp, $json)
-  aws secretsmanager put-secret-value `
-    --region $Region `
-    --secret-id $secretName `
-    --secret-string "file://$tmp" | Out-Null
+  aws secretsmanager put-secret-value --region $Region --secret-id $secretName --secret-string "file://$tmp" | Out-Null
 } finally {
   Remove-Item -Force $tmp -ErrorAction SilentlyContinue
 }
@@ -114,43 +99,31 @@ try {
 $secretArn = aws secretsmanager describe-secret --region $Region --secret-id $secretName --query ARN --output text
 Write-Host "Secret ARN: $secretArn"
 
-# 3) IAM: allow EB instance role to read app secret (+ keep DB secret access)
 Write-Host "Updating IAM policy on $roleName ..."
-$policyDoc = @{
+$dbSecretPattern = "arn:aws:secretsmanager:${Region}:*:secret:sbl-$Environment-db/*"
+$policyObj = @{
   Version = "2012-10-17"
   Statement = @(
     @{
       Effect   = "Allow"
       Action   = @("secretsmanager:GetSecretValue")
-      Resource = @($secretArn, "arn:aws:secretsmanager:${Region}:*:secret:sbl-$Environment-db/*")
+      Resource = @($secretArn, $dbSecretPattern)
     }
   )
-} | ConvertTo-Json -Depth 6 -Compress
-
+}
+$policyJson = ($policyObj | ConvertTo-Json -Depth 6 -Compress)
 $policyTmp = Join-Path $env:TEMP ("sbl-app-iam-" + [guid]::NewGuid().ToString() + ".json")
 try {
-  [System.IO.File]::WriteAllText($policyTmp, $policyDoc)
-  aws iam put-role-policy `
-    --role-name $roleName `
-    --policy-name "$ebEnv-read-app-secrets" `
-    --policy-document "file://$policyTmp" | Out-Null
+  [System.IO.File]::WriteAllText($policyTmp, $policyJson)
+  aws iam put-role-policy --role-name $roleName --policy-name "$ebEnv-read-app-secrets" --policy-document "file://$policyTmp" | Out-Null
 } finally {
   Remove-Item -Force $policyTmp -ErrorAction SilentlyContinue
 }
 
-# 4) Point EB at Secrets Manager; clear plaintext JWT from environment
 Write-Host "Updating Elastic Beanstalk environment variables..."
-aws elasticbeanstalk update-environment `
-  --region $Region `
-  --application-name $ebApp `
-  --environment-name $ebEnv `
-  --option-settings `
-    "Namespace=aws:elasticbeanstalk:application:environment,OptionName=APP_SECRET_ARN,Value=$secretArn" `
-    "Namespace=aws:elasticbeanstalk:application:environment,OptionName=JWT_SECRET,Value=" `
-  | Out-Null
+aws elasticbeanstalk update-environment --region $Region --application-name $ebApp --environment-name $ebEnv --option-settings "Namespace=aws:elasticbeanstalk:application:environment,OptionName=APP_SECRET_ARN,Value=$secretArn" "Namespace=aws:elasticbeanstalk:application:environment,OptionName=JWT_SECRET,Value=" | Out-Null
 
 Write-Host ""
-Write-Host "DONE. Secrets are in AWS Secrets Manager — not in git, not in local .env."
-Write-Host "After the next app deploy (code that reads APP_SECRET_ARN), JWT comes from SM only."
-Write-Host "Optional later: set mail/GROW/admin with:"
-Write-Host "  .\upsert-app-secrets.ps1 -Environment $Environment -MailFrom 'noreply@domain' -AppPublicUrl 'https://...'"
+Write-Host "DONE. Secrets are in AWS Secrets Manager - not in git, not in local .env."
+Write-Host "Deploy the app code that reads APP_SECRET_ARN so JWT loads from SM."
+Write-Host "Optional: .\upsert-app-secrets.ps1 -Environment $Environment -MailFrom 'noreply@domain' -AppPublicUrl 'https://...'"
