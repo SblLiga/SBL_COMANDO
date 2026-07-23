@@ -118,7 +118,13 @@ variable "tags" {
 }
 
 variable "jwt_secret" {
-  description = "JWT signing secret for auth tokens"
+  description = "DEPRECATED — use app_secret_arn. Kept optional for backwards compatibility."
   type        = string
   sensitive   = true
+  default     = ""
+}
+
+variable "app_secret_arn" {
+  description = "Secrets Manager ARN for app secrets JSON (jwt_secret, mail_from, grow_*, admin_*)"
+  type        = string
 }

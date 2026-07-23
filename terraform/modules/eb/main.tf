@@ -14,7 +14,9 @@ locals {
     RUN_DB_MIGRATIONS = "true"
     AWS_REGION        = var.aws_region
     AWS_DEFAULT_REGION = var.aws_region
-    JWT_SECRET        = var.jwt_secret
+    # Sensitive values live in Secrets Manager — app hydrates via APP_SECRET_ARN
+    APP_SECRET_ARN    = var.app_secret_arn
+    JWT_SECRET        = ""
   }
 
   environment_variables = merge(local.base_env_vars, var.additional_environment_variables)
@@ -128,9 +130,9 @@ resource "aws_iam_role_policy" "eb_read_db_secret" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["secretsmanager:GetSecretValue"]
-      Resource = var.db_secret_arn
+      Effect = "Allow"
+      Action = ["secretsmanager:GetSecretValue"]
+      Resource = compact([var.db_secret_arn, var.app_secret_arn])
     }]
   })
 }

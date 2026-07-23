@@ -153,42 +153,43 @@ uvicorn app.main:app --reload --port 8000
 
 ## 4. Environment Variables & Secrets
 
-### Application variables
+**Company rule:** runtime secrets live in **AWS Secrets Manager** (and non-secret config in **SSM**).  
+Do **not** keep real passwords in local `.env` files or in git. `.env.example` files are templates only.
 
-| Variable | DEV | PROD | Description |
-|----------|-----|------|-------------|
-| `APP_ENV` | `dev` | `prod` | Environment mode |
-| `DB_HOST` | RDS endpoint | RDS endpoint | Injected by Terraform/SSM |
-| `DB_NAME` | `sbl_dev` | `sbl_prod` | Database name |
-| `DB_USER` | `sbl_admin` | `sbl_admin` | DB username |
-| `DB_PASSWORD` | Secrets Manager | Secrets Manager | Never commit |
-| `DB_SSLMODE` | `require` (cloud) | `require` | SSL mode for RDS |
-| `RUN_DB_MIGRATIONS` | `true` | `true` | Run Alembic on startup |
-| `SEED_DEV_DATA` | `true` | `false` | DEV-only sample data |
-| `ADMIN_EMAIL` | — | required | PROD admin bootstrap |
-| `ADMIN_PASSWORD` | — | required | PROD admin bootstrap |
-| `JWT_SECRET` | set locally | AWS secret | Auth signing key |
+### What is already in AWS
 
-### GitHub repository secrets (manual setup)
+| Secret / config | Where | Notes |
+|-----------------|-------|-------|
+| RDS DB password | Secrets Manager `sbl-*-db/db-credentials` | App reads via `DB_SECRET_ARN` |
+| JWT + mail + GROW + admin | Secrets Manager `sbl/<env>/app-secrets` | App reads via `APP_SECRET_ARN` |
+| DB host/name/user, app_env, pipeline | SSM `/sbl/<env>/...` | Non-secret |
+| `AWS_ROLE_ARN_DEV` / `PROD` | **GitHub Actions secrets** | OIDC role ARN only (not a password) |
+
+### Migrate / update app secrets (no git)
+
+```powershell
+cd terraform\scripts
+.\upsert-app-secrets.ps1 -Environment dev
+# optional:
+.\upsert-app-secrets.ps1 -Environment dev -MailFrom "noreply@yourdomain" -AppPublicUrl "http://sbl-dev.eba-....amazonaws.com"
+```
+
+### Application variables (EB)
+
+| Variable | Source | Description |
+|----------|--------|-------------|
+| `DB_SECRET_ARN` | Terraform → EB | Points at DB credentials in Secrets Manager |
+| `APP_SECRET_ARN` | Terraform / upsert script → EB | Points at app secrets JSON in Secrets Manager |
+| `DB_HOST` / `DB_NAME` / `DB_USER` | SSM resolve | Non-secret |
+| `JWT_SECRET` | empty on EB | Hydrated from `APP_SECRET_ARN` at runtime |
+| `MAIL_FROM`, `GROW_*`, `ADMIN_*` | inside app secret JSON | Not stored as plaintext EB env |
+
+### GitHub repository secrets (OIDC only)
 
 | Secret | Used by |
 |--------|---------|
 | `AWS_ROLE_ARN_DEV` | `deploy-dev.yml` |
 | `AWS_ROLE_ARN_PROD` | `deploy-prod.yml` |
-
-### AWS SSM parameters (created by bootstrap scripts)
-
-Under `/sbl/dev` or `/sbl/prod`:
-
-- `pipeline/source_repo` → `SblLiga/SBL_COMANDO`
-- `pipeline/frontend_repo` → `SblLiga/SBL_COMANDO`
-- `pipeline/codestar_connection_arn`
-- `pipeline/artifact_bucket_name`
-- `eb/solution_stack_name`
-- `app/app_env`, `app/log_level`
-
-RDS credentials are created automatically by Terraform in **AWS Secrets Manager**.
-
 ---
 
 ## 5. Deployment & CI/CD Guide

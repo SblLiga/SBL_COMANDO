@@ -150,6 +150,32 @@ resource "random_password" "jwt_secret" {
   special = true
 }
 
+resource "aws_secretsmanager_secret" "app" {
+  name                    = "sbl-${local.environment}/app-secrets"
+  description             = "SBL application secrets (JWT, mail, GROW, admin bootstrap)"
+  recovery_window_in_days = 0
+  tags                    = merge(local.tags, { Name = "sbl-${local.environment}/app-secrets" })
+}
+
+resource "aws_secretsmanager_secret_version" "app" {
+  secret_id = aws_secretsmanager_secret.app.id
+  secret_string = jsonencode({
+    jwt_secret           = random_password.jwt_secret.result
+    mail_from            = ""
+    app_public_url       = ""
+    grow_webhook_secret  = ""
+    grow_payment_url     = "https://grow.co.il/subscribe"
+    admin_email          = ""
+    admin_password       = ""
+    dev_admin_password   = ""
+  })
+
+  # Ops may update mail/GROW/admin via script without Terraform overwriting
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+
 module "eb" {
   source = "../../modules/eb"
 
@@ -178,7 +204,7 @@ module "eb" {
   db_user_ssm_parameter    = aws_ssm_parameter.db_user.name
   db_secret_arn            = module.rds.db_secret_arn
   db_credentials_secret_id = module.rds.db_secret_name
-  jwt_secret               = random_password.jwt_secret.result
+  app_secret_arn           = aws_secretsmanager_secret.app.arn
 
   additional_environment_variables = merge(
     var.additional_eb_env_vars,
@@ -187,7 +213,7 @@ module "eb" {
 
   tags = local.tags
 
-  depends_on = [module.rds]
+  depends_on = [module.rds, aws_secretsmanager_secret_version.app]
 }
 
 module "pipeline" {
