@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import apiClient from "@/api/apiClient";
@@ -10,6 +10,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowRight, Camera, Loader2, Lock, User as UserIcon, Mail } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+
+/** Prefer durable /api/media URLs over legacy ephemeral /uploads paths. */
+function pickAvatarUrl(...candidates) {
+  const list = candidates.filter((u) => typeof u === "string" && u.trim());
+  const durable = list.find(
+    (u) =>
+      u.startsWith("/api/media/") ||
+      u.startsWith("blob:") ||
+      u.startsWith("data:") ||
+      /^https?:\/\//i.test(u)
+  );
+  return durable || list[0] || "";
+}
 
 export default function Profile() {
   const { user, checkUserAuth } = useAuth();
@@ -24,20 +37,34 @@ export default function Profile() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
   const [loading, setLoading] = useState(true);
+  const loadSeq = useRef(0);
+  const uploadingRef = useRef(false);
+
+  useEffect(() => {
+    uploadingRef.current = uploading;
+  }, [uploading]);
 
   useEffect(() => {
     if (!user?.id) return;
+    const seq = ++loadSeq.current;
     let cancelled = false;
     (async () => {
       try {
         const res = await api.entities.Member.filter({ user_id: user.id });
-        if (cancelled) return;
+        if (cancelled || seq !== loadSeq.current) return;
         const m = res[0] || null;
         setMember(m);
         setName(m?.name || user?.full_name || "");
-        setAvatarUrl(m?.avatar_url || user?.avatar_url || "");
+        // Never clobber an in-progress local preview / just-saved media URL
+        if (uploadingRef.current) return;
+        setAvatarUrl((prev) => {
+          if (prev.startsWith("blob:") || prev.startsWith("/api/media/")) {
+            return pickAvatarUrl(prev, user?.avatar_url, m?.avatar_url);
+          }
+          return pickAvatarUrl(user?.avatar_url, m?.avatar_url, prev);
+        });
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && seq === loadSeq.current) setLoading(false);
       }
     })();
     return () => {
@@ -56,12 +83,13 @@ export default function Profile() {
         avatar_url: url,
         status: "בעקבות",
       });
-      setMember(m);
     } else {
       m = await api.entities.Member.update(m.id, { avatar_url: url });
-      setMember(m);
     }
-    await apiClient.auth.updateMe({ avatar_url: url });
+    setMember(m);
+    const me = await apiClient.auth.updateMe({ avatar_url: url });
+    // Keep URL from server responses (avoid stale Member filter races)
+    setAvatarUrl(pickAvatarUrl(url, me?.avatar_url, m?.avatar_url));
     await checkUserAuth?.();
   };
 
@@ -80,22 +108,33 @@ export default function Profile() {
       toast({ title: "שגיאה", description: "גודל מקסימלי 5MB", variant: "destructive" });
       return;
     }
+    if (["heic", "heif"].includes(ext) || (file.type || "").includes("heic") || (file.type || "").includes("heif")) {
+      toast({
+        title: "פורמט לא נתמך בדפדפן",
+        description: "שמרי/העלי כ-JPG או PNG (לא HEIC)",
+        variant: "destructive",
+      });
+      return;
+    }
     const localPreview = URL.createObjectURL(file);
-    setAvatarUrl(localPreview);
     setUploading(true);
+    setAvatarUrl(localPreview);
+    let savedUrl = "";
     try {
       const res = await apiClient.integrations.Core.UploadFile({ file });
       const url = res.file_url || res.url;
       if (!url) throw new Error("השרת לא החזיר קישור לתמונה");
+      savedUrl = url;
       await persistAvatar(url);
       toast({ title: "התמונה עודכנה", description: "תמונת הפרופיל נשמרה ומוצגת לכל המשתמשים." });
     } catch (err) {
       console.error("[Profile] avatar upload failed", err);
-      setAvatarUrl(member?.avatar_url || user?.avatar_url || "");
+      setAvatarUrl(pickAvatarUrl(savedUrl, member?.avatar_url, user?.avatar_url));
       toast({ title: "שגיאה", description: err.message || "העלאת התמונה נכשלה", variant: "destructive" });
     } finally {
-      URL.revokeObjectURL(localPreview);
       setUploading(false);
+      // Revoke only after React has switched img src off the blob
+      window.setTimeout(() => URL.revokeObjectURL(localPreview), 1500);
     }
   };
 

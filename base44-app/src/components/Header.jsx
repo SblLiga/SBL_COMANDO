@@ -26,7 +26,14 @@ export default function Header({ hideUser = false }) {
   }, [user?.id, user?.avatar_url, hideUser]);
 
   const name = member?.name || user?.full_name || "משתמש";
-  const avatarSrc = user?.avatar_url || member?.avatar_url || "";
+  // Prefer user.avatar_url (just patched) and durable /api/media over legacy /uploads
+  const avatarSrc =
+    [user?.avatar_url, member?.avatar_url].find(
+      (u) => typeof u === "string" && u.startsWith("/api/media/")
+    ) ||
+    user?.avatar_url ||
+    member?.avatar_url ||
+    "";
   const xp = member?.xp || 0;
 
   return (
