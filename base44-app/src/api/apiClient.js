@@ -195,10 +195,12 @@ const integrations = {
   Core: {
     async UploadFile({ file }) {
       const form = new FormData();
-      form.append("file", file);
+      // Explicit filename helps some mobile browsers / FastAPI parsers
+      form.append("file", file, file.name || "avatar.jpg");
       return request("/api/integrations/core/upload-file", {
         method: "POST",
         body: form,
+        // Do not set Content-Type — browser must add multipart boundary
         headers: {},
       });
     },

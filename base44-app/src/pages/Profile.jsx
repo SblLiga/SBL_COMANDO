@@ -67,7 +67,11 @@ export default function Profile() {
 
   const handleUploadAvatar = async (file) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
+    const ext = (file.name || "").split(".").pop()?.toLowerCase() || "";
+    const looksLikeImage =
+      (file.type && file.type.startsWith("image/")) ||
+      ["png", "jpg", "jpeg", "webp", "gif", "heic", "heif"].includes(ext);
+    if (!looksLikeImage) {
       toast({ title: "שגיאה", description: "יש לבחור קובץ תמונה בלבד", variant: "destructive" });
       return;
     }
@@ -79,9 +83,11 @@ export default function Profile() {
     try {
       const res = await apiClient.integrations.Core.UploadFile({ file });
       const url = res.file_url || res.url;
+      if (!url) throw new Error("השרת לא החזיר קישור לתמונה");
       await persistAvatar(url);
       toast({ title: "התמונה עודכנה", description: "תמונת הפרופיל נשמרה ומוצגת בכל המערכת." });
     } catch (err) {
+      console.error("[Profile] avatar upload failed", err);
       toast({ title: "שגיאה", description: err.message || "העלאת התמונה נכשלה", variant: "destructive" });
     } finally {
       setUploading(false);

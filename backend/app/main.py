@@ -73,9 +73,9 @@ app.include_router(entities_router)
 app.include_router(upload_router)
 app.include_router(grow_router)
 
-UPLOAD_DIR = Path("static/uploads")
+UPLOAD_DIR = (Path.cwd() / "static" / "uploads").resolve()
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 
 @app.get("/health")
