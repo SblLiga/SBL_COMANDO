@@ -45,7 +45,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-sbl_admin}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sbl_production}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       GROW_WEBHOOK_SECRET: ${GROW_WEBHOOK_SECRET:-}
-      BASE44_APP_ID: ${BASE44_APP_ID:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-}
     ports:
       - "8080:8080"
     healthcheck:

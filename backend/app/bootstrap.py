@@ -381,7 +381,7 @@ def seed_development_data(session: Session, settings: Settings) -> bool:
 def ensure_manager_operational_alerts(session: Session) -> int:
     """
     Create missing operational alerts for managers:
-    - inactive participants (status לא פעיל / קריטי, or stale created_at)
+    - inactive participants (explicit status לא פעיל / קריטי only)
     - missing weekly report 3+ days after completed meeting
     Idempotent via title+target_user_id uniqueness check.
     """
@@ -409,10 +409,10 @@ def ensure_manager_operational_alerts(session: Session) -> int:
                 if stamp.tzinfo is None:
                     stamp = stamp.replace(tzinfo=timezone.utc)
                 age_days = max(0, (now - stamp).days)
-            inactive = peer.status in ("לא פעיל", "קריטי") or age_days >= 3
+            inactive = peer.status in ("לא פעיל", "קריטי")
             if not inactive:
                 continue
-            days = max(age_days, 3) if age_days else 3
+            days = max(age_days, 1) if age_days else 1
             title = f"{peer.name} - לא פעיל"
             exists = session.scalar(
                 select(Notification).where(
@@ -485,15 +485,21 @@ def ensure_manager_operational_alerts(session: Session) -> int:
 def run_database_bootstrap(session: Session, settings: Settings) -> dict[str, bool | int]:
     if is_production(settings):
         created_admin = ensure_production_admin(session, settings)
-        return {"seeded": False, "admin_created": created_admin, "dev_repaired": 0}
+        alerts = ensure_manager_operational_alerts(session)
+        return {
+            "seeded": False,
+            "admin_created": created_admin,
+            "dev_repaired": 0,
+            "alerts_created": alerts,
+        }
 
     seeded = False
     repaired = 0
-    alerts = 0
     if should_seed_dev_data(settings):
         seeded = seed_development_data(session, settings)
         repaired = ensure_dev_seed_accounts(session, settings)
-        alerts = ensure_manager_operational_alerts(session)
+    # Operational alerts run on every boot (DEV + PROD)
+    alerts = ensure_manager_operational_alerts(session)
 
     return {
         "seeded": seeded,

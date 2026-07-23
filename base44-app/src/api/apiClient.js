@@ -3,21 +3,31 @@ const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 const TOKEN_KEY = "sbl_access_token";
 
 function getToken() {
-  return localStorage.getItem(TOKEN_KEY) || localStorage.getItem("base44_access_token");
+  const primary = localStorage.getItem(TOKEN_KEY) || localStorage.getItem("token");
+  if (primary) return primary;
+  // One-time migration from legacy key (pre-independence)
+  const legacy = localStorage.getItem("base44_access_token");
+  if (legacy) {
+    localStorage.setItem(TOKEN_KEY, legacy);
+    localStorage.removeItem("base44_access_token");
+    return legacy;
+  }
+  return null;
 }
 
 function setToken(token) {
   if (token) {
     localStorage.setItem(TOKEN_KEY, token);
-    localStorage.setItem("base44_access_token", token);
     localStorage.setItem("token", token);
+    // Migrate away from legacy key if present
+    localStorage.removeItem("base44_access_token");
   }
 }
 
 function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem("base44_access_token");
   localStorage.removeItem("token");
+  localStorage.removeItem("base44_access_token");
 }
 
 async function request(path, options = {}) {

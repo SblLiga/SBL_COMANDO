@@ -1,8 +1,8 @@
 import React from "react";
-import { Outlet } from "react-router-dom";
+import { Link, Outlet } from "react-router-dom";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
-import { LayoutDashboard, Target, Trophy, Users, Flag, Bell } from "lucide-react";
+import { LayoutDashboard, Target, Trophy, Users, Flag, Bell, UserRound } from "lucide-react";
 
 const items = [
   { to: "/admin", label: "בית", icon: LayoutDashboard },
@@ -16,7 +16,17 @@ const items = [
 export default function AdminLayout() {
   return (
     <div className="min-h-screen bg-background pb-24">
-      <Header hideUser />
+      <div className="relative">
+        {/* Spec: admin chrome stays identity-light; profile/logout via icon only */}
+        <Header hideUser />
+        <Link
+          to="/profile"
+          aria-label="פרופיל והתנתקות"
+          className="absolute left-3 top-3 z-50 w-9 h-9 rounded-full bg-muted/80 border border-border flex items-center justify-center hover:bg-accent"
+        >
+          <UserRound className="w-4 h-4 text-primary" />
+        </Link>
+      </div>
       <main className="max-w-md lg:max-w-3xl mx-auto min-h-screen">
         <Outlet />
       </main>

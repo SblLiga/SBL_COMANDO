@@ -43,7 +43,7 @@ export default function ManagerGroup() {
             apiClient.entities.Member.filter({ group_id: me.group_id }),
             apiClient.entities.Group.list(),
           ]);
-          setMembers(groupMembers.filter((m) => m.role !== "admin"));
+          setMembers(groupMembers.filter((m) => m.role === "user"));
           setGroup(groups.find((g) => String(g.id) === String(me.group_id)) || null);
         }
       } finally {

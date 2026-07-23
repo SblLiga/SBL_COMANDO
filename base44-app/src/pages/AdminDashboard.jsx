@@ -25,18 +25,16 @@ function buildWeeklySeries(members) {
   const labels = ["ראשון", "שני", "שלישי", "רביעי", "חמישי"];
   const buckets = labels.map(() => []);
   members.forEach((m) => {
-    const d = new Date(m.updated_date || m.created_date || Date.now());
+    const d = new Date(m.created_date || m.created_at || Date.now());
     const day = d.getDay(); // 0 Sun .. 4 Thu
-    if (day >= 0 && day <= 4) buckets[day].push(m.progress || 0);
+    if (day >= 0 && day <= 4) buckets[day].push(Number(m.progress) || 0);
   });
-  const fallback = members.length
-    ? Math.round(members.reduce((s, m) => s + (m.progress || 0), 0) / members.length)
-    : 0;
+  // Honest series: empty days are 0 — never invent trend values
   return labels.map((day, i) => ({
     day,
     value: buckets[i].length
       ? Math.round(buckets[i].reduce((a, b) => a + b, 0) / buckets[i].length)
-      : Math.max(0, Math.min(100, fallback - 8 + i * 4)),
+      : 0,
   }));
 }
 
@@ -113,9 +111,12 @@ export default function AdminDashboard() {
       </div>
     );
 
-  const avg = members.length ? Math.round(members.reduce((s, m) => s + (m.progress || 0), 0) / members.length) : 0;
-  const active = members.filter((m) => m.status === "בעקבות").length;
-  const needsAttention = members.filter((m) => m.status !== "בעקבות").length;
+  const participants = members.filter((m) => m.role === "user");
+  const avg = participants.length
+    ? Math.round(participants.reduce((s, m) => s + (m.progress || 0), 0) / participants.length)
+    : 0;
+  const active = participants.filter((m) => m.status === "בעקבות").length;
+  const needsAttention = participants.filter((m) => m.status !== "בעקבות").length;
   const expected = groups.length * 4;
   const submitted = reports.length;
 
@@ -126,7 +127,7 @@ export default function AdminDashboard() {
 
   const groupsNeedingAttention = groups.filter((g) => g.status !== "on_track").slice(0, 4);
   const recentAlerts = alerts.slice(0, 4);
-  const weeklyData = buildWeeklySeries(members.filter((m) => m.role === "user" || !m.role));
+  const weeklyData = buildWeeklySeries(participants);
   const trend =
     weeklyData.length >= 2
       ? weeklyData[weeklyData.length - 1].value - weeklyData[0].value
@@ -139,7 +140,7 @@ export default function AdminDashboard() {
       {/* 6 KPIs */}
       <div className="grid grid-cols-3 gap-2">
         <KpiCard icon={Users} value={groups.length} label="מספר קבוצות" accent />
-        <KpiCard icon={Bot} value={members.length} label="משתתפות" />
+        <KpiCard icon={Bot} value={participants.length} label="משתתפות" />
         <KpiCard icon={TrendingUp} value={`${avg}%`} label="אחוז ביצוע ממוצע" />
         <KpiCard icon={Flame} value={active} label="פעילות השבוע" />
         <KpiCard icon={AlertTriangle} value={needsAttention} label="דורשות טיפול" />
@@ -217,7 +218,7 @@ export default function AdminDashboard() {
         <div className="flex-1">
           <p className="text-xs text-muted-foreground">קצב התקדמות המערכת</p>
           <p className="font-display text-3xl font-bold gold-text">{avg}%</p>
-          <p className="text-xs text-muted-foreground">{active} משתתפות פעילות השבוע מתוך {members.length}</p>
+          <p className="text-xs text-muted-foreground">{active} משתתפות בסטטוס «בעקבות» מתוך {participants.length}</p>
         </div>
         <ProgressRing progress={avg} size={80} stroke={6} showText />
       </div>

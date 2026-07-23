@@ -140,13 +140,15 @@ def create_entity(
     entity_name: str,
     payload: dict[str, Any],
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     model = MODEL_MAP.get(entity_name)
     if model is None:
         raise HTTPException(status_code=404, detail="Unknown entity")
+    if entity_name in {"User", "SystemSetting"} and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
 
-    data = _coerce_payload(payload)
+    data = _strip_privileged(entity_name, _coerce_payload(payload), current_user)
     allowed = {c.name for c in model.__table__.columns} - {"id", "created_at"}
     row = model(**{k: v for k, v in data.items() if k in allowed})
     db.add(row)
@@ -241,11 +243,13 @@ def delete_entity(
     entity_name: str,
     entity_id: str,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     model = MODEL_MAP.get(entity_name)
     if model is None:
         raise HTTPException(status_code=404, detail="Unknown entity")
+    if entity_name in {"User", "SystemSetting"} and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     row = db.get(model, int(entity_id))
     if row is None:

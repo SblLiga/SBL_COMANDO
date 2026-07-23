@@ -8,7 +8,7 @@ const alertTypeMeta = {
   danger: { icon: AlertTriangle, color: "text-red-500", bg: "bg-red-500/10", label: "חוסר פעילות" },
   warning: { icon: Bell, color: "text-orange-400", bg: "bg-orange-400/10", label: "עדכון מהמנהל" },
   success: { icon: TrendingUp, color: "text-green-500", bg: "bg-green-500/10", label: "עדכון ממשתמש" },
-  info: { icon: Award, color: "text-primary", bg: "bg-primary/10", label: "דוח חסר" },
+  info: { icon: Award, color: "text-primary", bg: "bg-primary/10", label: "הודעה / שידור" },
   nudge: { icon: Bell, color: "text-orange-400", bg: "bg-orange-400/10", label: "תזכורת" },
 };
 
@@ -60,8 +60,9 @@ export default function AdminAlerts() {
         if (mgr) recipients.push(mgr);
       }
     }
+    recipients = recipients.filter((m) => m.user_id);
     if (recipients.length === 0) {
-      toast({ title: "בחר קהל יעד", variant: "destructive" });
+      toast({ title: "בחר קהל יעד עם משתמש מקושר", variant: "destructive" });
       return;
     }
     await apiClient.entities.Notification.bulkCreate(
@@ -70,7 +71,7 @@ export default function AdminAlerts() {
         body: msg,
         type: "info",
         source: "סופר-אדמין",
-        target_user_id: m.user_id || m.id,
+        target_user_id: m.user_id,
       }))
     );
     toast({ title: "השידור נשלח! 📡", description: `${recipients.length} נמענים` });
@@ -90,12 +91,16 @@ export default function AdminAlerts() {
   };
 
   const sendNudge = async (member) => {
+    if (!member?.user_id) {
+      toast({ title: "שגיאה", description: "לחבר זה אין משתמש מקושר", variant: "destructive" });
+      return;
+    }
     await apiClient.entities.Notification.create({
       title: "תזכורת מהנהלת המערכת",
       body: "הגיע הזמן לעדכן את הגלגל 🎯",
       type: "nudge",
       source: "סופר-אדמין",
-      target_user_id: member.user_id || member.id,
+      target_user_id: member.user_id,
     });
     toast({ title: "הנאדג׳ נשלח", description: `אל ${member.name}` });
   };

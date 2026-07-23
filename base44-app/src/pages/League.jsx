@@ -26,7 +26,7 @@ export default function League({ zoneBadge = "אזור משתמש", readOnly = t
           apiClient.entities.Member.list(),
           apiClient.auth.me().catch(() => null),
         ]);
-        setMembers(m);
+        setMembers(m.filter((row) => row.role === "user"));
         if (u) setCurrentUserId(u.id);
       } finally {
         setLoading(false);

@@ -74,6 +74,7 @@ export default function HQ() {
           body: groupMsg.trim(),
           type: "info",
           source: currentMember.name,
+          source_user_id: currentMember.user_id,
         }))
       );
       toast({ title: "ההודעה נשלחה! 📨", description: `לכל חברי הקבוצה (${targets.length})` });

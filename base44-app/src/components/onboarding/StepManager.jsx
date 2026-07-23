@@ -25,7 +25,7 @@ export default function StepManager({ managers, groups, gender, target, manager,
         <div className="card-lux p-4 space-y-2">
           <p className="text-sm font-bold">נרשמת לרשימת המתנה</p>
           <p className="text-xs text-muted-foreground">
-            יעד: {target} · {gender === "female" ? "נשים" : "גברים"}. נשבץ אותך אוטומטית מה־25.
+            יעד: {target} · {gender === "female" ? "נשים" : "גברים"}. מה־25 לחודש תוכלי לבחור מנהל/ת ולהצטרף לקבוצה.
           </p>
           <div className="flex items-center gap-2 text-xs text-primary">
             <Check className="w-4 h-4" /> רשימת המתנה נבחרה
