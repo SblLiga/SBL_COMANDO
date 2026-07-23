@@ -4,7 +4,7 @@ import apiClient from "@/api/apiClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogIn, Mail, Lock, Loader2 } from "lucide-react";
+import { Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import { homePathForRole } from "@/components/RoleRoute";
 
@@ -50,17 +50,9 @@ export default function Login() {
 
   return (
     <AuthLayout
-      icon={LogIn}
       title="ברוך שובך"
       subtitle="התחבר/י לחשבון שלך"
-      footer={
-        <>
-          אין לך חשבון?{" "}
-          <Link to="/register" className="text-primary font-medium hover:underline relative z-10">
-            צר/י חשבון
-          </Link>
-        </>
-      }
+      footerLink={{ prompt: "אין לך חשבון?", to: "/register", label: "צר/י חשבון" }}
     >
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">

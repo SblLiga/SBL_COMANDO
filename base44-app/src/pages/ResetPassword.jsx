@@ -37,17 +37,12 @@ export default function ResetPassword() {
   if (!resetToken) {
     return (
       <AuthLayout
-        icon={AlertTriangle}
-        title="Invalid reset link"
-        subtitle="This password reset link is missing or invalid"
-        footer={
-          <Link to="/forgot-password" className="text-primary font-medium hover:underline">
-            Request a new link
-          </Link>
-        }
+        title="קישור לא תקין"
+        subtitle="קישור איפוס הסיסמה חסר או לא תקין"
+        footerLink={{ prompt: "", to: "/forgot-password", label: "בקש/י קישור חדש" }}
       >
         <p className="text-sm text-foreground text-center">
-          The link you used appears to be incomplete. Please request a new password reset email.
+          הקישור שנפתח אינו מלא. יש לבקש מייל איפוס חדש.
         </p>
       </AuthLayout>
     );
@@ -55,9 +50,9 @@ export default function ResetPassword() {
 
   return (
     <AuthLayout
-      icon={Lock}
-      title="New password"
-      subtitle="Enter your new password below"
+      title="סיסמה חדשה"
+      subtitle="הזן/י את הסיסמה החדשה"
+      footerLink={{ prompt: "", to: "/login", label: "חזרה להתחברות" }}
     >
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">

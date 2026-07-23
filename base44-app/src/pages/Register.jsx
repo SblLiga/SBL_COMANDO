@@ -108,17 +108,9 @@ export default function Register() {
   if (showOtp) {
     return (
       <AuthLayout
-        icon={Mail}
         title="אימות דוא״ל"
         subtitle={emailSent ? `שלחנו קוד ל-${email}` : `קוד אימות עבור ${email}`}
-        footer={
-          <>
-            כבר יש לך חשבון מאומת?{" "}
-            <Link to="/login" className="text-primary font-medium hover:underline relative z-10">
-              חזרה להתחברות
-            </Link>
-          </>
-        }
+        footerLink={{ prompt: "כבר יש לך חשבון מאומת?", to: "/login", label: "חזרה להתחברות" }}
       >
         {error && (
           <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
@@ -189,17 +181,9 @@ export default function Register() {
 
   return (
     <AuthLayout
-      icon={UserPlus}
       title="צר/י חשבון"
       subtitle="הירשמ/י כדי להתחיל"
-      footer={
-        <>
-          כבר יש לך חשבון?{" "}
-          <Link to="/login" className="text-primary font-medium hover:underline relative z-10">
-            התחבר/י
-          </Link>
-        </>
-      }
+      footerLink={{ prompt: "כבר יש לך חשבון?", to: "/login", label: "התחבר/י" }}
     >
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">

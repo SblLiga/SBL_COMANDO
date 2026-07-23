@@ -4,7 +4,7 @@ import apiClient from "@/api/apiClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Mail, ArrowRight, Loader2 } from "lucide-react";
+import { Mail, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 
 export default function ForgotPassword() {
@@ -32,15 +32,9 @@ export default function ForgotPassword() {
 
   return (
     <AuthLayout
-      icon={Mail}
       title="איפוס סיסמה"
       subtitle="נשלח אליך קישור לאיפוס"
-      footer={
-        <Link to="/login" className="text-primary font-medium hover:underline inline-flex items-center gap-1">
-          <ArrowRight className="w-3 h-3" />
-          חזרה להתחברות
-        </Link>
-      }
+      footerLink={{ prompt: "", to: "/login", label: "← חזרה להתחברות" }}
     >
       {sent ? (
         <div className="space-y-3 text-sm text-center">

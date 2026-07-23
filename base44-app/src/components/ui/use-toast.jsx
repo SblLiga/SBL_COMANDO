@@ -1,8 +1,9 @@
 // Inspired by react-hot-toast library
 import { useState, useEffect } from "react";
 
-const TOAST_LIMIT = 20;
-const TOAST_REMOVE_DELAY = 0;
+const TOAST_LIMIT = 3;
+const TOAST_REMOVE_DELAY = 400;
+const TOAST_AUTO_DISMISS_MS = 2500;
 
 const actionTypes = {
   ADD_TOAST: "ADD_TOAST",
@@ -133,6 +134,12 @@ function toast({ ...props }) {
       },
     },
   });
+
+  // Auto-dismiss after a few seconds (X still works immediately)
+  const duration = props.duration ?? TOAST_AUTO_DISMISS_MS;
+  if (duration > 0) {
+    setTimeout(() => dismiss(), duration);
+  }
 
   return {
     id,
