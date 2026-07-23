@@ -3,6 +3,7 @@ import apiClient from "@/api/apiClient";
 import { Flame, Zap, Trophy, Gift, AlertCircle, ChevronLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 import KpiCard from "@/components/KpiCard";
+import { mediaUrl } from "@/lib/mediaUrl";
 
 export default function Home() {
   const [goal, setGoal] = useState(null);
@@ -130,12 +131,20 @@ export default function Home() {
 
       {goal?.reward_text && (
         <div className="card-gold-rim p-4 flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl gold-gradient flex items-center justify-center shrink-0">
-            <Gift className="w-6 h-6 text-black" />
-          </div>
-          <div className="flex-1">
+          {goal.reward_image ? (
+            <img
+              src={mediaUrl(goal.reward_image)}
+              alt=""
+              className="w-12 h-12 rounded-xl object-cover shrink-0 ring-1 ring-primary/30"
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-xl gold-gradient flex items-center justify-center shrink-0">
+              <Gift className="w-6 h-6 text-black" />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
             <p className="text-[10px] text-primary font-bold">התגמול שלך ל-100%</p>
-            <p className="text-sm font-medium">{goal.reward_text}</p>
+            <p className="text-sm font-medium truncate">{goal.reward_text}</p>
           </div>
           <span className="font-display text-2xl font-bold gold-text">{pct}%</span>
         </div>

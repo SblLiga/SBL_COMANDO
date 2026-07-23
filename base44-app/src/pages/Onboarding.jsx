@@ -10,6 +10,7 @@ import StepManager from "@/components/onboarding/StepManager";
 import StepTasks from "@/components/onboarding/StepTasks";
 import StepReward from "@/components/onboarding/StepReward";
 import { toast } from "@/components/ui/use-toast";
+import { currentCycleMonth, needsMonthlyOnboarding } from "@/lib/calendarRules";
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -28,14 +29,18 @@ export default function Onboarding() {
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isNewCycle, setIsNewCycle] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
         const u = await apiClient.auth.me();
         setUser(u);
+        const monthly = needsMonthlyOnboarding(u);
+        setIsNewCycle(Boolean(u?.onboarding_completed && monthly));
         if (u?.gender) setGender(u.gender);
-        if (u?.target) setTarget(u.target);
+        // For a brand-new monthly cycle, force re-pick of target (don't lock old one)
+        if (u?.target && !monthly) setTarget(u.target);
         const [m, g] = await Promise.all([
           apiClient.entities.Member.list(),
           apiClient.entities.Group.list(),
@@ -63,104 +68,120 @@ export default function Onboarding() {
   const removeTask = (t) => setTasks(tasks.filter((x) => x !== t));
 
   const uploadReward = async (file) => {
+    if (!file) return;
+    if (!file.type?.startsWith("image/")) {
+      toast({ title: "שגיאה", description: "יש לבחור קובץ תמונה בלבד", variant: "destructive" });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "שגיאה", description: "גודל מקסימלי 5MB", variant: "destructive" });
+      return;
+    }
     setUploading(true);
     try {
       const res = await apiClient.integrations.Core.UploadFile({ file });
-      setRewardImage(res.file_url);
+      const url = res?.file_url || res?.url;
+      if (!url) throw new Error("השרת לא החזיר קישור לתמונה");
+      setRewardImage(url);
+      toast({ title: "התמונה הועלתה", description: "תמונת התגמול נשמרה." });
+    } catch (err) {
+      console.error("[Onboarding] reward upload failed", err);
+      toast({
+        title: "העלאה נכשלה",
+        description: err.message || "לא הצלחנו להעלות את התמונה. נסו שוב.",
+        variant: "destructive",
+      });
     } finally {
       setUploading(false);
+    }
+  };
+
+  const createCycleGoalWithTasks = async () => {
+    const cycle = currentCycleMonth();
+    const goal = await apiClient.entities.Goal.create({
+      title: goalTitle || `יעד חודשי - ${target}`,
+      target,
+      is_hidden: false,
+      reward_text: rewardText.trim(),
+      reward_image: rewardImage || null,
+      progress: 0,
+      xp_total: 0,
+      streak: 0,
+      owner_user_id: user.id,
+      cycle_month: cycle,
+    });
+    if (tasks.length) {
+      await apiClient.entities.Task.bulkCreate(
+        tasks.map((t, i) => ({
+          goal_id: goal.id,
+          title: t,
+          order_index: i,
+          is_completed: false,
+          priority: "בינוני",
+          xp_value: 100,
+        }))
+      );
+    }
+    return goal;
+  };
+
+  const leaveOldGroupIfNeeded = async (member, newGroupId) => {
+    if (!member?.group_id) return;
+    if (String(member.group_id) === String(newGroupId)) return;
+    try {
+      const old = await apiClient.entities.Group.get(member.group_id);
+      const nextCount = Math.max(0, (old.participant_count || 1) - 1);
+      await apiClient.entities.Group.update(old.id, { participant_count: nextCount });
+    } catch (err) {
+      console.warn("[Onboarding] could not decrement old group", err);
     }
   };
 
   const finish = async () => {
     setSubmitting(true);
     try {
-      const ownedGoals = await apiClient.entities.Goal.filter({ owner_user_id: user.id });
-      let goal = ownedGoals.sort(
-        (a, b) => new Date(b.created_date || 0) - new Date(a.created_date || 0)
-      )[0];
-      if (goal) {
-        goal = await apiClient.entities.Goal.update(goal.id, {
-          title: goalTitle || goal.title || `יעד חודשי - ${target}`,
-          target,
-          reward_text: rewardText || goal.reward_text,
-          reward_image: rewardImage || goal.reward_image,
-        });
-        const existingTasks = await apiClient.entities.Task.filter({ goal_id: goal.id });
-        if (existingTasks.length === 0 && tasks.length) {
-          await apiClient.entities.Task.bulkCreate(
-            tasks.map((t, i) => ({
-              goal_id: goal.id,
-              title: t,
-              order_index: i,
-              is_completed: false,
-              priority: "בינוני",
-              xp_value: 100,
-            }))
-          );
-        }
-      } else {
-        goal = await apiClient.entities.Goal.create({
-          title: goalTitle || `יעד חודשי - ${target}`,
-          target,
-          is_hidden: false,
-          reward_text: rewardText,
-          reward_image: rewardImage,
-          progress: 0,
-          xp_total: 0,
-          streak: 0,
-          owner_user_id: user.id,
-        });
-        await apiClient.entities.Task.bulkCreate(
-          tasks.map((t, i) => ({
-            goal_id: goal.id,
-            title: t,
-            order_index: i,
-            is_completed: false,
-            priority: "בינוני",
-            xp_value: 100,
-          }))
-        );
-      }
+      // Spec: each monthly cycle gets a fresh goal + task wheel (+ new group pick).
+      const goal = await createCycleGoalWithTasks();
+      const existingRows = await apiClient.entities.Member.filter({ user_id: user.id });
+      const existing = existingRows[0] || null;
 
       if (manager?.id === "waiting_list") {
-        const existing = await apiClient.entities.Member.filter({ user_id: user.id });
-        if (existing[0]) {
-          await apiClient.entities.Member.update(existing[0].id, {
-            name: user?.full_name || user?.email || "משתמש חדש",
-            goal_id: goal.id,
-            goal_title: goal.title,
-            goal_hidden: false,
-            gender,
-            target,
-            group_name: null,
-            group_id: null,
-            role: "user",
-            status: "דרושה התייחסות",
-          });
+        const payload = {
+          name: user?.full_name || user?.email || "משתמש חדש",
+          goal_id: goal.id,
+          goal_title: goal.title,
+          goal_hidden: false,
+          gender,
+          target,
+          group_name: null,
+          group_id: null,
+          role: "user",
+          status: "דרושה התייחסות",
+          progress: 0,
+          xp: 0,
+          streak: 0,
+        };
+        if (existing) {
+          await leaveOldGroupIfNeeded(existing, null);
+          await apiClient.entities.Member.update(existing.id, payload);
         } else {
-          await apiClient.entities.Member.create({
-            name: user?.full_name || user?.email || "משתמש חדש",
-            user_id: user.id,
-            goal_id: goal.id,
-            goal_title: goal.title,
-            goal_hidden: false,
-            gender,
-            target,
-            xp: 0,
-            progress: 0,
-            streak: 0,
-            role: "user",
-            status: "דרושה התייחסות",
-          });
+          await apiClient.entities.Member.create({ ...payload, user_id: user.id });
         }
 
         await apiClient.auth.updateMe({
           gender,
           target,
+          group_id: null,
           onboarding_completed: true,
+          onboarding_completed_at: new Date().toISOString(),
         });
 
+        toast({
+          title: isNewCycle ? "סבב חדש נשמר" : "נרשמת לרשימת המתנה",
+          description: isNewCycle
+            ? "הגלגל החדש מוכן. השיבוץ לקבוצה ייפתח לפי לוח השנה."
+            : "נשבץ אותך לקבוצה מה־25 לחודש.",
+        });
         navigate("/");
         return;
       }
@@ -178,19 +199,22 @@ export default function Onboarding() {
           target,
           gender,
           manager_name: manager.name,
-          manager_id: manager.id,
+          manager_id: manager.user_id || manager.id,
           participant_count: 1,
           max_participants: 5,
           status: "on_track",
           avg_progress: 0,
         });
-      } else {
+      } else if (!existing || String(existing.group_id) !== String(group.id)) {
         group = await apiClient.entities.Group.update(group.id, {
           participant_count: (group.participant_count || 0) + 1,
         });
       }
 
-      const existing = await apiClient.entities.Member.filter({ user_id: user.id });
+      if (existing) {
+        await leaveOldGroupIfNeeded(existing, group.id);
+      }
+
       const memberPayload = {
         name: user?.full_name || user?.email || "משתמש חדש",
         goal_id: goal.id,
@@ -202,16 +226,16 @@ export default function Onboarding() {
         group_id: group.id,
         role: "user",
         status: "בעקבות",
+        progress: 0,
+        xp: existing?.xp || 0,
+        streak: 0,
       };
-      if (existing[0]) {
-        await apiClient.entities.Member.update(existing[0].id, memberPayload);
+      if (existing) {
+        await apiClient.entities.Member.update(existing.id, memberPayload);
       } else {
         await apiClient.entities.Member.create({
           ...memberPayload,
           user_id: user.id,
-          xp: 0,
-          progress: 0,
-          streak: 0,
         });
       }
 
@@ -220,8 +244,15 @@ export default function Onboarding() {
         target,
         group_id: group.id,
         onboarding_completed: true,
+        onboarding_completed_at: new Date().toISOString(),
       });
 
+      toast({
+        title: isNewCycle ? "סבב חדש התחיל!" : "ההרשמה הושלמה",
+        description: isNewCycle
+          ? `גלגל משימות חדש + שיבוץ לקבוצת ${group.name}`
+          : `שובצת לקבוצת ${group.name}`,
+      });
       navigate("/");
     } catch (err) {
       console.error("[Onboarding] finish failed", err);
@@ -243,34 +274,72 @@ export default function Onboarding() {
     );
   }
 
-  const canNext = [
-    !!target,
-    !!gender,
-    !!manager,
-    tasks.length >= 4,
-    !!rewardText || !!rewardImage,
-  ][step];
+  // Reward text is required; image is optional
+  const canNext = [!!target, !!gender, !!manager, tasks.length >= 4, !!rewardText.trim()][step];
 
   return (
     <div className="min-h-screen bg-background p-4" dir="rtl">
       <div className="max-w-md lg:max-w-xl mx-auto">
+        {isNewCycle && (
+          <div className="mb-3 rounded-xl border border-primary/40 bg-primary/10 px-4 py-3 text-center">
+            <p className="text-sm font-bold text-primary">סבב חדש נפתח</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              בחרו יעד, מנהל/ת, גלגל משימות חדש ותגמול — ותשובצו לקבוצה לסבב {currentCycleMonth()}
+            </p>
+          </div>
+        )}
         <StepProgress step={step} />
 
         <div className="card-gold-rim p-5 space-y-4">
           {step === 0 && <StepTarget target={target} setTarget={setTarget} />}
           {step === 1 && <StepGender gender={gender} setGender={setGender} />}
-          {step === 2 && <StepManager managers={managers} groups={groups} gender={gender} target={target} manager={manager} setManager={setManager} />}
-          {step === 3 && <StepTasks target={target} tasks={tasks} toggleTask={toggleTask} customTask={customTask} setCustomTask={setCustomTask} addCustomTask={addCustomTask} removeTask={removeTask} />}
-          {step === 4 && <StepReward goalTitle={goalTitle} setGoalTitle={setGoalTitle} rewardText={rewardText} setRewardText={setRewardText} rewardImage={rewardImage} uploading={uploading} uploadReward={uploadReward} />}
+          {step === 2 && (
+            <StepManager
+              managers={managers}
+              groups={groups}
+              gender={gender}
+              target={target}
+              manager={manager}
+              setManager={setManager}
+            />
+          )}
+          {step === 3 && (
+            <StepTasks
+              target={target}
+              tasks={tasks}
+              toggleTask={toggleTask}
+              customTask={customTask}
+              setCustomTask={setCustomTask}
+              addCustomTask={addCustomTask}
+              removeTask={removeTask}
+            />
+          )}
+          {step === 4 && (
+            <StepReward
+              goalTitle={goalTitle}
+              setGoalTitle={setGoalTitle}
+              rewardText={rewardText}
+              setRewardText={setRewardText}
+              rewardImage={rewardImage}
+              uploading={uploading}
+              uploadReward={uploadReward}
+              isNewCycle={isNewCycle}
+            />
+          )}
 
           <div className="flex gap-2 pt-2">
             {step > 0 && (
-              <button onClick={() => setStep(step - 1)} className="flex-1 bg-muted rounded-xl py-2.5 text-sm font-bold">
+              <button
+                type="button"
+                onClick={() => setStep(step - 1)}
+                className="flex-1 bg-muted rounded-xl py-2.5 text-sm font-bold"
+              >
                 חזרה
               </button>
             )}
             {step < STEPS.length - 1 ? (
               <button
+                type="button"
                 onClick={() => canNext && setStep(step + 1)}
                 disabled={!canNext}
                 className="flex-1 gold-bg text-black rounded-xl py-2.5 text-sm font-bold disabled:opacity-40"
@@ -279,11 +348,18 @@ export default function Onboarding() {
               </button>
             ) : (
               <button
+                type="button"
                 onClick={finish}
-                disabled={!canNext || submitting}
+                disabled={!canNext || submitting || uploading}
                 className="flex-1 gold-gradient text-black rounded-xl py-2.5 text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2"
               >
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "סיום והתחלה! 🚀"}
+                {submitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : isNewCycle ? (
+                  "סיום והתחלת סבב חדש 🚀"
+                ) : (
+                  "סיום והתחלה! 🚀"
+                )}
               </button>
             )}
           </div>
