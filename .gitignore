@@ -16,6 +16,7 @@
 .env
 .env.*
 !.env.example
+terraform/scripts/domain-contact-*.json
 
 # Node
 node_modules/
