@@ -5,37 +5,86 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.models import Goal, Group, Meeting, Member, Notification, SystemSetting, User
+from app.models import Goal, Group, Meeting, Member, Notification, SystemSetting, Task, User
 from app.security import hash_password
 
 logger = logging.getLogger(__name__)
 
-# Canonical DEV accounts — repaired on every non-prod startup so login always works.
+# Canonical DEV accounts — created/repaired on every non-prod startup.
 DEV_SEED_ACCOUNTS = (
     {
         "email": "admin.dev@sbl.local",
         "password_attr": "dev_admin_password",
         "password_fallback": "Admin123!",
-        "full_name": "Dev Admin",
+        "full_name": "אדמין דמו",
         "role": "admin",
     },
     {
         "email": "manager.dev@sbl.local",
         "password": "Manager123!",
-        "full_name": "Dev Manager",
+        "full_name": "מנהלת דמו א׳",
         "role": "manager",
         "target": "מכירות",
+        "gender": "female",
         "focus_target": "שיפור מכירות",
         "focus_month": "2026-07",
+        "group": "alpha",
+    },
+    {
+        "email": "manager2.dev@sbl.local",
+        "password": "Manager123!",
+        "full_name": "מנהל דמו ב׳",
+        "role": "manager",
+        "target": "גיוס",
+        "gender": "male",
+        "focus_target": "גיוס לקוחות",
+        "focus_month": "2026-07",
+        "group": "beta",
     },
     {
         "email": "user.dev@sbl.local",
         "password": "User123!",
-        "full_name": "Dev User",
+        "full_name": "משתמשת דמו א׳",
         "role": "user",
         "target": "שיווק",
         "gender": "female",
+        "group": "alpha",
     },
+    {
+        "email": "user2.dev@sbl.local",
+        "password": "User123!",
+        "full_name": "משתמש דמו ב׳",
+        "role": "user",
+        "target": "מכירות",
+        "gender": "male",
+        "group": "alpha",
+    },
+    {
+        "email": "user3.dev@sbl.local",
+        "password": "User123!",
+        "full_name": "משתמשת דמו ג׳",
+        "role": "user",
+        "target": "גיוס",
+        "gender": "female",
+        "group": "beta",
+    },
+    {
+        "email": "user4.dev@sbl.local",
+        "password": "User123!",
+        "full_name": "משתמש דמו ד׳ (רשימת המתנה)",
+        "role": "user",
+        "target": "שיווק",
+        "gender": "male",
+        "group": None,  # waiting list — no group yet
+    },
+)
+
+_DEMO_TASKS = (
+    "שיחת מכירה יומית",
+    "מעקב לידים",
+    "פוסט ברשתות",
+    "סיכום שבועי",
+    "תרגול מיומנות",
 )
 
 
@@ -67,172 +116,249 @@ def _dev_account_password(account: dict, settings: Settings) -> str:
     return account["password"]
 
 
-def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
-    """
-    Idempotent repair for DEV seed users + Member/Goal/Group demo graph.
-
-    Existing DBs may predate email_verified / have False defaults. Every DEV
-    startup marks the known seed accounts verified and resets their passwords
-    to the documented credentials so Login always works. Also ensures manager
-    and user have Member rows with correct roles for QA flows.
-    """
-    repaired = 0
-    for account in DEV_SEED_ACCOUNTS:
-        email = account["email"]
-        user = session.scalar(select(User).where(User.email == email))
-        if user is None:
-            continue
-
-        password = _dev_account_password(account, settings)
-        user.email_verified = True
-        user.is_active = True
-        user.password_hash = hash_password(password)
-        user.role = account["role"]
-        user.full_name = account.get("full_name") or user.full_name
-        user.subscription_status = "active"
-        user.onboarding_completed = True
-        if "target" in account:
-            user.target = account["target"]
-        if "gender" in account:
-            user.gender = account["gender"]
-        if "focus_target" in account:
-            user.focus_target = account["focus_target"]
-        if "focus_month" in account:
-            user.focus_month = account["focus_month"]
-        repaired += 1
-
-    # Ensure demo group
-    group = session.scalar(select(Group).where(Group.name == "Dev Alpha Team"))
+def _ensure_demo_group(
+    session: Session,
+    *,
+    name: str,
+    description: str,
+    target: str,
+    gender: str,
+    manager_name: str,
+) -> Group:
+    group = session.scalar(select(Group).where(Group.name == name))
     if group is None:
         group = Group(
-            name="Dev Alpha Team",
-            description="Sample development group for DEV testing",
-            target="מכירות",
-            gender="female",
-            manager_name="Dev Manager",
-            participant_count=2,
-            max_participants=5,
+            name=name,
+            description=description,
+            target=target,
+            gender=gender,
+            manager_name=manager_name,
+            participant_count=0,
+            max_participants=8,
             status="on_track",
-            avg_progress=30.0,
+            avg_progress=25.0,
         )
         session.add(group)
         session.flush()
-        repaired += 1
+    return group
 
-    manager = session.scalar(select(User).where(User.email == "manager.dev@sbl.local"))
-    participant = session.scalar(select(User).where(User.email == "user.dev@sbl.local"))
 
-    if manager:
-        manager.group_id = group.id
-        group.manager_id = manager.id
-        group.manager_name = manager.full_name
-        mgr_goal = session.scalar(select(Goal).where(Goal.owner_user_id == manager.id))
-        if mgr_goal is None:
-            mgr_goal = Goal(
-                title="יעד חודשי - מכירות",
-                target="מכירות",
-                reward_text="ארוחת צוות",
-                cycle_month="2026-07",
-                progress=35.0,
-                xp_total=120.0,
-                streak=4,
-                owner_user_id=manager.id,
-            )
-            session.add(mgr_goal)
-            session.flush()
-            repaired += 1
-        mgr_member = session.scalar(select(Member).where(Member.user_id == manager.id))
-        if mgr_member is None:
+def _ensure_goal_with_tasks(
+    session: Session,
+    user: User,
+    *,
+    title: str,
+    target: str,
+    reward: str,
+    progress: float,
+    xp: float,
+    streak: int,
+) -> Goal:
+    goal = session.scalar(select(Goal).where(Goal.owner_user_id == user.id))
+    if goal is None:
+        goal = Goal(
+            title=title,
+            target=target,
+            reward_text=reward,
+            cycle_month="2026-07",
+            progress=progress,
+            xp_total=xp,
+            streak=streak,
+            owner_user_id=user.id,
+        )
+        session.add(goal)
+        session.flush()
+    task_count = (
+        session.scalar(select(func.count()).select_from(Task).where(Task.goal_id == goal.id)) or 0
+    )
+    if task_count == 0:
+        for idx, task_title in enumerate(_DEMO_TASKS):
             session.add(
-                Member(
-                    name=manager.full_name,
-                    user_id=manager.id,
-                    group_id=group.id,
-                    group_name=group.name,
-                    role="manager",
-                    target=manager.target or "מכירות",
-                    goal_id=mgr_goal.id,
-                    goal_title=mgr_goal.title,
-                    progress=mgr_goal.progress,
-                    xp=mgr_goal.xp_total,
-                    streak=mgr_goal.streak,
-                    status="בעקבות",
-                    next_month_target=manager.target or "מכירות",
-                    next_month_selected_at=datetime.now(timezone.utc),
+                Task(
+                    goal_id=goal.id,
+                    title=task_title,
+                    order_index=idx,
+                    is_completed=idx == 0,
+                    priority="בינוני" if idx % 2 == 0 else "דחוף",
+                    xp_value=100.0,
                 )
             )
-            repaired += 1
-        else:
-            mgr_member.role = "manager"
-            mgr_member.group_id = group.id
-            mgr_member.group_name = group.name
-            mgr_member.goal_id = mgr_goal.id
-            mgr_member.goal_title = mgr_goal.title
-            mgr_member.name = manager.full_name
-            # Avoid blocking the manager UI on demo days (≥23) with an empty next-month modal
-            if not mgr_member.next_month_selected_at:
-                mgr_member.next_month_target = mgr_member.target or manager.target or "מכירות"
-                mgr_member.next_month_selected_at = datetime.now(timezone.utc)
-                repaired += 1
+        session.flush()
+    return goal
 
-    if participant:
-        participant.group_id = group.id
-        user_goal = session.scalar(select(Goal).where(Goal.owner_user_id == participant.id))
-        if user_goal is None:
-            user_goal = Goal(
-                title="יעד חודשי - שיווק",
-                target="שיווק",
-                reward_text="יום חופש",
-                cycle_month="2026-07",
-                progress=20.0,
-                xp_total=80.0,
-                streak=2,
-                owner_user_id=participant.id,
+
+def _upsert_member(
+    session: Session,
+    user: User,
+    *,
+    group: Group | None,
+    goal: Goal | None,
+    role: str,
+) -> None:
+    member = session.scalar(select(Member).where(Member.user_id == user.id))
+    payload = {
+        "name": user.full_name,
+        "user_id": user.id,
+        "group_id": group.id if group else None,
+        "group_name": group.name if group else None,
+        "role": role,
+        "target": user.target,
+        "gender": user.gender,
+        "goal_id": goal.id if goal else None,
+        "goal_title": goal.title if goal else None,
+        "progress": goal.progress if goal else 0.0,
+        "xp": goal.xp_total if goal else 0.0,
+        "streak": goal.streak if goal else 0,
+        "status": "בעקבות",
+    }
+    if member is None:
+        if role == "manager":
+            payload["next_month_target"] = user.target or "מכירות"
+            payload["next_month_selected_at"] = datetime.now(timezone.utc)
+        session.add(Member(**payload))
+    else:
+        for key, value in payload.items():
+            setattr(member, key, value)
+        if role == "manager" and not member.next_month_selected_at:
+            member.next_month_target = member.target or user.target or "מכירות"
+            member.next_month_selected_at = datetime.now(timezone.utc)
+
+
+def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
+    """
+    Idempotent CREATE + repair for DEV demo users, groups, goals and tasks.
+
+    Works even when the DB already has real registered users — missing seed
+    accounts are inserted; existing ones get passwords/roles reset.
+    """
+    changed = 0
+
+    alpha = _ensure_demo_group(
+        session,
+        name="Dev Alpha Team",
+        description="קבוצת דמו לבדיקות DEV",
+        target="מכירות",
+        gender="female",
+        manager_name="מנהלת דמו א׳",
+    )
+    beta = _ensure_demo_group(
+        session,
+        name="Dev Beta Team",
+        description="קבוצת דמו שנייה לבדיקות DEV",
+        target="גיוס",
+        gender="male",
+        manager_name="מנהל דמו ב׳",
+    )
+    groups = {"alpha": alpha, "beta": beta}
+
+    if session.scalar(select(func.count()).select_from(SystemSetting)) == 0:
+        session.add(SystemSetting())
+        changed += 1
+
+    for account in DEV_SEED_ACCOUNTS:
+        email = account["email"]
+        password = _dev_account_password(account, settings)
+        user = session.scalar(select(User).where(User.email == email))
+        created = False
+        if user is None:
+            user = User(
+                email=email,
+                password_hash=hash_password(password),
+                full_name=account["full_name"],
+                role=account["role"],
+                subscription_status="active",
+                onboarding_completed=True,
+                email_verified=True,
+                is_active=True,
+                target=account.get("target"),
+                gender=account.get("gender"),
+                focus_target=account.get("focus_target"),
+                focus_month=account.get("focus_month"),
             )
-            session.add(user_goal)
+            session.add(user)
             session.flush()
-            repaired += 1
-        user_member = session.scalar(select(Member).where(Member.user_id == participant.id))
-        if user_member is None:
-            session.add(
-                Member(
-                    name=participant.full_name,
-                    user_id=participant.id,
-                    group_id=group.id,
-                    group_name=group.name,
-                    role="user",
-                    target=participant.target or "שיווק",
-                    gender=participant.gender or "female",
-                    goal_id=user_goal.id,
-                    goal_title=user_goal.title,
-                    progress=user_goal.progress,
-                    xp=user_goal.xp_total,
-                    streak=user_goal.streak,
-                    status="בעקבות",
-                )
-            )
-            repaired += 1
+            created = True
+            changed += 1
         else:
-            user_member.role = "user"
-            user_member.group_id = group.id
-            user_member.group_name = group.name
-            user_member.goal_id = user_goal.id
-            user_member.goal_title = user_goal.title
-            user_member.name = participant.full_name
-            user_member.gender = participant.gender or user_member.gender
+            user.email_verified = True
+            user.is_active = True
+            user.password_hash = hash_password(password)
+            user.role = account["role"]
+            user.full_name = account.get("full_name") or user.full_name
+            user.subscription_status = "active"
+            user.onboarding_completed = True
+            if "target" in account:
+                user.target = account["target"]
+            if "gender" in account:
+                user.gender = account["gender"]
+            if "focus_target" in account:
+                user.focus_target = account["focus_target"]
+            if "focus_month" in account:
+                user.focus_month = account["focus_month"]
+            changed += 1
 
-    # Drop accidental admin Member rows (admin is not a league participant)
-    admin = session.scalar(select(User).where(User.email == "admin.dev@sbl.local"))
-    if admin:
-        admin_members = session.scalars(select(Member).where(Member.user_id == admin.id)).all()
-        for row in admin_members:
-            session.delete(row)
-            repaired += 1
+        group_key = account.get("group")
+        group = groups.get(group_key) if group_key else None
+        if group is not None:
+            user.group_id = group.id
 
-    if repaired:
-        session.commit()
-        logger.info("DEV seed accounts repaired/verified: %s", repaired)
-    return repaired
+        if account["role"] == "admin":
+            # Admin is not a league participant
+            for row in session.scalars(select(Member).where(Member.user_id == user.id)).all():
+                session.delete(row)
+                changed += 1
+            continue
+
+        goal = None
+        if account["role"] in {"manager", "user"}:
+            goal = _ensure_goal_with_tasks(
+                session,
+                user,
+                title=f"יעד חודשי - {account.get('target') or 'כללי'}",
+                target=account.get("target") or "מכירות",
+                reward="פרס דמו",
+                progress=35.0 if account["role"] == "manager" else 20.0,
+                xp=120.0 if account["role"] == "manager" else 80.0,
+                streak=4 if account["role"] == "manager" else 2,
+            )
+            _upsert_member(
+                session,
+                user,
+                group=group,
+                goal=goal,
+                role=account["role"],
+            )
+            changed += 1
+
+        if created:
+            logger.info("DEV seed created account %s (%s)", email, account["role"])
+
+    # Wire managers onto groups
+    for email, group in (
+        ("manager.dev@sbl.local", alpha),
+        ("manager2.dev@sbl.local", beta),
+    ):
+        manager = session.scalar(select(User).where(User.email == email))
+        if manager:
+            group.manager_id = manager.id
+            group.manager_name = manager.full_name
+            manager.group_id = group.id
+
+    # Refresh participant counts
+    for group in (alpha, beta):
+        count = (
+            session.scalar(
+                select(func.count())
+                .select_from(Member)
+                .where(Member.group_id == group.id, Member.role == "user")
+            )
+            or 0
+        )
+        group.participant_count = count
+
+    session.commit()
+    logger.info("DEV seed accounts upserted/repaired (delta_marker=%s)", changed)
+    return changed
 
 
 def ensure_production_admin(session: Session, settings: Settings) -> bool:
@@ -263,118 +389,16 @@ def ensure_production_admin(session: Session, settings: Settings) -> bool:
 
 
 def seed_development_data(session: Session, settings: Settings) -> bool:
+    """
+    Legacy empty-DB path. Prefer ensure_dev_seed_accounts which also creates
+    accounts when the DB already has other users.
+    """
     if _any_users_exist(session):
-        logger.info("Development seed skipped: users already exist")
+        logger.info("Development seed skipped: users already exist (upsert handles demos)")
         return False
-
-    group = Group(
-        name="Dev Alpha Team",
-        description="Sample development group for local and DEV testing",
-    )
-    session.add(group)
-    session.flush()
-
-    users = [
-        User(
-            email="admin.dev@sbl.local",
-            password_hash=hash_password(_dev_account_password(DEV_SEED_ACCOUNTS[0], settings)),
-            full_name="Dev Admin",
-            role="admin",
-            subscription_status="active",
-            onboarding_completed=True,
-            email_verified=True,
-            group_id=group.id,
-        ),
-        User(
-            email="manager.dev@sbl.local",
-            password_hash=hash_password("Manager123!"),
-            full_name="Dev Manager",
-            role="manager",
-            subscription_status="active",
-            target="מכירות",
-            onboarding_completed=True,
-            email_verified=True,
-            group_id=group.id,
-            focus_target="שיפור מכירות",
-            focus_month="2026-07",
-        ),
-        User(
-            email="user.dev@sbl.local",
-            password_hash=hash_password("User123!"),
-            full_name="Dev User",
-            role="user",
-            subscription_status="active",
-            target="שיווק",
-            gender="female",
-            onboarding_completed=True,
-            email_verified=True,
-            group_id=group.id,
-        ),
-    ]
-    session.add_all(users)
-    session.flush()
-
-    goals = [
-        Goal(
-            title="יעד חודשי - מכירות",
-            target="מכירות",
-            reward_text="ארוחת צוות",
-            cycle_month="2026-07",
-            progress=35.0,
-            xp_total=120.0,
-            streak=4,
-            owner_user_id=users[1].id,
-        ),
-        Goal(
-            title="יעד חודשי - שיווק",
-            target="שיווק",
-            reward_text="יום חופש",
-            cycle_month="2026-07",
-            progress=20.0,
-            xp_total=80.0,
-            streak=2,
-            owner_user_id=users[2].id,
-        ),
-    ]
-    session.add_all(goals)
-    session.flush()
-
-    members = [
-        Member(
-            name=users[1].full_name,
-            user_id=users[1].id,
-            group_id=group.id,
-            group_name=group.name,
-            role=users[1].role,
-            target=users[1].target,
-            goal_id=goals[0].id,
-            goal_title=goals[0].title,
-            progress=goals[0].progress,
-            xp=goals[0].xp_total,
-            streak=goals[0].streak,
-        ),
-        Member(
-            name=users[2].full_name,
-            user_id=users[2].id,
-            group_id=group.id,
-            group_name=group.name,
-            role=users[2].role,
-            target=users[2].target,
-            gender=users[2].gender,
-            goal_id=goals[1].id,
-            goal_title=goals[1].title,
-            progress=goals[1].progress,
-            xp=goals[1].xp_total,
-            streak=goals[1].streak,
-        ),
-    ]
-    session.add_all(members)
-
-    if session.scalar(select(func.count()).select_from(SystemSetting)) == 0:
-        session.add(SystemSetting())
-
-    session.commit()
-    logger.info("Development seed data created (users=%s, goals=%s)", len(users), len(goals))
+    # Empty DB — upsert creates everything
+    ensure_dev_seed_accounts(session, settings)
+    logger.info("Development seed data created via upsert")
     return True
 
 
@@ -402,7 +426,6 @@ def ensure_manager_operational_alerts(session: Session) -> int:
             ).all()
 
         for peer in peers:
-            # Prefer explicit inactive/critical status; fall back to stale rows (≥3 days)
             stamp = peer.created_at
             age_days = 0
             if stamp:
@@ -496,9 +519,9 @@ def run_database_bootstrap(session: Session, settings: Settings) -> dict[str, bo
     seeded = False
     repaired = 0
     if should_seed_dev_data(settings):
-        seeded = seed_development_data(session, settings)
+        # Upsert demos even when other users already exist
         repaired = ensure_dev_seed_accounts(session, settings)
-    # Operational alerts run on every boot (DEV + PROD)
+        seeded = repaired > 0
     alerts = ensure_manager_operational_alerts(session)
 
     return {
