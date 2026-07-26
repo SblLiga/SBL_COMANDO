@@ -100,8 +100,9 @@ class Settings(BaseSettings):
                 if key in data and data[key] not in (None, ""):
                     updates[attr] = data[key]
                     break
-        if updates:
-            return self.model_copy(update=updates)
+        # Mutate in place — model_copy + Field(alias=...) can drop updates on some pydantic builds
+        for attr, value in updates.items():
+            object.__setattr__(self, attr, value)
         return self
 
     def resolved_db_password(self) -> str:
