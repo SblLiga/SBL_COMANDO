@@ -114,27 +114,37 @@ export default function Register() {
     return (
       <AuthLayout
         title="אימות דוא״ל"
-        subtitle={emailSent ? `שלחנו קוד ל-${email}` : `הזיני קוד אימות עבור ${email}`}
+        subtitle={screenOtp ? "הקוד מוצג למטה — המייל עדיין לא זמין" : `הזיני קוד אימות עבור ${email}`}
         footerLink={{ prompt: "כבר יש לך חשבון מאומת?", to: "/login", label: "חזרה להתחברות" }}
       >
+        {/* Always-on temporary verification banner (SES not ready for everyone) */}
+        <div className="mb-5 rounded-2xl border-2 border-primary bg-primary/15 p-5 text-center shadow-[0_0_24px_rgba(212,175,55,0.25)]">
+          <p className="text-sm font-bold text-primary mb-2">קוד האימות שלך</p>
+          {screenOtp ? (
+            <p
+              className="font-mono text-4xl sm:text-5xl font-black tracking-[0.4em] text-foreground leading-none py-2"
+              dir="ltr"
+            >
+              {screenOtp}
+            </p>
+          ) : (
+            <p className="font-mono text-3xl font-black tracking-[0.35em] text-foreground py-2" dir="ltr">
+              000000
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground mt-2">
+            {screenOtp
+              ? "הקוד כבר הוזן בשדות — לחצי «אימות». אפשר גם 000000."
+              : "מייל לא הגיע? הזיני 000000 או לחצי «שלח שוב»."}
+          </p>
+        </div>
+
         {error && (
           <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
             {error}
           </div>
         )}
-        {screenOtp ? (
-          <div className="mb-4 p-4 rounded-xl border border-primary/40 bg-primary/10 text-center space-y-1">
-            <p className="text-xs text-muted-foreground">קוד אימות זמני (מייל עדיין לא זמין לכולם)</p>
-            <p className="font-mono text-2xl font-bold tracking-[0.35em] text-primary" dir="ltr">
-              {screenOtp}
-            </p>
-            <p className="text-[11px] text-muted-foreground">אפשר גם להזין 000000</p>
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground text-center mb-3">
-            בדק/י את תיבת הדוא״ל (וגם ספאם). הקוד תקף ל-15 דקות.
-          </p>
-        )}
+
         <div className="flex justify-center mb-6" dir="ltr">
           <InputOTP
             maxLength={6}
@@ -168,9 +178,9 @@ export default function Register() {
           )}
         </Button>
         <p className="text-center text-sm text-muted-foreground mt-4">
-          לא קיבלת את הקוד?{" "}
+          לא רואה קוד?{" "}
           <button type="button" onClick={handleResend} className="text-primary font-medium hover:underline">
-            שלח שוב
+            הצג / שלח שוב
           </button>
         </p>
         <div className="mt-6 pt-4 border-t border-border text-center">
