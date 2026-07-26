@@ -128,8 +128,8 @@ export default function AdminAlerts() {
             {[
               { k: "all", l: "כולם", icon: Users },
               { k: "managers", l: "כל המנהלים", icon: UserCog },
-              { k: "specificUser", l: "יוזר ספציפי", icon: Users },
-              { k: "specificManager", l: "מנג׳ר ספציפי", icon: UserCog },
+              { k: "specificUser", l: "משתמש ספציפי", icon: Users },
+              { k: "specificManager", l: "מנהל ספציפי", icon: UserCog },
             ].map(({ k, l, icon: Icon }) => (
               <div key={k}>
                 <label className="flex items-center gap-3 card-lux p-2.5">
@@ -139,7 +139,7 @@ export default function AdminAlerts() {
                 </label>
                 {k === "specificUser" && targets.specificUser && (
                   <select value={specificUserId} onChange={(e) => setSpecificUserId(e.target.value)} className="w-full bg-input rounded-lg px-3 py-2 text-sm mt-1">
-                    <option value="">בחר יוזר...</option>
+                    <option value="">בחר משתמש...</option>
                     {users.map((u) => (
                       <option key={u.id} value={u.id}>{u.name}</option>
                     ))}
@@ -147,7 +147,7 @@ export default function AdminAlerts() {
                 )}
                 {k === "specificManager" && targets.specificManager && (
                   <select value={specificManagerId} onChange={(e) => setSpecificManagerId(e.target.value)} className="w-full bg-input rounded-lg px-3 py-2 text-sm mt-1">
-                    <option value="">בחר מנג׳ר...</option>
+                    <option value="">בחר מנהל...</option>
                     {managers.map((m) => (
                       <option key={m.id} value={m.id}>{m.name}</option>
                     ))}

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
 import apiClient from "@/api/apiClient";
-import { Flame, Zap, Trophy, Gift, AlertCircle, ChevronLeft } from "lucide-react";
+import { Flame, Zap, Trophy, Gift, AlertCircle, ChevronLeft, Bell, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import KpiCard from "@/components/KpiCard";
+import MotivationalQuote from "@/components/MotivationalQuote";
+import UserAvatar from "@/components/UserAvatar";
 import { mediaUrl } from "@/lib/mediaUrl";
 
 export default function Home() {
@@ -10,6 +12,7 @@ export default function Home() {
   const [tasks, setTasks] = useState([]);
   const [members, setMembers] = useState([]);
   const [myMember, setMyMember] = useState(null);
+  const [group, setGroup] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -68,6 +71,11 @@ export default function Home() {
         }
         const m = await apiClient.entities.Member.list();
         setMembers(m);
+
+        if (me?.group_id) {
+          const groups = await apiClient.entities.Group.list();
+          setGroup(groups.find((grp) => grp.id === me.group_id) || null);
+        }
       } finally {
         setLoading(false);
       }
@@ -90,13 +98,36 @@ export default function Home() {
   const sorted = [...members].sort((a, b) => (b.xp || 0) - (a.xp || 0));
   const myRank = myMember ? sorted.findIndex((m) => m.id === myMember.id) + 1 : "—";
   const urgent = tasks.find((t) => !t.is_completed && t.priority === "דחוף");
+  const avatarSrc = myMember?.avatar_url || "";
 
   return (
-    <div className="p-4 space-y-5">
-      <div className="pt-3 pb-1">
-        <h1 className="font-display text-2xl font-bold">ברוך שובך, {myMember?.gender === "female" ? "הכובשת" : "הכובש"}!</h1>
-        <p className="text-sm text-muted-foreground">{myMember?.name || (myMember?.gender === "female" ? "מוכנה לקרב?" : "מוכן לקרב?")}</p>
+    <div className="p-4 space-y-5 overflow-x-hidden">
+      <div className="pt-3 pb-1 flex items-center gap-3">
+        <UserAvatar
+          src={avatarSrc}
+          name={myMember?.name || "משתמש"}
+          className="w-12 h-12 ring-2 ring-primary/30 shrink-0"
+        />
+        <div>
+          <h1 className="font-display text-xl sm:text-2xl font-bold">ברוך שובך, {myMember?.gender === "female" ? "הכובשת" : "הכובש"}!</h1>
+          <p className="text-sm text-muted-foreground">{myMember?.name || (myMember?.gender === "female" ? "מוכנה לקרב?" : "מוכן לקרב?")}</p>
+        </div>
       </div>
+
+      {group && (
+        <Link to="/hq" className="block">
+          <div className="card-lux p-3 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+              <Users className="w-5 h-5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold truncate">{group.name}</p>
+              <p className="text-[10px] text-muted-foreground">מנהל/ת: {group.manager_name || "—"}</p>
+            </div>
+            <ChevronLeft className="w-5 h-5 text-muted-foreground" />
+          </div>
+        </Link>
+      )}
 
       <div className="card-gold-rim p-5 text-center">
         <p className="text-xs text-muted-foreground mb-1">התקדמות כללית אל היעד</p>
@@ -113,6 +144,19 @@ export default function Home() {
         <KpiCard icon={Zap} value={xp} label="XP" />
         <KpiCard icon={Trophy} value={`#${myRank}`} label="דירוג ליגה" />
       </div>
+
+      <Link to="/messages" className="block">
+        <div className="card-lux p-4 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+            <Bell className="w-5 h-5 text-primary" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-medium">הודעות ועדכונים</p>
+            <p className="text-[10px] text-muted-foreground">לחץ/י לצפייה בתיבת ההודעות</p>
+          </div>
+          <ChevronLeft className="w-5 h-5 text-muted-foreground" />
+        </div>
+      </Link>
 
       {urgent && (
         <Link to="/goal" className="block">
@@ -153,6 +197,8 @@ export default function Home() {
       <Link to="/goal" className="block w-full gold-gradient text-black font-bold rounded-xl py-3.5 text-center text-sm">
         לגלגל החכם שלי ←
       </Link>
+
+      <MotivationalQuote />
     </div>
   );
 }

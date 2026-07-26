@@ -230,8 +230,12 @@ export default function ManagerMeeting() {
                   <p className="text-xs text-muted-foreground leading-snug whitespace-pre-line">{lastMeeting.summary}</p>
                 )}
                 {!lastMeeting.is_locked && (
-                  <button onClick={() => sendToAdmin(lastMeeting)} className="w-full mt-2 flex items-center justify-center gap-1.5 text-xs px-3 py-2 rounded-lg gold-bg text-black font-bold">
-                    <Send className="w-3.5 h-3.5" /> שלח לאדמין
+                  <button
+                    onClick={() => sendToAdmin(lastMeeting)}
+                    disabled={!lastMeeting.summary?.trim()}
+                    className="w-full mt-2 flex items-center justify-center gap-1.5 text-xs px-3 py-2 rounded-lg gold-bg text-black font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Send className="w-3.5 h-3.5" /> {lastMeeting.summary?.trim() ? "שלח לאדמין" : "מלא/י דוח לפני שליחה"}
                   </button>
                 )}
               </>

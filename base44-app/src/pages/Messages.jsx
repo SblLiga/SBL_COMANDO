@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import apiClient from "@/api/apiClient";
-import { Bell, CheckCircle2, AlertCircle, Info, Flame, Send, X } from "lucide-react";
+import { Bell, CheckCircle2, AlertCircle, Info, Flame, Send, X, Reply, CheckCheck } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
 const FILTERS = [
@@ -36,6 +36,8 @@ export default function Messages() {
   const [composeMsg, setComposeMsg] = useState("");
   const [sending, setSending] = useState(false);
   const [currentMember, setCurrentMember] = useState(null);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [replyText, setReplyText] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -46,7 +48,24 @@ export default function Messages() {
         setCurrentMember(me);
 
         const n = await apiClient.entities.Notification.filter({ target_user_id: user.id });
-        setNotifications(n.sort((a, b) => new Date(b.created_date || b.created_at) - new Date(a.created_date || a.created_at)));
+        const sorted = n.sort(
+          (a, b) => new Date(b.created_date || b.created_at) - new Date(a.created_date || a.created_at)
+        );
+        // Deduplicate: remove notifications with same title+body+source within 60 seconds
+        const deduped = sorted.filter((item, i, arr) => {
+          if (i === 0) return true;
+          const prev = arr[i - 1];
+          const timeDiff = Math.abs(
+            new Date(prev.created_date || prev.created_at) - new Date(item.created_date || item.created_at)
+          );
+          return !(
+            item.title === prev.title &&
+            item.body === prev.body &&
+            item.source === prev.source &&
+            timeDiff < 60000
+          );
+        });
+        setNotifications(deduped);
       } finally {
         setLoading(false);
       }
@@ -59,6 +78,18 @@ export default function Messages() {
     setNotifications(notifications.map((x) => (x.id === n.id ? updated : x)));
   };
 
+  const markAllRead = async () => {
+    const unreadItems = notifications.filter((n) => !n.is_read);
+    if (unreadItems.length === 0) return;
+    try {
+      await apiClient.entities.Notification.bulkUpdate(unreadItems.map((n) => ({ id: n.id, is_read: true })));
+    } catch {
+      await Promise.all(unreadItems.map((n) => apiClient.entities.Notification.update(n.id, { is_read: true })));
+    }
+    setNotifications(notifications.map((n) => ({ ...n, is_read: true })));
+    toast({ title: "כל ההודעות סומנו כנקראו ✓" });
+  };
+
   const dismiss = async (n, event) => {
     event?.stopPropagation();
     setNotifications((prev) => prev.filter((x) => x.id !== n.id));
@@ -66,8 +97,44 @@ export default function Messages() {
       await apiClient.entities.Notification.delete(n.id);
     } catch (err) {
       console.error("[Messages] dismiss failed", err);
-      // Fallback: at least mark read so it is less noisy
       apiClient.entities.Notification.update(n.id, { is_read: true }).catch(() => {});
+    }
+  };
+
+  const sendBulkWithFallback = async (payload) => {
+    try {
+      await apiClient.entities.Notification.bulkCreate(payload);
+    } catch {
+      await Promise.all(payload.map((p) => apiClient.entities.Notification.create(p)));
+    }
+  };
+
+  const sendReply = async (n) => {
+    if (!replyText.trim() || !currentMember) return;
+    try {
+      let targetUserId = n.source_user_id;
+      if (!targetUserId && n.source) {
+        const allMembers = await apiClient.entities.Member.list();
+        const sender = allMembers.find((m) => m.name === n.source);
+        targetUserId = sender?.user_id;
+      }
+      if (targetUserId) {
+        await apiClient.entities.Notification.create({
+          target_user_id: targetUserId,
+          title: "תגובה על הודעה",
+          body: replyText.trim(),
+          type: "info",
+          source: currentMember?.name || "משתמש",
+          source_user_id: currentMember.user_id,
+        });
+        toast({ title: "התגובה נשלחה 📨" });
+        setReplyingTo(null);
+        setReplyText("");
+      } else {
+        toast({ title: "שגיאה", description: "לא ניתן למצוא את השולח", variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "שגיאה", description: "שליחת התגובה נכשלה", variant: "destructive" });
     }
   };
 
@@ -75,20 +142,25 @@ export default function Messages() {
     if (!composeMsg.trim() || !currentMember) return;
     setSending(true);
     try {
+      const sourceName = currentMember.name || "משתמש";
       if (composeTarget === "group") {
         const groupMembers = await apiClient.entities.Member.filter({ group_id: currentMember.group_id });
         const targets = groupMembers.filter((m) => m.user_id && m.user_id !== currentMember.user_id);
-        await apiClient.entities.Notification.bulkCreate(
-          targets.map((m) => ({
-            target_user_id: m.user_id,
-            title: "הודעה מהקבוצה",
-            body: composeMsg.trim(),
-            type: "info",
-            source: currentMember.name,
-            source_user_id: currentMember.user_id,
-          }))
-        );
-        toast({ title: "ההודעה נשלחה", description: `לכל חברי הקבוצה (${targets.length})` });
+        if (targets.length === 0) {
+          toast({ title: "אין נמענים", description: "אין חברים נוספים בקבוצה" });
+        } else {
+          await sendBulkWithFallback(
+            targets.map((m) => ({
+              target_user_id: m.user_id,
+              title: "הודעה מהקבוצה",
+              body: composeMsg.trim(),
+              type: "info",
+              source: sourceName,
+              source_user_id: currentMember.user_id,
+            }))
+          );
+          toast({ title: "ההודעה נשלחה 📨", description: `לכל חברי הקבוצה (${targets.length})` });
+        }
       } else if (composeTarget === "manager") {
         const groups = await apiClient.entities.Group.list();
         const myGroup = groups.find((g) => String(g.id) === String(currentMember.group_id));
@@ -111,30 +183,30 @@ export default function Messages() {
             title: "הודעה ממשתתף/ת",
             body: composeMsg.trim(),
             type: "info",
-            source: currentMember.name,
+            source: sourceName,
             source_user_id: currentMember.user_id,
           });
-          toast({ title: "ההודעה נשלחה", description: `ל${mgr.name}` });
+          toast({ title: "ההודעה נשלחה 📨", description: `ל${mgr.name}` });
         } else {
           toast({ title: "שגיאה", description: "לא נמצא מנהל/ת לקבוצה", variant: "destructive" });
         }
       } else if (composeTarget === "admin") {
         const admins = await apiClient.entities.User.filter({ role: "admin" });
         const targets = (admins || []).filter((a) => a.id);
-        if (targets.length > 0) {
-          await apiClient.entities.Notification.bulkCreate(
+        if (targets.length === 0) {
+          toast({ title: "שגיאה", description: "לא נמצא אדמין", variant: "destructive" });
+        } else {
+          await sendBulkWithFallback(
             targets.map((a) => ({
               target_user_id: a.id,
               title: "הודעה ממשתמש/ת",
               body: composeMsg.trim(),
               type: "info",
-              source: currentMember.name,
+              source: sourceName,
               source_user_id: currentMember.user_id,
             }))
           );
-          toast({ title: "ההודעה נשלחה", description: `לאדמין (${targets.length})` });
-        } else {
-          toast({ title: "שגיאה", description: "לא נמצא אדמין", variant: "destructive" });
+          toast({ title: "ההודעה נשלחה 📨", description: `לאדמין (${targets.length})` });
         }
       }
       setComposeMsg("");
@@ -166,17 +238,30 @@ export default function Messages() {
           <h1 className="font-display text-2xl font-bold">תיבת השטח</h1>
           <p className="text-sm text-muted-foreground">{unread} הודעות חדשות</p>
         </div>
-        <div className="relative">
-          <Bell className="w-6 h-6 text-primary" />
+        <div className="flex items-center gap-2">
           {unread > 0 && (
-            <span className="absolute -top-1 -left-1 bg-destructive text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-              {unread}
-            </span>
+            <button
+              type="button"
+              onClick={markAllRead}
+              className="flex items-center gap-1.5 text-xs bg-muted hover:bg-accent rounded-lg px-3 py-2 font-medium transition-colors"
+            >
+              <CheckCheck className="w-4 h-4 text-primary" />
+              סמן הכל כנקרא
+            </button>
           )}
+          <div className="relative">
+            <Bell className="w-6 h-6 text-primary" />
+            {unread > 0 && (
+              <span className="absolute -top-1 -left-1 bg-destructive text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                {unread}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
       <button
+        type="button"
         onClick={() => setShowCompose(true)}
         className="w-full gold-gradient text-black font-bold rounded-xl py-3 flex items-center justify-center gap-2 text-sm"
       >
@@ -187,6 +272,7 @@ export default function Messages() {
         {FILTERS.map((f) => (
           <button
             key={f.id}
+            type="button"
             onClick={() => setFilter(f.id)}
             className={`text-xs px-3 py-1.5 rounded-full whitespace-nowrap font-medium ${
               filter === f.id ? "gold-bg text-black" : "bg-muted text-muted-foreground"
@@ -204,8 +290,7 @@ export default function Messages() {
           return (
             <div
               key={n.id}
-              onClick={() => markRead(n)}
-              className={`w-full text-right card-lux p-3 flex items-start gap-3 ring-1 cursor-pointer ${n.is_read ? "ring-transparent opacity-70" : st.ring}`}
+              className={`w-full text-right card-lux p-3 flex items-start gap-3 ring-1 ${n.is_read ? "ring-transparent opacity-70" : st.ring}`}
             >
               <Icon className={`w-5 h-5 ${st.color} shrink-0 mt-0.5`} />
               <div className="flex-1 min-w-0">
@@ -225,6 +310,63 @@ export default function Messages() {
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{n.body}</p>
                 {n.source && <p className="text-[10px] text-primary/70 mt-1">— {n.source}</p>}
+
+                <div className="flex items-center gap-2 mt-2">
+                  {!n.is_read && (
+                    <button
+                      type="button"
+                      onClick={() => markRead(n)}
+                      className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg bg-muted hover:bg-accent font-medium transition-colors"
+                    >
+                      <CheckCheck className="w-3 h-3 text-primary" />
+                      סמן כנקרא
+                    </button>
+                  )}
+                  {(n.source || n.source_user_id) && n.type !== "nudge" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReplyingTo(replyingTo === n.id ? null : n.id);
+                        setReplyText("");
+                      }}
+                      className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg bg-muted hover:bg-accent font-medium transition-colors"
+                    >
+                      <Reply className="w-3 h-3 text-primary" />
+                      השב
+                    </button>
+                  )}
+                </div>
+
+                {replyingTo === n.id && (
+                  <div className="mt-2 space-y-2">
+                    <textarea
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      placeholder="כתוב/י תגובה..."
+                      className="w-full bg-input rounded-lg p-2 text-xs h-16 resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReplyingTo(null);
+                          setReplyText("");
+                        }}
+                        className="flex-1 bg-muted rounded-lg py-1.5 text-xs font-medium"
+                      >
+                        ביטול
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => sendReply(n)}
+                        disabled={!replyText.trim()}
+                        className="flex-1 gold-bg text-black rounded-lg py-1.5 text-xs font-bold disabled:opacity-40"
+                      >
+                        שלח תגובה
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -242,12 +384,12 @@ export default function Messages() {
           <div className="card-lux w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="font-bold flex items-center gap-2"><Send className="w-4 h-4 text-primary" /> שלח הודעה</h3>
-              <button onClick={() => setShowCompose(false)} className="p-2 rounded-lg bg-muted"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowCompose(false)} className="p-2 rounded-lg bg-muted"><X className="w-4 h-4" /></button>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => setComposeTarget("manager")} className={`flex-1 text-xs py-2 rounded-lg font-medium ${composeTarget === "manager" ? "gold-bg text-black" : "bg-muted"}`}>למנהל/ת</button>
-              <button onClick={() => setComposeTarget("admin")} className={`flex-1 text-xs py-2 rounded-lg font-medium ${composeTarget === "admin" ? "gold-bg text-black" : "bg-muted"}`}>לאדמין</button>
-              <button onClick={() => setComposeTarget("group")} className={`flex-1 text-xs py-2 rounded-lg font-medium ${composeTarget === "group" ? "gold-bg text-black" : "bg-muted"}`}>לקבוצה</button>
+              <button type="button" onClick={() => setComposeTarget("manager")} className={`flex-1 text-xs py-2 rounded-lg font-medium ${composeTarget === "manager" ? "gold-bg text-black" : "bg-muted"}`}>למנהל/ת</button>
+              <button type="button" onClick={() => setComposeTarget("admin")} className={`flex-1 text-xs py-2 rounded-lg font-medium ${composeTarget === "admin" ? "gold-bg text-black" : "bg-muted"}`}>לאדמין</button>
+              <button type="button" onClick={() => setComposeTarget("group")} className={`flex-1 text-xs py-2 rounded-lg font-medium ${composeTarget === "group" ? "gold-bg text-black" : "bg-muted"}`}>לקבוצה</button>
             </div>
             <textarea
               value={composeMsg}
@@ -256,8 +398,8 @@ export default function Messages() {
               className="w-full bg-input rounded-lg p-3 text-sm h-28 resize-none focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <div className="flex gap-2">
-              <button onClick={() => setShowCompose(false)} className="flex-1 bg-muted rounded-lg py-2.5 text-sm font-medium">ביטול</button>
-              <button onClick={sendCompose} disabled={!composeMsg.trim() || sending} className="flex-1 gold-bg text-black rounded-lg py-2.5 text-sm font-bold disabled:opacity-40">
+              <button type="button" onClick={() => setShowCompose(false)} className="flex-1 bg-muted rounded-lg py-2.5 text-sm font-medium">ביטול</button>
+              <button type="button" onClick={sendCompose} disabled={!composeMsg.trim() || sending} className="flex-1 gold-bg text-black rounded-lg py-2.5 text-sm font-bold disabled:opacity-40">
                 {sending ? "שולח..." : "שלח"}
               </button>
             </div>

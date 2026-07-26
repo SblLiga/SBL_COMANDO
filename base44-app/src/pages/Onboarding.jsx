@@ -297,8 +297,8 @@ export default function Onboarding() {
         <StepProgress step={step} />
 
         <div className="card-gold-rim p-5 space-y-4">
-          {step === 0 && <StepTarget target={target} setTarget={setTarget} />}
-          {step === 1 && <StepGender gender={gender} setGender={setGender} />}
+          {step === 0 && <StepTarget target={target} setTarget={(t) => { setTarget(t); setManager(null); }} />}
+          {step === 1 && <StepGender gender={gender} setGender={(g) => { setGender(g); setManager(null); }} />}
           {step === 2 && (
             <StepManager
               managers={managers}

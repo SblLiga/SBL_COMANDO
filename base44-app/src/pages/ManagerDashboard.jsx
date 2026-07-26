@@ -7,6 +7,7 @@ import ProgressRing from "@/components/ProgressRing";
 import ParticipantModal from "@/components/ParticipantModal";
 import NudgeModal from "@/components/NudgeModal";
 import UserAvatar from "@/components/UserAvatar";
+import MotivationalQuote from "@/components/MotivationalQuote";
 
 const statusColor = {
   "בעקבות": "bg-green-500",
@@ -152,6 +153,8 @@ export default function ManagerDashboard() {
           </div>
         ))}
       </div>
+
+      <MotivationalQuote />
 
       {selected && (
         <ParticipantModal

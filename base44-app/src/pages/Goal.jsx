@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import apiClient from "@/api/apiClient";
-import { Zap, Flame, Plus, Check, EyeOff, Eye, GripVertical, Pencil, Trash2, Gift } from "lucide-react";
+import { Zap, Flame, Plus, Check, EyeOff, Eye, GripVertical, Pencil, Trash2, Gift, Users } from "lucide-react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import SmartWheel from "@/components/SmartWheel";
 import KpiCard from "@/components/KpiCard";
@@ -22,6 +22,7 @@ export default function Goal() {
   const [xpPerTask, setXpPerTask] = useState(100);
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [group, setGroup] = useState(null);
 
   useEffect(() => {
     load();
@@ -39,6 +40,16 @@ export default function Goal() {
         if (settings[0]?.xp_task) setXpPerTask(settings[0].xp_task);
       } catch (err) {
         console.error("[Goal] Failed to load XP settings:", err);
+      }
+      try {
+        const user = await apiClient.auth.me();
+        const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
+        if (myMembers[0]?.group_id) {
+          const groups = await apiClient.entities.Group.list();
+          setGroup(groups.find((grp) => grp.id === myMembers[0].group_id) || null);
+        }
+      } catch (err) {
+        console.error("[Goal] Failed to load group:", err);
       }
     } finally {
       setLoading(false);
@@ -183,6 +194,18 @@ export default function Goal() {
         <KpiCard icon={Flame} value={goal.streak || 0} label="רצף ימים" />
       </div>
 
+      {group && (
+        <div className="card-lux p-3 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+            <Users className="w-5 h-5 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold truncate">{group.name}</p>
+            <p className="text-[10px] text-muted-foreground">מנהל/ת: {group.manager_name || "—"}</p>
+          </div>
+        </div>
+      )}
+
       {/* Hero card */}
       <div className="card-gold-rim p-4">
         <div className="flex items-start justify-between gap-3">
@@ -212,8 +235,8 @@ export default function Goal() {
               </span>
             )}
           </div>
-          <div className="flex flex-col items-center gap-1.5 shrink-0 w-[120px]">
-            <span className="text-[10px] text-muted-foreground text-center leading-tight font-medium">
+          <div className={`flex flex-col items-center gap-1.5 shrink-0 w-[120px] p-2.5 rounded-xl ${goal.is_hidden ? "bg-primary/10 border border-primary/30" : "bg-muted/40"}`}>
+            <span className={`text-[10px] text-center leading-tight font-medium ${goal.is_hidden ? "text-primary" : "text-muted-foreground"}`}>
               {goal.is_hidden ? "🔒 היעד מוסתר מהליגה" : "פרטיות יעד"}
             </span>
             <span className="text-[9px] text-muted-foreground/80 text-center leading-tight">
@@ -221,7 +244,7 @@ export default function Goal() {
             </span>
             <div className="flex items-center gap-1">
               <Switch checked={goal.is_hidden} onCheckedChange={toggleHidden} />
-              {goal.is_hidden ? <EyeOff className="w-4 h-4 text-muted-foreground" /> : <Eye className="w-4 h-4 text-muted-foreground" />}
+              {goal.is_hidden ? <EyeOff className="w-4 h-4 text-primary" /> : <Eye className="w-4 h-4 text-muted-foreground" />}
             </div>
           </div>
         </div>
@@ -229,7 +252,7 @@ export default function Goal() {
 
       {/* Smart Wheel — own view never blanks on hide; hide only affects peers */}
       <div className="flex justify-center py-2">
-        <SmartWheel tasks={tasks} onToggle={(t) => toggleTask(t)} onSwap={swapTasks} hidden={false} size={340} />
+        <SmartWheel tasks={tasks} onToggle={(t) => toggleTask(t)} onSwap={swapTasks} hidden={false} size={340} goalTitle={goal.title} />
       </div>
 
       {/* Task list */}

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import api from "@/api/dataLayer";
-import { Zap } from "lucide-react";
+import { Zap, Bell } from "lucide-react";
 import UserAvatar from "@/components/UserAvatar";
 
 const LOGO_URL = "/logo.png";
@@ -11,6 +11,7 @@ export default function Header({ hideUser = false }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [member, setMember] = useState(null);
+  const [unread, setUnread] = useState(0);
 
   useEffect(() => {
     if (hideUser || !user?.id) return;
@@ -20,6 +21,11 @@ export default function Header({ hideUser = false }) {
         if (!cancelled) setMember(res[0] || null);
       })
       .catch((err) => console.error("[Header] Member fetch failed:", err));
+    api.entities.Notification.filter({ target_user_id: user.id })
+      .then((res) => {
+        if (!cancelled) setUnread(res.filter((n) => !n.is_read).length);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -38,7 +44,7 @@ export default function Header({ hideUser = false }) {
 
   return (
     <header className="sticky top-0 z-40 bg-card/95 backdrop-blur-xl border-b border-border" dir="rtl">
-      <div className="flex items-center justify-between px-4 h-14 max-w-md lg:max-w-3xl mx-auto">
+      <div className="flex items-center justify-between px-4 h-14 max-w-md md:max-w-lg lg:max-w-2xl xl:max-w-3xl mx-auto">
         <button
           type="button"
           onClick={() =>
@@ -66,6 +72,14 @@ export default function Header({ hideUser = false }) {
                 {xp}
               </span>
             )}
+            <Link to="/messages" className="relative p-1" aria-label="הודעות">
+              <Bell className="w-5 h-5 text-muted-foreground hover:text-primary transition-colors" />
+              {unread > 0 && (
+                <span className="absolute -top-1 -left-1 bg-destructive text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                  {unread > 9 ? "9+" : unread}
+                </span>
+              )}
+            </Link>
             <button
               type="button"
               onClick={() => navigate("/profile")}

@@ -67,16 +67,24 @@ export default function HQ() {
     setSendingMsg(true);
     try {
       const targets = members.filter((m) => m.user_id && m.user_id !== currentMember.user_id);
-      await apiClient.entities.Notification.bulkCreate(
-        targets.map((m) => ({
-          target_user_id: m.user_id,
-          title: "הודעה מהקבוצה",
-          body: groupMsg.trim(),
-          type: "info",
-          source: currentMember.name,
-          source_user_id: currentMember.user_id,
-        }))
-      );
+      if (targets.length === 0) {
+        toast({ title: "אין נמענים", description: "אין חברים נוספים בקבוצה לשליחת הודעה" });
+        setGroupMsg("");
+        return;
+      }
+      const payload = targets.map((m) => ({
+        target_user_id: m.user_id,
+        title: "הודעה מהקבוצה",
+        body: groupMsg.trim(),
+        type: "info",
+        source: currentMember.name || "חבר קבוצה",
+        source_user_id: currentMember.user_id,
+      }));
+      try {
+        await apiClient.entities.Notification.bulkCreate(payload);
+      } catch {
+        await Promise.all(payload.map((p) => apiClient.entities.Notification.create(p)));
+      }
       toast({ title: "ההודעה נשלחה! 📨", description: `לכל חברי הקבוצה (${targets.length})` });
       setGroupMsg("");
     } catch (err) {
@@ -122,6 +130,22 @@ export default function HQ() {
         <p className="text-xs text-muted-foreground text-center italic">
           {members.length} לוחמים · אותו יעד · אין להשאיר פצועים בשטח
         </p>
+        <div className="mt-3 pt-3 border-t border-border">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-muted-foreground">התקדמות קבוצתית</span>
+            <span className="text-sm font-bold gold-text">
+              {Math.round(members.reduce((s, m) => s + (m.progress || 0), 0) / (members.length || 1))}%
+            </span>
+          </div>
+          <div className="h-2 bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full gold-gradient rounded-full transition-all duration-500"
+              style={{
+                width: `${Math.round(members.reduce((s, m) => s + (m.progress || 0), 0) / (members.length || 1))}%`,
+              }}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Member cards */}

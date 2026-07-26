@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Pause, Play, FileText, Clock, Pencil } from "lucide-react";
+import { X, Pause, Play, Clock, Pencil } from "lucide-react";
 
 export const AGENDA = [
   { title: "משתתפות-שיח חופשי", minutes: 5 },
@@ -18,6 +18,7 @@ export default function LiveMeeting({ groupName, onEnd }) {
   const [reports, setReports] = useState(AGENDA.map(() => ""));
   const [showTimeout, setShowTimeout] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [showEndConfirm, setShowEndConfirm] = useState(false);
   const intervalRef = useRef(null);
 
   useEffect(() => {
@@ -55,7 +56,7 @@ export default function LiveMeeting({ groupName, onEnd }) {
   const advanceFromTimeout = () => {
     setShowTimeout(false);
     if (section < AGENDA.length - 1) nextSection();
-    else onEnd(reports);
+    else setShowEndConfirm(true);
   };
 
   const fmt = (sec) => {
@@ -129,7 +130,7 @@ export default function LiveMeeting({ groupName, onEnd }) {
           >
             <Pencil className="w-3.5 h-3.5" /> כתוב דוח
           </button>
-          <button type="button" onClick={() => onEnd(reports)} className="p-2 rounded-lg bg-muted">
+          <button type="button" onClick={() => setShowEndConfirm(true)} className="p-2 rounded-lg bg-muted">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -208,6 +209,28 @@ export default function LiveMeeting({ groupName, onEnd }) {
             <button type="button" onClick={advanceFromTimeout} className="w-full gold-gradient text-black font-bold rounded-xl py-3 text-sm">
               {isLast ? "סיום פגישה" : `עבור ל "${AGENDA[section + 1].title}"`}
             </button>
+          </div>
+        </div>
+      )}
+
+      {showEndConfirm && (
+        <div className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-6">
+          <div className="card-gold-rim p-6 text-center max-w-sm w-full">
+            <h2 className="font-display text-xl font-bold mb-1">האם ברצונך לסיים את הפגישה?</h2>
+            <p className="text-sm text-muted-foreground mb-5">הדוח יישמר בסיכום הישיבה האחרונה</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setShowEndConfirm(false)} className="flex-1 bg-muted rounded-xl py-3 text-sm font-medium">ביטול</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEndConfirm(false);
+                  onEnd(reports);
+                }}
+                className="flex-1 gold-bg text-black rounded-xl py-3 text-sm font-bold"
+              >
+                אישור ושמירת דוח
+              </button>
+            </div>
           </div>
         </div>
       )}

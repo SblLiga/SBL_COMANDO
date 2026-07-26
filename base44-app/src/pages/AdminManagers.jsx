@@ -41,21 +41,30 @@ export default function AdminManagers() {
     toast({ title: newRole === "manager" ? "קודם/ה למנהל/ת! ⭐" : "הורד/ה למשתמש/ת", description: m.name });
   };
 
-  const schedule = () => {
-    if (!date || !startTime) return;
+  const schedule = async () => {
+    if (!date || !startTime) {
+      toast({ title: "חסרים פרטים", description: "נא למלא תאריך ושעת התחלה", variant: "destructive" });
+      return;
+    }
     const dayName = new Date(`${date}T${startTime}`).toLocaleDateString("he-IL", { weekday: "long" });
     const managersOnly = members.filter((m) => m.role === "manager" && m.user_id);
-    toast({ title: "הפגישה נקבעה והתראה נשלחה לכל המנהלות", description: `${dayName} בשעה ${startTime} · ${duration} שעות` });
-    apiClient.entities.Notification.bulkCreate(
-      managersOnly.map((m) => ({
-        target_user_id: m.user_id,
-        title: "נקבעה פגישה עם שולי",
-        body: `נקבעה פגישה עם שולי ל${dayName} ${startTime}`,
-        type: "info",
-        source: "סופר-אדמין",
-      }))
-    );
-    setShowSched(false);
+    try {
+      await apiClient.entities.Notification.bulkCreate(
+        managersOnly.map((m) => ({
+          target_user_id: m.user_id,
+          title: "נקבעה פגישה עם שולי",
+          body: `נקבעה פגישה עם שולי ל${dayName} ${startTime}`,
+          type: "info",
+          source: "סופר-אדמין",
+        }))
+      );
+      toast({ title: "נקבעה פגישה עם שולי ✅", description: `${dayName} בשעה ${startTime} · ${duration} שעות` });
+      setShowSched(false);
+      setDate("");
+      setStartTime("");
+    } catch (err) {
+      toast({ title: "שגיאה בשליחה", description: "לא הצלחנו לשדר את ההודעות", variant: "destructive" });
+    }
   };
 
   if (loading)

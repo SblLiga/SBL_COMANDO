@@ -31,11 +31,13 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [showVerifyButton, setShowVerifyButton] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setShowVerifyButton(false);
     setLoading(true);
     try {
       await apiClient.auth.loginViaEmailPassword(email, password);
@@ -48,6 +50,7 @@ export default function Login() {
         return;
       }
       setError(err.message || "אימייל או סיסמה לא תקינים");
+      setShowVerifyButton(true);
     } finally {
       setLoading(false);
     }
@@ -62,6 +65,17 @@ export default function Login() {
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
           {error}
+          {showVerifyButton && email && (
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = `/register?verify=true&email=${encodeURIComponent(email)}`;
+              }}
+              className="mt-2 block w-full bg-destructive text-white rounded-lg py-2 text-sm font-medium hover:opacity-90 transition-opacity"
+            >
+              מעבר לאימות כתובת המייל ←
+            </button>
+          )}
         </div>
       )}
 

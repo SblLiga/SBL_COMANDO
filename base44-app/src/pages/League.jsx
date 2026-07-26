@@ -44,14 +44,16 @@ export default function League({ zoneBadge = "אזור משתמש", readOnly = t
 
   const sorted = [...members].sort((a, b) => (b.xp || 0) - (a.xp || 0));
   const isMe = (m) => currentUserId && m.user_id === currentUserId;
+  const q = query.trim().toLowerCase();
+  const isSearching = q.length > 0;
   const filtered = sorted.filter(
     (m) =>
-      m.name?.toLowerCase().includes(query.toLowerCase()) ||
-      m.group_name?.toLowerCase().includes(query.toLowerCase())
+      (m.name || "").toLowerCase().includes(q) ||
+      (m.group_name || "").toLowerCase().includes(q)
   );
-  const podium = filtered.slice(0, 3);
-  const rest = filtered.slice(3);
-  const podiumOrder = [1, 0, 2];
+  const podium = isSearching ? [] : filtered.slice(0, 3);
+  const rest = isSearching ? filtered : filtered.slice(3);
+  const podiumOrder = [1, 0, 2]; // silver, gold, bronze → left, center, right (RTL)
 
   return (
     <div className="p-4 space-y-5 pb-4">
@@ -71,40 +73,54 @@ export default function League({ zoneBadge = "אזור משתמש", readOnly = t
         />
       </div>
 
+      <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-wrap">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500" /> פעיל</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400" /> דרושה התייחסות</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> קריטי</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-500" /> לא פעיל</span>
+      </div>
+
       {podium.length >= 3 && (
-        <div className="flex items-end justify-center gap-3 py-6">
+        <div className="flex items-end justify-center gap-2 sm:gap-4 py-8 px-2">
           {podiumOrder.map((idx) => {
             const m = podium[idx];
             if (!m) return null;
             const place = idx + 1;
             const isGold = place === 1;
-            const height = isGold ? "h-32" : "h-24";
-            const medalColor = place === 1 ? "text-black" : place === 2 ? "text-gray-200" : "text-amber-300";
-            const podiumBg = place === 1 ? "gold-gradient" : place === 2 ? "bg-secondary" : "bg-accent";
-            const Icon = place === 1 ? Crown : Medal;
+            const isSilver = place === 2;
+            const heightClass = isGold ? "h-28 sm:h-36" : isSilver ? "h-20 sm:h-28" : "h-16 sm:h-24";
+            const avatarClass = isGold ? "w-16 h-16 sm:w-20 sm:h-20" : "w-12 h-12 sm:w-14 sm:h-14";
+            const medalColor = isGold ? "text-black" : isSilver ? "text-gray-200" : "text-amber-300";
+            const podiumBg = isGold
+              ? "gold-gradient"
+              : isSilver
+              ? "bg-gradient-to-b from-gray-400 to-gray-600"
+              : "bg-gradient-to-b from-amber-700 to-amber-900";
+            const Icon = isGold ? Crown : Medal;
             return (
               <button
                 key={m.id}
                 type="button"
                 onClick={() => setSelected(m)}
-                className="flex flex-col items-center gap-2 flex-1 max-w-[120px]"
+                className="flex flex-col items-center gap-2 flex-1 max-w-[140px]"
               >
+                {isGold && <Crown className="w-6 h-6 sm:w-7 sm:h-7 text-primary" />}
                 <div className="relative">
                   <UserAvatar
                     src={m.avatar_url}
                     name={m.name}
-                    className={isGold ? "w-16 h-16 ring-2 ring-primary glow-gold" : "w-12 h-12 ring-1 ring-border"}
+                    className={`${avatarClass} ${isGold ? "ring-2 ring-primary glow-gold" : "ring-1 ring-border"}`}
                   />
                   <div className={`absolute -bottom-1 left-1/2 -translate-x-1/2 ${isGold ? "w-7 h-7" : "w-6 h-6"} rounded-full gold-gradient flex items-center justify-center text-black font-bold text-xs ring-2 ring-background`}>
                     {place}
                   </div>
                 </div>
-                <div className="text-center w-full">
+                <div className="text-center w-full px-1">
                   <p className="text-xs font-bold truncate">{m.name}</p>
                   <p className="text-[11px] gold-text font-bold">{m.xp || 0} XP</p>
                 </div>
-                <div className={`w-full ${height} ${podiumBg} rounded-t-xl flex items-center justify-center border border-border`}>
-                  <Icon className={`w-7 h-7 ${medalColor}`} />
+                <div className={`w-full ${heightClass} ${podiumBg} rounded-t-xl flex items-center justify-center border border-border shadow-md`}>
+                  <Icon className={`w-6 h-6 sm:w-7 sm:h-7 ${medalColor}`} />
                 </div>
               </button>
             );
@@ -118,9 +134,9 @@ export default function League({ zoneBadge = "אזור משתמש", readOnly = t
             key={m.id}
             type="button"
             onClick={() => setSelected(m)}
-            className={`w-full text-right card-lux p-3 flex items-center gap-3 ${isMe(m) ? "border-primary/50" : ""}`}
+            className={`w-full text-right card-lux p-3 flex items-center gap-3 ${isMe(m) ? "border-2 border-primary bg-primary/5 glow-gold" : ""}`}
           >
-            <span className="font-display text-lg font-bold text-muted-foreground w-6 text-center">{i + 4}</span>
+            <span className="font-display text-lg font-bold text-muted-foreground w-6 text-center">{isSearching ? i + 1 : i + 4}</span>
             <UserAvatar src={m.avatar_url} name={m.name} className="w-9 h-9 ring-1 ring-border" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{m.name} {isMe(m) && <span className="text-primary text-[10px]">(את/ה)</span>}</p>
