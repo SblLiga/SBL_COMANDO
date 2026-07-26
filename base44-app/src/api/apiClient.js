@@ -217,6 +217,8 @@ const integrations = {
   Make: {
     triggerCheckout: () =>
       request("/api/integrations/make/trigger-checkout", { method: "POST", body: "{}" }),
+    devActivate: () =>
+      request("/api/integrations/make/dev-activate", { method: "POST", body: "{}" }),
   },
 };
 

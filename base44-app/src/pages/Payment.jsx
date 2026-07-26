@@ -10,7 +10,7 @@ const FALLBACK_PAYMENT_URL =
   import.meta.env.VITE_GROW_PAYMENT_URL || "https://grow.co.il/subscribe";
 
 export default function Payment() {
-  const { user, isLoadingAuth } = useAuth();
+  const { user, checkUserAuth, isLoadingAuth } = useAuth();
   const navigate = useNavigate();
   const [starting, setStarting] = useState(false);
 
@@ -29,10 +29,23 @@ export default function Payment() {
     return <Navigate to={postAuthPath(user)} replace />;
   }
 
+  const finishBypass = async (redirect = "/thank-you") => {
+    await checkUserAuth?.();
+    navigate(redirect, { replace: true });
+  };
+
   const startCheckout = async () => {
     setStarting(true);
     try {
       const res = await apiClient.integrations.Make.triggerCheckout();
+      if (res?.bypassed) {
+        toast({
+          title: "מצב בדיקה (DEV)",
+          description: "הסליקה דולגה — ממשיכים לאתר.",
+        });
+        await finishBypass(res.redirect || "/thank-you");
+        return;
+      }
       const url = res?.payment_url || FALLBACK_PAYMENT_URL;
       if (url) {
         window.open(url, "_blank", "noopener,noreferrer");
@@ -44,11 +57,22 @@ export default function Payment() {
           : "פתחנו את דף התשלום. לאחר אישור חזרי לאתר.",
       });
     } catch (err) {
-      const url = FALLBACK_PAYMENT_URL;
-      window.open(url, "_blank", "noopener,noreferrer");
+      // Last resort for DEV stuck accounts
+      try {
+        const bypass = await apiClient.integrations.Make.devActivate();
+        toast({
+          title: "מצב בדיקה (DEV)",
+          description: "הסליקה דולגה — ממשיכים לאתר.",
+        });
+        await finishBypass(bypass?.redirect || "/thank-you");
+        return;
+      } catch {
+        /* fall through */
+      }
       toast({
-        title: "מעבר לתשלום",
-        description: err?.message || "נפתח דף התשלום החיצוני.",
+        title: "סליקה עדיין לא מחוברת",
+        description: err?.message || "נסי שוב מאוחר יותר, או השתמשי בסביבת DEV.",
+        variant: "destructive",
       });
     } finally {
       setStarting(false);

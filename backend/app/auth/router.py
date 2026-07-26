@@ -99,7 +99,8 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         password_hash=hash_password(payload.password),
         full_name=email.split("@")[0],
         role="user",
-        subscription_status="inactive",
+        # PROD: inactive until Make marks active. DEV: skip billing gate for testing.
+        subscription_status="inactive" if get_settings().is_production else "active",
         email_verified=False,
     )
     db.add(user)

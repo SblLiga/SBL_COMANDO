@@ -28,9 +28,27 @@ def trigger_checkout(
     Authenticated user starts payment.
     POSTs user details to Make (MAKE_TRIGGER_URL) when configured,
     and returns the browser payment URL (GROW_PAYMENT_URL / MAKE_PAYMENT_URL).
+
+    Non-production: skips Make entirely and activates the user so QA can use the app.
     """
-    _ = db  # session kept for future audit logging
     settings = get_settings()
+
+    # DEV / non-prod: no Make yet — activate and continue into the product.
+    if not settings.is_production:
+        user.subscription_status = "active"
+        db.commit()
+        logger.info("DEV checkout bypass — activated user_id=%s", user.id)
+        return {
+            "ok": True,
+            "bypassed": True,
+            "triggered": False,
+            "trigger_error": None,
+            "payment_url": None,
+            "redirect": "/thank-you",
+            "userId": user.id,
+            "subscription_status": "active",
+        }
+
     payment_url = (settings.make_payment_url or settings.grow_payment_url or "").strip()
     trigger_url = (settings.make_trigger_url or "").strip()
 
@@ -78,8 +96,28 @@ def trigger_checkout(
 
     return {
         "ok": True,
+        "bypassed": False,
         "triggered": triggered,
         "trigger_error": trigger_error,
         "payment_url": payment_url or None,
+        "userId": user.id,
+    }
+
+
+@router.post("/dev-activate")
+def dev_activate_subscription(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Explicit DEV-only activator for accounts already stuck on inactive."""
+    settings = get_settings()
+    if settings.is_production:
+        raise HTTPException(status_code=404, detail="Not found")
+    user.subscription_status = "active"
+    db.commit()
+    return {
+        "ok": True,
+        "subscription_status": "active",
+        "redirect": "/thank-you",
         "userId": user.id,
     }
