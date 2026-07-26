@@ -77,6 +77,10 @@ class Settings(BaseSettings):
         default="https://grow.co.il/subscribe",
         alias="GROW_PAYMENT_URL",
     )
+    # Make.com — outbound checkout trigger + inbound webhook auth (falls back to GROW_*)
+    make_webhook_secret: str = Field(default="", alias="MAKE_WEBHOOK_SECRET")
+    make_trigger_url: str = Field(default="", alias="MAKE_TRIGGER_URL")
+    make_payment_url: str = Field(default="", alias="MAKE_PAYMENT_URL")
 
     @model_validator(mode="after")
     def hydrate_from_app_secret(self):
@@ -90,6 +94,9 @@ class Settings(BaseSettings):
             "app_public_url": ("app_public_url", "APP_PUBLIC_URL"),
             "grow_webhook_secret": ("grow_webhook_secret", "GROW_WEBHOOK_SECRET"),
             "grow_payment_url": ("grow_payment_url", "GROW_PAYMENT_URL"),
+            "make_webhook_secret": ("make_webhook_secret", "MAKE_WEBHOOK_SECRET"),
+            "make_trigger_url": ("make_trigger_url", "MAKE_TRIGGER_URL"),
+            "make_payment_url": ("make_payment_url", "MAKE_PAYMENT_URL"),
             "admin_email": ("admin_email", "ADMIN_EMAIL"),
             "admin_password": ("admin_password", "ADMIN_PASSWORD"),
             "dev_admin_password": ("dev_admin_password", "DEV_ADMIN_PASSWORD"),

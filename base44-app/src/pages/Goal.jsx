@@ -160,6 +160,14 @@ export default function Goal() {
   };
 
   const deleteTask = async (task) => {
+    if (tasks.length <= 4) {
+      toast({
+        title: "לא ניתן למחוק",
+        description: "נדרשות לפחות 4 משימות בגלגל",
+        variant: "destructive",
+      });
+      return;
+    }
     await apiClient.entities.Task.delete(task.id);
     const newTasks = tasks.filter((t) => t.id !== task.id).map((t, i) => ({ ...t, order_index: i }));
     setTasks(newTasks);

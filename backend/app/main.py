@@ -9,6 +9,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.entities import router as entities_router
 from app.api.grow_webhook import router as grow_router
+from app.api.make_checkout import router as make_router
+from app.api.subscription_webhooks import router as webhooks_router
 from app.api.upload import router as upload_router
 from app.auth.router import router as auth_router
 from app.bootstrap import run_database_bootstrap
@@ -72,6 +74,8 @@ app.include_router(auth_router)
 app.include_router(entities_router)
 app.include_router(upload_router)
 app.include_router(grow_router)
+app.include_router(make_router)
+app.include_router(webhooks_router)
 
 UPLOAD_DIR = (Path.cwd() / "static" / "uploads").resolve()
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)

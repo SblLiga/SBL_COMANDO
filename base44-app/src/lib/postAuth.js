@@ -14,8 +14,15 @@ export function needsOnboardingWizard(user, member = null) {
   return false;
 }
 
+export function needsPayment(user) {
+  if (!user) return false;
+  if (user.role === "admin" || user.role === "manager") return false;
+  return user.subscription_status === "inactive";
+}
+
 /** Where to send the user right after login / OTP. */
 export function postAuthPath(user, member = null) {
+  if (needsPayment(user)) return "/payment";
   if (needsOnboardingWizard(user, member)) return "/onboarding";
   return homePathForRole(user?.role);
 }

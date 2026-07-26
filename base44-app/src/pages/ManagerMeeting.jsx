@@ -62,35 +62,71 @@ export default function ManagerMeeting() {
   };
 
   const startLive = async () => {
-    const next = meetings.find((m) => m.status === "scheduled") || meetings.find((m) => m.status === "live");
-    if (next) {
-      const updated = await apiClient.entities.Meeting.update(next.id, { status: "live", current_section: 0 });
-      setLiveMeetingId(updated.id);
-      setLive(true);
+    const startable = meetings.find((m) => {
+      if (m.status !== "scheduled") return false;
+      const meetingDate = new Date(m.scheduled_date);
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
+      return meetingDate <= today;
+    }) || meetings.find((m) => m.status === "live");
+    if (!startable) {
+      toast({
+        title: "אין פגישה מתוכננת להיום",
+        description: "קבע/י פגישה לתאריך היום תחילה",
+        variant: "destructive",
+      });
       return;
     }
-    const m = await apiClient.entities.Meeting.create({
-      group_name: groupName,
-      scheduled_date: new Date().toISOString(),
+    const updated = await apiClient.entities.Meeting.update(startable.id, {
       status: "live",
       current_section: 0,
-      duration_minutes: 90,
     });
-    setLiveMeetingId(m.id);
+    setLiveMeetingId(updated.id);
     setLive(true);
   };
 
   const endLive = async (reports) => {
-    if (liveMeetingId) {
-      const summary = reports.map((r, i) => r ? `${i + 1}. ${AGENDA[i].title}: ${r}` : null).filter(Boolean).join("\n");
+    if (!liveMeetingId) {
+      setLive(false);
+      return;
+    }
+    const today = new Date().toDateString();
+    const existingToday = meetings.find(
+      (m) =>
+        m.id !== liveMeetingId &&
+        m.status === "completed" &&
+        new Date(m.scheduled_date).toDateString() === today
+    );
+    if (existingToday) {
+      let existingReports = [];
+      try {
+        existingReports = JSON.parse(existingToday.section_reports || "[]");
+      } catch {
+        existingReports = [];
+      }
+      const mergedReports = reports.map((r, i) => r || existingReports[i] || "");
+      const mergedSummary = mergedReports
+        .map((r, i) => (r ? `${i + 1}. ${AGENDA[i].title}: ${r}` : null))
+        .filter(Boolean)
+        .join("\n");
+      await apiClient.entities.Meeting.update(existingToday.id, {
+        summary: mergedSummary,
+        section_reports: JSON.stringify(mergedReports),
+      });
+      await apiClient.entities.Meeting.delete(liveMeetingId);
+    } else {
+      const summary = reports
+        .map((r, i) => (r ? `${i + 1}. ${AGENDA[i].title}: ${r}` : null))
+        .filter(Boolean)
+        .join("\n");
       await apiClient.entities.Meeting.update(liveMeetingId, {
         status: "completed",
         summary,
         section_reports: JSON.stringify(reports || []),
       });
-      await refresh();
-      toast({ title: "הפגישה הסתיימה ונשמרה ✓" });
     }
+    await refresh();
+    toast({ title: "הפגישה הסתיימה ונשמרה ✓" });
     setLive(false);
     setLiveMeetingId(null);
   };
@@ -129,7 +165,15 @@ export default function ManagerMeeting() {
   const next = meetings.find((m) => m.status === "scheduled");
   const completedMeetings = meetings.filter((m) => m.status === "completed");
   const lastMeeting = completedMeetings[0]; // most recent
-  const previousMeetings = completedMeetings.slice(1);
+  const previousMeetings = completedMeetings.slice(1).filter((m) => m.is_locked);
+  const canStartLive = meetings.some((m) => {
+    if (m.status === "live") return true;
+    if (m.status !== "scheduled") return false;
+    const meetingDate = new Date(m.scheduled_date);
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    return meetingDate <= today;
+  });
 
   return (
     <div className="p-4 space-y-5">
@@ -152,9 +196,19 @@ export default function ManagerMeeting() {
           <Calendar className="w-6 h-6 text-primary" />
           <span className="text-sm font-medium">קבע פגישה</span>
         </button>
-        <button onClick={startLive} className="card-gold-rim p-4 flex flex-col items-center gap-2 glow-gold">
+        <button
+          onClick={startLive}
+          disabled={!canStartLive}
+          className={`p-4 flex flex-col items-center gap-2 border transition-colors ${
+            canStartLive
+              ? "card-gold-rim glow-gold"
+              : "card-lux border-border opacity-50 cursor-not-allowed"
+          }`}
+        >
           <Play className="w-6 h-6 text-primary" />
-          <span className="text-sm font-medium gold-text">התחל פגישה</span>
+          <span className={`text-sm font-medium ${canStartLive ? "gold-text" : "text-muted-foreground"}`}>
+            התחל פגישה
+          </span>
         </button>
       </div>
 

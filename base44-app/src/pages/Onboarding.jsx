@@ -11,7 +11,7 @@ import StepTasks from "@/components/onboarding/StepTasks";
 import StepReward from "@/components/onboarding/StepReward";
 import { toast } from "@/components/ui/use-toast";
 import { currentCycleMonth, needsMonthlyOnboarding } from "@/lib/calendarRules";
-import { needsOnboardingWizard } from "@/lib/postAuth";
+import { needsOnboardingWizard, needsPayment } from "@/lib/postAuth";
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -37,6 +37,10 @@ export default function Onboarding() {
       try {
         const u = await apiClient.auth.me();
         setUser(u);
+        if (needsPayment(u)) {
+          navigate("/payment", { replace: true });
+          return;
+        }
         const monthly = needsMonthlyOnboarding(u);
         setIsNewCycle(Boolean(u?.onboarding_completed && monthly));
         // Already fully registered for this cycle → app home

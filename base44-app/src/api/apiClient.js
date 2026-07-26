@@ -214,6 +214,10 @@ const integrations = {
       throw new Error("Email integration is not available in self-hosted mode");
     },
   },
+  Make: {
+    triggerCheckout: () =>
+      request("/api/integrations/make/trigger-checkout", { method: "POST", body: "{}" }),
+  },
 };
 
 export const apiClient = {

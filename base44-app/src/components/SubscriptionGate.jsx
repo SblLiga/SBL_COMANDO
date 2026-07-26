@@ -1,11 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Outlet, Navigate } from "react-router-dom";
 import apiClient from "@/api/apiClient";
-import { Lock, ExternalLink, ShieldAlert } from "lucide-react";
-import { needsOnboardingWizard } from "@/lib/postAuth";
-
-const GROW_PAYMENT_URL =
-  import.meta.env.VITE_GROW_PAYMENT_URL || "https://grow.co.il/subscribe";
+import { needsOnboardingWizard, needsPayment } from "@/lib/postAuth";
 
 export default function SubscriptionGate() {
   const [user, setUser] = useState(null);
@@ -64,29 +60,8 @@ export default function SubscriptionGate() {
 
   const isStaff = user.role === "manager" || user.role === "admin";
 
-  if (!isStaff && user.subscription_status === "inactive") {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="card-gold-rim p-8 text-center max-w-sm w-full">
-          <div className="w-16 h-16 rounded-full bg-destructive/15 flex items-center justify-center mx-auto mb-4">
-            <ShieldAlert className="w-8 h-8 text-destructive" />
-          </div>
-          <h1 className="font-display text-xl font-bold mb-2">המנוי אינו פעיל</h1>
-          <p className="text-sm text-muted-foreground mb-6">
-            המנוי שלך הופסק, יש לחדש את התשלום ב-GROW.
-          </p>
-          <a
-            href={GROW_PAYMENT_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full gold-gradient text-black font-bold rounded-xl py-3 flex items-center justify-center gap-2 text-sm"
-          >
-            <Lock className="w-4 h-4" /> חידוש מנוי ב-GROW
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-        </div>
-      </div>
-    );
+  if (!isStaff && needsPayment(user)) {
+    return <Navigate to="/payment" replace />;
   }
 
   if (!isStaff && (needsOnboardingWizard(user, member) || !hasWheel)) {

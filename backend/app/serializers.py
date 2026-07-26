@@ -78,6 +78,7 @@ def member_to_dict(member: Member) -> dict[str, Any]:
             "user_id": _sid(member.user_id),
             "next_month_target": member.next_month_target,
             "next_month_selected_at": _dt(member.next_month_selected_at),
+            "last_login_date": _dt(member.last_login_date),
         },
         member.created_at,
     )

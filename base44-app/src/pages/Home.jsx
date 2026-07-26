@@ -36,8 +36,22 @@ export default function Home() {
             (a, b) => new Date(b.created_date || 0) - new Date(a.created_date || 0)
           )[0] || null;
         }
-        setGoal(g);
 
+        // Streak: increment on consecutive calendar-day login
+        const today = new Date().toDateString();
+        const lastLogin = me?.last_login_date ? new Date(me.last_login_date).toDateString() : null;
+        let newStreak = me?.streak || 0;
+        if (lastLogin !== today) {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          if (lastLogin === yesterday.toDateString()) {
+            newStreak = (me?.streak || 0) + 1;
+          } else {
+            newStreak = 1;
+          }
+        }
+
+        const loginStamp = new Date().toISOString();
         if (!me) {
           me = await apiClient.entities.Member.create({
             name: user.full_name || user.email || "משתמש",
@@ -48,21 +62,32 @@ export default function Home() {
             target: g?.target || null,
             xp: g?.xp_total || 0,
             progress: g?.progress || 0,
-            streak: g?.streak || 0,
+            streak: newStreak,
             role: "user",
             status: "בעקבות",
+            last_login_date: loginStamp,
           });
         } else if (g) {
           me = await apiClient.entities.Member.update(me.id, {
             xp: g.xp_total || 0,
             progress: g.progress || 0,
-            streak: g.streak || 0,
+            streak: newStreak,
             goal_id: g.id,
             goal_title: g.title,
             goal_hidden: g.is_hidden,
             target: g.target,
+            last_login_date: loginStamp,
+          });
+          if (g.streak !== newStreak) {
+            g = await apiClient.entities.Goal.update(g.id, { streak: newStreak });
+          }
+        } else if (lastLogin !== today) {
+          me = await apiClient.entities.Member.update(me.id, {
+            streak: newStreak,
+            last_login_date: loginStamp,
           });
         }
+        setGoal(g);
         setMyMember(me);
 
         if (g) {

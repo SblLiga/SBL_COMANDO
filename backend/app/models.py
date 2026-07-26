@@ -37,7 +37,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(32), default="user")
-    subscription_status: Mapped[str] = mapped_column(String(32), default="active")
+    subscription_status: Mapped[str] = mapped_column(String(32), default="inactive")
     gender: Mapped[str | None] = mapped_column(String(16), nullable=True)
     target: Mapped[str | None] = mapped_column(String(255), nullable=True)
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -79,6 +79,9 @@ class Member(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     next_month_target: Mapped[str | None] = mapped_column(String(255), nullable=True)
     next_month_selected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_login_date: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(

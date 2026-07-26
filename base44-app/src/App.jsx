@@ -29,6 +29,8 @@ import ManagerManagers from "@/pages/ManagerManagers";
 import ManagerAlerts from "@/pages/ManagerAlerts";
 import Onboarding from "@/pages/Onboarding";
 import Profile from "@/pages/Profile";
+import Payment from "@/pages/Payment";
+import ThankYou from "@/pages/ThankYou";
 import SubscriptionGate from "@/components/SubscriptionGate";
 import AdminDashboard from "@/pages/AdminDashboard";
 import AdminWheel from "@/pages/AdminWheel";
@@ -67,6 +69,8 @@ const AuthenticatedApp = () => {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
+        <Route path="/payment" element={<Payment />} />
+        <Route path="/thank-you" element={<ThankYou />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/profile" element={<Profile />} />
 

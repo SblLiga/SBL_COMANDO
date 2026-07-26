@@ -9,6 +9,9 @@ param(
   [string]$MailFrom = "",
   [string]$AppPublicUrl = "",
   [string]$GrowWebhookSecret = "",
+  [string]$MakeTriggerUrl = "",
+  [string]$MakeWebhookSecret = "",
+  [string]$MakePaymentUrl = "",
   [string]$AdminEmail = "",
   [string]$AdminPassword = ""
 )
@@ -55,6 +58,9 @@ $payload = [ordered]@{
   app_public_url      = $AppPublicUrl
   grow_webhook_secret = $GrowWebhookSecret
   grow_payment_url    = "https://grow.co.il/subscribe"
+  make_trigger_url    = $MakeTriggerUrl
+  make_webhook_secret = $MakeWebhookSecret
+  make_payment_url    = $MakePaymentUrl
   admin_email         = $AdminEmail
   admin_password      = $AdminPassword
   dev_admin_password  = ""

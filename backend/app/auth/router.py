@@ -88,7 +88,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         password_hash=hash_password(payload.password),
         full_name=email.split("@")[0],
         role="user",
-        subscription_status="active",
+        subscription_status="inactive",
         email_verified=False,
     )
     db.add(user)
