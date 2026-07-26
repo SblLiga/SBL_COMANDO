@@ -11,6 +11,7 @@ import StepTasks from "@/components/onboarding/StepTasks";
 import StepReward from "@/components/onboarding/StepReward";
 import { toast } from "@/components/ui/use-toast";
 import { currentCycleMonth, needsMonthlyOnboarding } from "@/lib/calendarRules";
+import { needsOnboardingWizard } from "@/lib/postAuth";
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -38,6 +39,11 @@ export default function Onboarding() {
         setUser(u);
         const monthly = needsMonthlyOnboarding(u);
         setIsNewCycle(Boolean(u?.onboarding_completed && monthly));
+        // Already fully registered for this cycle → app home
+        if (u?.role === "user" && !needsOnboardingWizard(u)) {
+          navigate("/", { replace: true });
+          return;
+        }
         if (u?.gender) setGender(u.gender);
         // For a brand-new monthly cycle, force re-pick of target (don't lock old one)
         if (u?.target && !monthly) setTarget(u.target);
@@ -51,7 +57,7 @@ export default function Onboarding() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [navigate]);
 
   const toggleTask = (t) => {
     if (tasks.includes(t)) setTasks(tasks.filter((x) => x !== t));

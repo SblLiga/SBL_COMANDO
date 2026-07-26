@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Outlet, Navigate } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { Lock, ExternalLink, ShieldAlert } from "lucide-react";
-import { needsMonthlyOnboarding, needsWaitingListAssignment } from "@/lib/calendarRules";
+import { needsOnboardingWizard } from "@/lib/postAuth";
 
 const GROW_PAYMENT_URL =
   import.meta.env.VITE_GROW_PAYMENT_URL || "https://grow.co.il/subscribe";
@@ -10,6 +10,7 @@ const GROW_PAYMENT_URL =
 export default function SubscriptionGate() {
   const [user, setUser] = useState(null);
   const [member, setMember] = useState(null);
+  const [hasWheel, setHasWheel] = useState(true);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -19,7 +20,29 @@ export default function SubscriptionGate() {
         setUser(u);
         if (u?.role === "user") {
           const rows = await apiClient.entities.Member.filter({ user_id: u.id });
-          setMember(rows[0] || null);
+          const m = rows[0] || null;
+          setMember(m);
+          // Defense: completed flag but no tasks/goal → force wizard again
+          if (u.onboarding_completed) {
+            let goal = null;
+            if (m?.goal_id) {
+              try {
+                goal = await apiClient.entities.Goal.get(m.goal_id);
+              } catch {
+                goal = null;
+              }
+            }
+            if (!goal) {
+              const owned = await apiClient.entities.Goal.filter({ owner_user_id: u.id });
+              goal = owned[0] || null;
+            }
+            if (!goal) {
+              setHasWheel(false);
+            } else {
+              const tasks = await apiClient.entities.Task.filter({ goal_id: goal.id });
+              setHasWheel(tasks.length > 0);
+            }
+          }
         }
       } catch {
         setUser(null);
@@ -66,12 +89,7 @@ export default function SubscriptionGate() {
     );
   }
 
-  if (
-    !isStaff &&
-    (!user.onboarding_completed ||
-      needsMonthlyOnboarding(user) ||
-      needsWaitingListAssignment(user, member))
-  ) {
+  if (!isStaff && (needsOnboardingWizard(user, member) || !hasWheel)) {
     return <Navigate to="/onboarding" replace />;
   }
 

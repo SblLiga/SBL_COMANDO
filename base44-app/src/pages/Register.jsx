@@ -78,7 +78,8 @@ export default function Register() {
       if (result?.access_token) {
         apiClient.auth.setToken(result.access_token);
       }
-      window.location.href = "/";
+      // After email verify — continue registration wizard (tasks/wheel), not empty home
+      window.location.href = "/onboarding";
     } catch (err) {
       setError(err.message || "קוד אימות לא תקין");
     } finally {

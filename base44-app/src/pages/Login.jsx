@@ -7,17 +7,24 @@ import { Label } from "@/components/ui/label";
 import { Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import { homePathForRole } from "@/components/RoleRoute";
+import { postAuthPath } from "@/lib/postAuth";
 
-function resolveReturnPath(searchParams, role) {
+function resolveReturnPath(searchParams, user) {
+  const role = (user?.role || "user").toLowerCase();
+  // Incomplete registration (no wheel yet) always resumes onboarding
+  if (role === "user" && !user?.onboarding_completed) {
+    return "/onboarding";
+  }
   const raw = searchParams.get("return");
   if (!raw || !raw.startsWith("/") || raw.startsWith("//")) {
-    return homePathForRole(role);
+    return postAuthPath(user);
   }
-  // Only honor return URL if it belongs to this role's area
   if (role === "admin" && raw.startsWith("/admin")) return raw;
   if (role === "manager" && raw.startsWith("/manager")) return raw;
-  if (role === "user" && !raw.startsWith("/admin") && !raw.startsWith("/manager")) return raw;
-  return homePathForRole(role);
+  if (role === "user" && !raw.startsWith("/admin") && !raw.startsWith("/manager")) {
+    return raw === "/" || raw === "/goal" ? postAuthPath(user) : raw;
+  }
+  return postAuthPath(user);
 }
 
 export default function Login() {
@@ -34,8 +41,7 @@ export default function Login() {
     try {
       await apiClient.auth.loginViaEmailPassword(email, password);
       const u = await apiClient.auth.me();
-      const role = (u?.role || "user").toLowerCase();
-      window.location.href = resolveReturnPath(searchParams, role);
+      window.location.href = resolveReturnPath(searchParams, u);
     } catch (err) {
       const msg = (err.message || "").toLowerCase();
       if (msg.includes("verif") || err.status === 403) {
