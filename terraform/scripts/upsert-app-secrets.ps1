@@ -23,7 +23,7 @@ if ($Environment -eq "dev") {
   $ebEnv = "sbl-prod"
 }
 
-$secretName = "sbl/$Environment/app-secrets"
+$secretName = "sbl-$Environment/app-secrets"
 $roleName = "$ebEnv-eb-ec2-role"
 
 Write-Host "=== SBL secrets to Secrets Manager ($Environment) ==="

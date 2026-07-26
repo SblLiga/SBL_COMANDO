@@ -4,7 +4,7 @@ import apiClient from "@/api/apiClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UserPlus, Mail, Lock, Loader2 } from "lucide-react";
+import { Mail, Lock, Loader2 } from "lucide-react";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import AuthLayout from "@/components/AuthLayout";
 import { toast } from "@/components/ui/use-toast";
@@ -18,7 +18,6 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [showOtp, setShowOtp] = useState(params.get("verify") === "true");
   const [otpCode, setOtpCode] = useState("");
-  const [devOtp, setDevOtp] = useState("");
   const [emailSent, setEmailSent] = useState(false);
 
   useEffect(() => {
@@ -29,7 +28,6 @@ export default function Register() {
         .resendOtp(addr)
         .then((res) => {
           setEmailSent(Boolean(res?.email_sent));
-          if (res?.dev_otp) setDevOtp(res.dev_otp);
         })
         .catch(() => {});
     }
@@ -51,18 +49,11 @@ export default function Register() {
     try {
       const res = await apiClient.auth.register({ email, password });
       setEmailSent(Boolean(res?.email_sent));
-      if (res?.dev_otp) setDevOtp(res.dev_otp);
       setShowOtp(true);
-      if (res?.email_sent) {
-        toast({ title: "הקוד נשלח", description: `נשלח ל-${email}` });
-      } else {
-        toast({
-          title: "קוד אימות נוצר",
-          description: res?.dev_otp
-            ? `המייל עדיין לא מוגדר בשרת — השתמשי בקוד: ${res.dev_otp}`
-            : "בדקי את תיבת הדוא״ל או השתמשי בקוד 000000 בסביבת DEV",
-        });
-      }
+      toast({
+        title: res?.email_sent ? "הקוד נשלח" : "בדק/י את תיבת הדוא״ל",
+        description: `שלחנו קוד אימות ל-${email}`,
+      });
     } catch (err) {
       setError(err.message || "ההרשמה נכשלה");
     } finally {
@@ -92,14 +83,9 @@ export default function Register() {
     try {
       const res = await apiClient.auth.resendOtp(email);
       setEmailSent(Boolean(res?.email_sent));
-      if (res?.dev_otp) setDevOtp(res.dev_otp);
       toast({
-        title: res?.email_sent ? "הקוד נשלח למייל" : "קוד חדש נוצר",
-        description: res?.email_sent
-          ? `בדוק/י את תיבת הדוא״ל של ${email}`
-          : res?.dev_otp
-            ? `קוד DEV: ${res.dev_otp}`
-            : "השתמש/י ב-000000 בסביבת DEV",
+        title: "הקוד נשלח למייל",
+        description: `בדק/י את תיבת הדוא״ל של ${email} (וגם ספאם)`,
       });
     } catch (err) {
       setError(err.message || "שליחת הקוד נכשלה");
@@ -110,7 +96,7 @@ export default function Register() {
     return (
       <AuthLayout
         title="אימות דוא״ל"
-        subtitle={emailSent ? `שלחנו קוד ל-${email}` : `קוד אימות עבור ${email}`}
+        subtitle={`שלחנו קוד ל-${email}`}
         footerLink={{ prompt: "כבר יש לך חשבון מאומת?", to: "/login", label: "חזרה להתחברות" }}
       >
         {error && (
@@ -118,18 +104,9 @@ export default function Register() {
             {error}
           </div>
         )}
-        {devOtp ? (
-          <p className="text-xs text-center mb-3 p-2 rounded-lg bg-primary/10 text-primary" dir="ltr">
-            קוד DEV להדגמה: <span className="font-mono font-bold tracking-widest">{devOtp}</span>
-            <span className="block text-muted-foreground mt-1">(או 000000)</span>
-          </p>
-        ) : (
-          <p className="text-xs text-muted-foreground text-center mb-3">
-            {emailSent
-              ? "בדק/י את תיבת הדוא״ל (וגם ספאם)."
-              : <>ב-DEV אפשר גם קוד <span dir="ltr" className="font-mono">000000</span></>}
-          </p>
-        )}
+        <p className="text-xs text-muted-foreground text-center mb-3">
+          בדק/י את תיבת הדוא״ל (וגם ספאם). הקוד תקף ל-15 דקות.
+        </p>
         <div className="flex justify-center mb-6" dir="ltr">
           <InputOTP
             maxLength={6}

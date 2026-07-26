@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,19 +10,14 @@ export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
-  const [resetUrl, setResetUrl] = useState("");
-  const [emailSent, setEmailSent] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await apiClient.auth.resetPasswordRequest(email);
-      setEmailSent(Boolean(res?.email_sent));
-      if (res?.reset_url) setResetUrl(res.reset_url);
-      else if (res?.reset_token) setResetUrl(`/reset-password?token=${encodeURIComponent(res.reset_token)}`);
+      await apiClient.auth.resetPasswordRequest(email);
     } catch {
-      // Always show success regardless
+      // Always show success regardless (no email enumeration)
     } finally {
       setLoading(false);
       setSent(true);
@@ -39,29 +33,8 @@ export default function ForgotPassword() {
       {sent ? (
         <div className="space-y-3 text-sm text-center">
           <p className="text-foreground">
-            {emailSent
-              ? "אם קיים חשבון עם כתובת זו — נשלח מייל עם קישור לאיפוס."
-              : "אם קיים חשבון עם כתובת זו — נוצר קישור לאיפוס."}
+            אם קיים חשבון עם כתובת זו — נשלח מייל עם קישור לאיפוס. בדק/י גם בספאם.
           </p>
-          {resetUrl && (
-            <p className="text-xs break-all p-3 rounded-lg bg-primary/10 text-primary text-right">
-              קישור DEV:{" "}
-              <Link
-                to={(() => {
-                  try {
-                    if (resetUrl.startsWith("http")) return new URL(resetUrl).pathname + new URL(resetUrl).search;
-                  } catch {
-                    /* ignore */
-                  }
-                  return resetUrl.startsWith("/") ? resetUrl : `/${resetUrl}`;
-                })()}
-                className="underline font-medium"
-                dir="ltr"
-              >
-                לחצ/י כאן לאיפוס
-              </Link>
-            </p>
-          )}
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">

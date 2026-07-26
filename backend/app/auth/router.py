@@ -42,7 +42,7 @@ def _issue_otp(db: Session, user: User) -> str:
     ).delete()
     db.add(EmailVerificationToken(user_id=user.id, code=code, expires_at=expires))
     db.commit()
-    logger.info("OTP issued for %s code=%s", user.email, code)
+    logger.info("OTP issued for %s", user.email)
     return code
 
 
@@ -53,17 +53,21 @@ def _otp_response(email: str, code: str, sent: bool) -> dict:
         "email": email,
         "email_sent": sent,
     }
-    # Always expose OTP outside production so DEV/demo can verify without SES.
+    # Local/DEV only — never expose codes on production.
     if not settings.is_production:
         payload["dev_otp"] = code
-        if not sent:
-            payload["hint"] = "Email provider not configured — use dev_otp or 000000"
     return payload
 
 
 def _deliver_otp(db: Session, user: User) -> dict:
+    settings = get_settings()
     code = _issue_otp(db, user)
-    sent = send_otp_email(get_settings(), to=user.email, code=code)
+    sent = send_otp_email(settings, to=user.email, code=code)
+    if settings.is_production and not sent:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="לא הצלחנו לשלוח מייל אימות. נסי שוב בעוד רגע.",
+        )
     return _otp_response(user.email, code, sent)
 
 

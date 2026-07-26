@@ -19,9 +19,12 @@ router = APIRouter(prefix="/api/integrations/grow", tags=["grow"])
 
 
 def _verify_signature(raw_body: bytes, signature: str | None, secret: str) -> bool:
+    settings = get_settings()
     if not secret:
-        # DEV without secret: accept but log loudly
-        logger.warning("GROW_WEBHOOK_SECRET empty — signature check skipped (DEV only)")
+        if settings.is_production:
+            logger.error("GROW_WEBHOOK_SECRET missing in production — rejecting webhook")
+            return False
+        logger.warning("GROW_WEBHOOK_SECRET empty — signature check skipped (non-prod only)")
         return True
     if not signature:
         return False
