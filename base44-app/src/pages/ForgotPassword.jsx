@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,9 +40,9 @@ export default function ForgotPassword() {
           {resetUrl && (
             <div className="p-4 rounded-xl border border-primary/40 bg-primary/10 text-center space-y-2">
               <p className="text-xs text-muted-foreground">קישור זמני (מייל עדיין לא זמין לכולם)</p>
-              <Link to={resetUrl.replace(/^https?:\/\/[^/]+/, "") || resetUrl} className="text-primary font-bold underline break-all">
+              <a href={resetUrl} className="text-primary font-bold underline break-all">
                 לחצ/י כאן לאיפוס הסיסמה
-              </Link>
+              </a>
             </div>
           )}
         </div>
