@@ -227,8 +227,7 @@ module "pipeline" {
   name                    = var.pipeline_name
   environment             = local.environment
   source_repo             = data.aws_ssm_parameter.pipeline_source_repo.value
-  source_branch           = var.pipeline_source_branch # main
-  # Company guide: Prod CodeBuild pulls frontend branch "main"
+  source_branch           = var.pipeline_source_branch # prod
   frontend_branch         = var.pipeline_frontend_branch
   frontend_repo           = data.aws_ssm_parameter.frontend_repo.value
   github_token_secret_arn = null
@@ -241,4 +240,20 @@ module "pipeline" {
   tags = local.tags
 
   depends_on = [module.eb]
+}
+
+# GitHub Actions → assume this role via OIDC → start sbl-prod-pipeline
+module "github_oidc" {
+  source = "../../modules/github-oidc"
+
+  name_prefix = "sbl-prod"
+  allowed_subs = [
+    "repo:SblLiga@306753603/SBL_COMANDO@1305679068:ref:refs/heads/prod",
+  ]
+  pipeline_arn         = module.pipeline.pipeline_arn
+  create_oidc_provider = false
+
+  tags = local.tags
+
+  depends_on = [module.pipeline]
 }

@@ -26,3 +26,17 @@ output "artifact_bucket_name" {
   value     = module.pipeline.artifact_bucket_name
   sensitive = true
 }
+
+output "github_actions_role_arn" {
+  description = "Paste into GitHub secret AWS_ROLE_ARN_PROD"
+  value       = module.github_oidc.role_arn
+}
+
+output "app_secret_arn" {
+  value = aws_secretsmanager_secret.app.arn
+}
+
+output "webhook_url_hint" {
+  description = "Payment webhook once custom domain/HTTPS is live"
+  value       = "https://<prod-host>/api/integrations/grow/webhook"
+}
