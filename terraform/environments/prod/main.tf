@@ -252,7 +252,10 @@ module "github_oidc" {
   source = "../../modules/github-oidc"
 
   name_prefix = "sbl-prod"
+  # deploy-prod.yml uses GitHub Environment "production" → sub is :environment:production
+  # (not :ref:refs/heads/prod). Keep both forms for safety.
   allowed_subs = [
+    "repo:SblLiga@306753603/SBL_COMANDO@1305679068:environment:production",
     "repo:SblLiga@306753603/SBL_COMANDO@1305679068:ref:refs/heads/prod",
   ]
   pipeline_arn         = module.pipeline.pipeline_arn
