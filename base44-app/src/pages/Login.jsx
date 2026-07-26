@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
-import { homePathForRole } from "@/components/RoleRoute";
 import { postAuthPath } from "@/lib/postAuth";
 
 function resolveReturnPath(searchParams, user) {
