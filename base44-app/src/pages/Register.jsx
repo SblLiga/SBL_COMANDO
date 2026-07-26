@@ -8,6 +8,7 @@ import { Mail, Lock, Loader2 } from "lucide-react";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import AuthLayout from "@/components/AuthLayout";
 import { toast } from "@/components/ui/use-toast";
+import { postAuthPath } from "@/lib/postAuth";
 
 export default function Register() {
   const params = new URLSearchParams(window.location.search);
@@ -19,6 +20,7 @@ export default function Register() {
   const [showOtp, setShowOtp] = useState(params.get("verify") === "true");
   const [otpCode, setOtpCode] = useState("");
   const [emailSent, setEmailSent] = useState(false);
+  const [screenOtp, setScreenOtp] = useState("");
 
   useEffect(() => {
     // Coming from login (unverified) — auto-resend a fresh code
@@ -28,6 +30,10 @@ export default function Register() {
         .resendOtp(addr)
         .then((res) => {
           setEmailSent(Boolean(res?.email_sent));
+          if (res?.dev_otp) {
+            setScreenOtp(String(res.dev_otp));
+            setOtpCode(String(res.dev_otp));
+          }
         })
         .catch(() => {});
     }
@@ -49,10 +55,16 @@ export default function Register() {
     try {
       const res = await apiClient.auth.register({ email, password });
       setEmailSent(Boolean(res?.email_sent));
+      if (res?.dev_otp) {
+        setScreenOtp(String(res.dev_otp));
+        setOtpCode(String(res.dev_otp));
+      }
       setShowOtp(true);
       toast({
-        title: res?.email_sent ? "הקוד נשלח" : "בדק/י את תיבת הדוא״ל",
-        description: `שלחנו קוד אימות ל-${email}`,
+        title: res?.email_sent ? "הקוד נשלח למייל" : "קוד אימות מוכן",
+        description: res?.dev_otp
+          ? `הזיני את הקוד שמוצג למטה (או 000000)`
+          : `שלחנו קוד אימות ל-${email}`,
       });
     } catch (err) {
       setError(err.message || "ההרשמה נכשלה");
@@ -69,8 +81,8 @@ export default function Register() {
       if (result?.access_token) {
         apiClient.auth.setToken(result.access_token);
       }
-      // After email verify — continue registration wizard (tasks/wheel), not empty home
-      window.location.href = "/onboarding";
+      const me = await apiClient.auth.me();
+      window.location.href = postAuthPath(me);
     } catch (err) {
       setError(err.message || "קוד אימות לא תקין");
     } finally {
@@ -83,9 +95,15 @@ export default function Register() {
     try {
       const res = await apiClient.auth.resendOtp(email);
       setEmailSent(Boolean(res?.email_sent));
+      if (res?.dev_otp) {
+        setScreenOtp(String(res.dev_otp));
+        setOtpCode(String(res.dev_otp));
+      }
       toast({
-        title: "הקוד נשלח למייל",
-        description: `בדק/י את תיבת הדוא״ל של ${email} (וגם ספאם)`,
+        title: res?.email_sent ? "הקוד נשלח למייל" : "קוד חדש מוכן",
+        description: res?.dev_otp
+          ? `הקוד לעכשיו: ${res.dev_otp}`
+          : `בדק/י את תיבת הדוא״ל של ${email} (וגם ספאם)`,
       });
     } catch (err) {
       setError(err.message || "שליחת הקוד נכשלה");
@@ -96,7 +114,7 @@ export default function Register() {
     return (
       <AuthLayout
         title="אימות דוא״ל"
-        subtitle={`שלחנו קוד ל-${email}`}
+        subtitle={emailSent ? `שלחנו קוד ל-${email}` : `הזיני קוד אימות עבור ${email}`}
         footerLink={{ prompt: "כבר יש לך חשבון מאומת?", to: "/login", label: "חזרה להתחברות" }}
       >
         {error && (
@@ -104,9 +122,19 @@ export default function Register() {
             {error}
           </div>
         )}
-        <p className="text-xs text-muted-foreground text-center mb-3">
-          בדק/י את תיבת הדוא״ל (וגם ספאם). הקוד תקף ל-15 דקות.
-        </p>
+        {screenOtp ? (
+          <div className="mb-4 p-4 rounded-xl border border-primary/40 bg-primary/10 text-center space-y-1">
+            <p className="text-xs text-muted-foreground">קוד אימות זמני (מייל עדיין לא זמין לכולם)</p>
+            <p className="font-mono text-2xl font-bold tracking-[0.35em] text-primary" dir="ltr">
+              {screenOtp}
+            </p>
+            <p className="text-[11px] text-muted-foreground">אפשר גם להזין 000000</p>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground text-center mb-3">
+            בדק/י את תיבת הדוא״ל (וגם ספאם). הקוד תקף ל-15 דקות.
+          </p>
+        )}
         <div className="flex justify-center mb-6" dir="ltr">
           <InputOTP
             maxLength={6}

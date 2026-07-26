@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,12 +11,14 @@ export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [resetUrl, setResetUrl] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await apiClient.auth.resetPasswordRequest(email);
+      const res = await apiClient.auth.resetPasswordRequest(email);
+      if (res?.reset_url) setResetUrl(String(res.reset_url));
     } catch {
       // Always show success regardless (no email enumeration)
     } finally {
@@ -35,6 +38,14 @@ export default function ForgotPassword() {
           <p className="text-foreground">
             אם קיים חשבון עם כתובת זו — נשלח מייל עם קישור לאיפוס. בדק/י גם בספאם.
           </p>
+          {resetUrl && (
+            <div className="p-4 rounded-xl border border-primary/40 bg-primary/10 text-center space-y-2">
+              <p className="text-xs text-muted-foreground">קישור זמני (מייל עדיין לא זמין לכולם)</p>
+              <Link to={resetUrl.replace(/^https?:\/\/[^/]+/, "") || resetUrl} className="text-primary font-bold underline break-all">
+                לחצ/י כאן לאיפוס הסיסמה
+              </Link>
+            </div>
+          )}
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">

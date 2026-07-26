@@ -46,6 +46,11 @@ def _issue_otp(db: Session, user: User) -> str:
     return code
 
 
+def _otp_screen_fallback_enabled(settings) -> bool:
+    """Temporary on-screen OTP until SES can deliver to all recipients."""
+    return (not settings.is_production) or bool(settings.allow_otp_screen_fallback)
+
+
 def _otp_response(email: str, code: str, sent: bool) -> dict:
     settings = get_settings()
     payload: dict = {
@@ -53,9 +58,10 @@ def _otp_response(email: str, code: str, sent: bool) -> dict:
         "email": email,
         "email_sent": sent,
     }
-    # Local/DEV only — never expose codes on production.
-    if not settings.is_production:
+    # Show code on screen when mail failed, or while temporary fallback is on.
+    if (not sent) or _otp_screen_fallback_enabled(settings):
         payload["dev_otp"] = code
+        payload["screen_fallback"] = True
     return payload
 
 
@@ -63,7 +69,12 @@ def _deliver_otp(db: Session, user: User) -> dict:
     settings = get_settings()
     code = _issue_otp(db, user)
     sent = send_otp_email(settings, to=user.email, code=code)
-    if settings.is_production and not sent:
+    # While SES is limited: never block registration — return on-screen code instead.
+    if (
+        settings.is_production
+        and not sent
+        and not settings.allow_otp_screen_fallback
+    ):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="לא הצלחנו לשלוח מייל אימות. נסי שוב בעוד רגע.",
@@ -110,7 +121,8 @@ def verify_otp(payload: VerifyOtpRequest, db: Session = Depends(get_db)):
         .order_by(EmailVerificationToken.created_at.desc())
     )
     settings = get_settings()
-    dev_bypass = not settings.is_production and payload.otpCode == "000000"
+    # Universal temporary code while email delivery is unreliable.
+    dev_bypass = _otp_screen_fallback_enabled(settings) and payload.otpCode == "000000"
 
     if not dev_bypass:
         if token_row is None or token_row.code != payload.otpCode:
@@ -215,9 +227,11 @@ def reset_password_request(payload: ResetPasswordRequest, db: Session = Depends(
         "message": "If the email exists, reset instructions were sent",
         "email_sent": sent,
     }
-    if not settings.is_production:
+    # Same temporary fallback as OTP: expose reset link when mail cannot be delivered.
+    if (not sent) or _otp_screen_fallback_enabled(settings):
         response["reset_token"] = token
         response["reset_url"] = reset_url
+        response["screen_fallback"] = True
     return response
 
 

@@ -82,6 +82,13 @@ class Settings(BaseSettings):
     make_trigger_url: str = Field(default="", alias="MAKE_TRIGGER_URL")
     make_payment_url: str = Field(default="", alias="MAKE_PAYMENT_URL")
 
+    # Temporary until SES production access works: show OTP on-screen + accept 000000.
+    # Set ALLOW_OTP_SCREEN_FALLBACK=false in secrets once real email delivery is reliable.
+    allow_otp_screen_fallback: bool = Field(
+        default=True,
+        alias="ALLOW_OTP_SCREEN_FALLBACK",
+    )
+
     @model_validator(mode="after")
     def hydrate_from_app_secret(self):
         """Overlay sensitive fields from Secrets Manager when APP_SECRET_ARN is set."""
@@ -97,6 +104,10 @@ class Settings(BaseSettings):
             "make_webhook_secret": ("make_webhook_secret", "MAKE_WEBHOOK_SECRET"),
             "make_trigger_url": ("make_trigger_url", "MAKE_TRIGGER_URL"),
             "make_payment_url": ("make_payment_url", "MAKE_PAYMENT_URL"),
+            "allow_otp_screen_fallback": (
+                "allow_otp_screen_fallback",
+                "ALLOW_OTP_SCREEN_FALLBACK",
+            ),
             "admin_email": ("admin_email", "ADMIN_EMAIL"),
             "admin_password": ("admin_password", "ADMIN_PASSWORD"),
             "dev_admin_password": ("dev_admin_password", "DEV_ADMIN_PASSWORD"),
@@ -109,6 +120,8 @@ class Settings(BaseSettings):
                     break
         # Mutate in place — model_copy + Field(alias=...) can drop updates on some pydantic builds
         for attr, value in updates.items():
+            if attr == "allow_otp_screen_fallback" and isinstance(value, str):
+                value = value.strip().lower() in {"1", "true", "yes", "on"}
             object.__setattr__(self, attr, value)
         return self
 
