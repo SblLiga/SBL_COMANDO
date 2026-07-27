@@ -69,10 +69,15 @@ async def upload_file(
         raise HTTPException(status_code=400, detail="Image must be under 15MB")
 
     media_id = uuid.uuid4().hex
+    # Keep DB filename ASCII-safe (display name not needed for serving)
+    original_name = file.filename or f"{media_id}{suffix}"
+    safe_filename = "".join(
+        ch if (ch.isascii() and ch not in '"\\/:*?<>|') else "_" for ch in original_name
+    )[:180] or f"{media_id}{suffix}"
     asset = MediaAsset(
         id=media_id,
         content_type=content_type,
-        filename=file.filename or f"{media_id}{suffix}",
+        filename=safe_filename,
         content=content,
         byte_size=len(content),
         owner_user_id=user.id,
@@ -111,14 +116,41 @@ def get_media(media_id: str, db: Session = Depends(get_db)):
     """Serve durable media for avatars/rewards. No auth — UUID is the access key."""
     if not media_id or len(media_id) > 32 or not media_id.isalnum():
         raise HTTPException(status_code=404, detail="Not found")
-    asset = db.get(MediaAsset, media_id)
-    if asset is None:
-        raise HTTPException(status_code=404, detail="Not found")
-    return Response(
-        content=asset.content,
-        media_type=asset.content_type or "application/octet-stream",
-        headers={
-            "Cache-Control": "public, max-age=31536000, immutable",
-            "Content-Disposition": f'inline; filename="{asset.filename or media_id}"',
-        },
-    )
+    try:
+        asset = db.get(MediaAsset, media_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        raw = asset.content
+        if raw is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        # psycopg/SQLAlchemy may return memoryview
+        if isinstance(raw, memoryview):
+            raw = raw.tobytes()
+        elif not isinstance(raw, (bytes, bytearray)):
+            raw = bytes(raw)
+
+        # ASCII-only filename — Hebrew/quotes in Content-Disposition crash Starlette (500)
+        suffix = ""
+        if asset.filename and "." in asset.filename:
+            ext = asset.filename.rsplit(".", 1)[-1].lower()
+            if ext.isalnum() and len(ext) <= 8:
+                suffix = f".{ext}"
+        safe_name = f"{media_id}{suffix}"
+        media_type = (asset.content_type or "application/octet-stream").split(";")[0].strip()
+        if not media_type or not media_type.replace("/", "").replace("-", "").replace(".", "").isalnum():
+            media_type = "application/octet-stream"
+
+        return Response(
+            content=raw,
+            media_type=media_type,
+            headers={
+                "Cache-Control": "public, max-age=31536000, immutable",
+                "Content-Disposition": f'inline; filename="{safe_name}"',
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed serving media_id=%s", media_id)
+        raise HTTPException(status_code=500, detail="Failed to load media") from None
+
