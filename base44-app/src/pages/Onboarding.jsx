@@ -12,6 +12,7 @@ import StepReward from "@/components/onboarding/StepReward";
 import { toast } from "@/components/ui/use-toast";
 import { currentCycleMonth, needsMonthlyOnboarding } from "@/lib/calendarRules";
 import { needsOnboardingWizard, needsPayment } from "@/lib/postAuth";
+import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUpload";
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -79,30 +80,10 @@ export default function Onboarding() {
 
   const uploadReward = async (file) => {
     if (!file) return;
-    const ext = (file.name || "").split(".").pop()?.toLowerCase() || "";
-    const looksLikeImage =
-      !file.type ||
-      file.type.startsWith("image/") ||
-      ["png", "jpg", "jpeg", "webp", "gif", "heic", "heif"].includes(ext);
-    if (!looksLikeImage) {
-      toast({ title: "שגיאה", description: "יש לבחור קובץ תמונה בלבד", variant: "destructive" });
-      return;
-    }
-    if (["heic", "heif"].includes(ext) || (file.type || "").includes("heic") || (file.type || "").includes("heif")) {
-      toast({
-        title: "פורמט לא נתמך בדפדפן",
-        description: "שמרי/העלי כ-JPG או PNG (לא HEIC)",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast({ title: "שגיאה", description: "גודל מקסימלי 5MB", variant: "destructive" });
-      return;
-    }
     setUploading(true);
     try {
-      const res = await apiClient.integrations.Core.UploadFile({ file, purpose: "reward" });
+      const prepared = await prepareImageForUpload(file);
+      const res = await apiClient.integrations.Core.UploadFile({ file: prepared, purpose: "reward" });
       const url = res?.file_url || res?.url;
       if (!url) throw new Error("השרת לא החזיר קישור לתמונה");
       setRewardImage(url);
@@ -111,7 +92,7 @@ export default function Onboarding() {
       console.error("[Onboarding] reward upload failed", err);
       toast({
         title: "העלאה נכשלה",
-        description: err.message || "לא הצלחנו להעלות את התמונה. נסו שוב.",
+        description: formatUploadError(err),
         variant: "destructive",
       });
     } finally {

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowRight, Camera, Loader2, Lock, User as UserIcon, Mail } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUpload";
 
 /** Prefer durable /api/media URLs over legacy ephemeral /uploads paths. */
 function pickAvatarUrl(...candidates) {
@@ -95,33 +96,13 @@ export default function Profile() {
 
   const handleUploadAvatar = async (file) => {
     if (!file) return;
-    const ext = (file.name || "").split(".").pop()?.toLowerCase() || "";
-    const looksLikeImage =
-      !file.type ||
-      file.type.startsWith("image/") ||
-      ["png", "jpg", "jpeg", "webp", "gif", "heic", "heif"].includes(ext);
-    if (!looksLikeImage) {
-      toast({ title: "שגיאה", description: "יש לבחור קובץ תמונה בלבד", variant: "destructive" });
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast({ title: "שגיאה", description: "גודל מקסימלי 5MB", variant: "destructive" });
-      return;
-    }
-    if (["heic", "heif"].includes(ext) || (file.type || "").includes("heic") || (file.type || "").includes("heif")) {
-      toast({
-        title: "פורמט לא נתמך בדפדפן",
-        description: "שמרי/העלי כ-JPG או PNG (לא HEIC)",
-        variant: "destructive",
-      });
-      return;
-    }
     const localPreview = URL.createObjectURL(file);
     setUploading(true);
     setAvatarUrl(localPreview);
     let savedUrl = "";
     try {
-      const res = await apiClient.integrations.Core.UploadFile({ file, purpose: "avatar" });
+      const prepared = await prepareImageForUpload(file);
+      const res = await apiClient.integrations.Core.UploadFile({ file: prepared, purpose: "avatar" });
       const url = res.file_url || res.url;
       if (!url) throw new Error("השרת לא החזיר קישור לתמונה");
       savedUrl = url;
@@ -130,10 +111,13 @@ export default function Profile() {
     } catch (err) {
       console.error("[Profile] avatar upload failed", err);
       setAvatarUrl(pickAvatarUrl(savedUrl, member?.avatar_url, user?.avatar_url));
-      toast({ title: "שגיאה", description: err.message || "העלאת התמונה נכשלה", variant: "destructive" });
+      toast({
+        title: "העלאה נכשלה",
+        description: formatUploadError(err),
+        variant: "destructive",
+      });
     } finally {
       setUploading(false);
-      // Revoke only after React has switched img src off the blob
       window.setTimeout(() => URL.revokeObjectURL(localPreview), 1500);
     }
   };
@@ -229,7 +213,9 @@ export default function Profile() {
               />
             </label>
           </div>
-          <p className="text-xs text-muted-foreground text-center">לחצ/י על המצלמה כדי להעלות תמונת פרופיל</p>
+          <p className="text-xs text-muted-foreground text-center">
+            לחצ/י על המצלמה כדי להעלות תמונת פרופיל (גם תמונות גדולות מהטלפון — נדחסות אוטומטית)
+          </p>
         </div>
 
         <div className="card-lux p-5 space-y-4">

@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 import { ensureMyGoal } from "@/lib/myGoal";
 import { mediaUrl } from "@/lib/mediaUrl";
+import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUpload";
 
 const PRIORITIES = ["דחוף", "בינוני", "נמוך"];
 
@@ -59,37 +60,21 @@ export default function Goal() {
 
   const uploadRewardImage = async (file) => {
     if (!file || !goal?.id) return;
-    const ext = (file.name || "").split(".").pop()?.toLowerCase() || "";
-    const looksLikeImage =
-      !file.type ||
-      file.type.startsWith("image/") ||
-      ["png", "jpg", "jpeg", "webp", "gif"].includes(ext);
-    if (!looksLikeImage) {
-      toast({ title: "שגיאה", description: "יש לבחור קובץ תמונה בלבד", variant: "destructive" });
-      return;
-    }
-    if (["heic", "heif"].includes(ext) || (file.type || "").includes("heic")) {
-      toast({
-        title: "פורמט לא נתמך",
-        description: "שמרי/העלי כ-JPG או PNG (לא HEIC)",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast({ title: "שגיאה", description: "גודל מקסימלי 5MB", variant: "destructive" });
-      return;
-    }
     setUploadingReward(true);
     try {
-      const res = await apiClient.integrations.Core.UploadFile({ file, purpose: "reward" });
+      const prepared = await prepareImageForUpload(file);
+      const res = await apiClient.integrations.Core.UploadFile({ file: prepared, purpose: "reward" });
       const url = res?.file_url || res?.url;
       if (!url) throw new Error("השרת לא החזיר קישור");
       const g = await apiClient.entities.Goal.update(goal.id, { reward_image: url });
       setGoal(g);
       toast({ title: "תמונת התמריץ עודכנה", description: "התמונה תוצג גם למנהל/ת." });
     } catch (err) {
-      toast({ title: "שגיאה", description: err.message || "העלאה נכשלה", variant: "destructive" });
+      toast({
+        title: "העלאה נכשלה",
+        description: formatUploadError(err),
+        variant: "destructive",
+      });
     } finally {
       setUploadingReward(false);
     }

@@ -19,7 +19,7 @@ UPLOAD_DIR = (Path.cwd() / "static" / "uploads").resolve()
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"}
-MAX_BYTES = 5 * 1024 * 1024  # 5MB
+MAX_BYTES = 15 * 1024 * 1024  # 15MB (frontend compresses phone photos first)
 
 
 def _suffix_for(file: UploadFile) -> str:
@@ -66,7 +66,7 @@ async def upload_file(
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
     if len(content) > MAX_BYTES:
-        raise HTTPException(status_code=400, detail="Image must be under 5MB")
+        raise HTTPException(status_code=400, detail="Image must be under 15MB")
 
     media_id = uuid.uuid4().hex
     asset = MediaAsset(
