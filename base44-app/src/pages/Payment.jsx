@@ -3,11 +3,9 @@ import { Navigate, useNavigate } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 import { postAuthPath } from "@/lib/postAuth";
+import { buildGrowPaymentUrl } from "@/lib/paymentUrl";
 import { Lock, ExternalLink, Loader2, CreditCard } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
-
-const FALLBACK_PAYMENT_URL =
-  import.meta.env.VITE_GROW_PAYMENT_URL || "https://grow.co.il/subscribe";
 
 export default function Payment() {
   const { user, checkUserAuth, isLoadingAuth } = useAuth();
@@ -37,27 +35,27 @@ export default function Payment() {
   const startCheckout = async () => {
     setStarting(true);
     try {
-      const res = await apiClient.integrations.Make.triggerCheckout();
-      if (res?.bypassed) {
-        toast({
-          title: "מצב בדיקה (DEV)",
-          description: "הסליקה דולגה — ממשיכים לאתר.",
-        });
-        await finishBypass(res.redirect || "/thank-you");
-        return;
+      // Local Vite dev server: backend bypasses payment (no Meshulam).
+      if (import.meta.env.DEV) {
+        const res = await apiClient.integrations.Make.triggerCheckout();
+        if (res?.bypassed) {
+          toast({
+            title: "מצב בדיקה (DEV)",
+            description: "הסליקה דולגה — ממשיכים לאתר.",
+          });
+          await finishBypass(res.redirect || "/thank-you");
+          return;
+        }
       }
-      const url = res?.payment_url || FALLBACK_PAYMENT_URL;
-      if (url) {
-        window.open(url, "_blank", "noopener,noreferrer");
-      }
+
+      const url = buildGrowPaymentUrl(user.id);
+      window.open(url, "_blank", "noopener,noreferrer");
       toast({
         title: "מעבירים לסליקה",
-        description: res?.triggered
-          ? "תהליך התשלום הופעל. לאחר אישור תועברי לעמוד תודה."
-          : "פתחנו את דף התשלום. לאחר אישור חזרי לאתר.",
+        description:
+          "פתחנו את דף התשלום. לאחר אישור חזרי לאתר — הסטטוס יתעדכן אוטומטית.",
       });
     } catch (err) {
-      // Last resort for DEV stuck accounts
       try {
         const bypass = await apiClient.integrations.Make.devActivate();
         toast({
@@ -71,7 +69,7 @@ export default function Payment() {
       }
       toast({
         title: "סליקה עדיין לא מחוברת",
-        description: err?.message || "נסי שוב מאוחר יותר, או השתמשי בסביבת DEV.",
+        description: err?.message || "נסי שוב מאוחר יותר.",
         variant: "destructive",
       });
     } finally {

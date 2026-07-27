@@ -1,4 +1,4 @@
-"""Make / payment webhooks — activate or deactivate user subscription_status."""
+"""Make / payment webhooks — activate or deactivate user subscription."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models import User
+from app.subscription import activate_subscription, deactivate_subscription
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
@@ -49,8 +50,7 @@ def verify_webhook_auth(
     if signature:
         digest = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
         provided = signature.removeprefix("sha256=").strip()
-        if hmac.compare_digest(digest, provided):
-            return True
+        return hmac.compare_digest(digest, provided)
     return False
 
 
@@ -79,20 +79,28 @@ def resolve_user(db: Session, payload: dict) -> User | None:
 
 
 def apply_subscription_status(db: Session, user: User, new_status: str) -> dict:
-    user.subscription_status = new_status
+    if new_status == "active":
+        activate_subscription(user)
+    else:
+        deactivate_subscription(user)
     db.commit()
+    db.refresh(user)
     logger.info(
-        "Webhook set user_id=%s email=%s subscription_status=%s",
+        "Webhook set user_id=%s email=%s subscription_status=%s end=%s",
         user.id,
         user.email,
-        new_status,
+        user.subscription_status,
+        user.subscription_end_date,
     )
     return {
         "received": True,
         "updated": True,
         "userId": user.id,
         "email": user.email,
-        "subscription_status": new_status,
+        "subscription_status": user.subscription_status,
+        "subscription_end_date": (
+            user.subscription_end_date.isoformat() if user.subscription_end_date else None
+        ),
     }
 
 
@@ -133,7 +141,7 @@ async def payment_success(
     x_webhook_secret: str | None = Header(default=None, alias="X-Webhook-Secret"),
     authorization: str | None = Header(default=None),
 ):
-    """Make → site: payment / standing order approved → ACTIVE."""
+    """Make/Grow → site: payment approved → ACTIVE for 30 days."""
     payload = await _read_verified_payload(
         request,
         x_make_signature=x_make_signature,
@@ -158,7 +166,7 @@ async def subscription_cancelled(
     x_webhook_secret: str | None = Header(default=None, alias="X-Webhook-Secret"),
     authorization: str | None = Header(default=None),
 ):
-    """Make → site: standing order cancelled → INACTIVE."""
+    """Make/Grow → site: standing order cancelled → INACTIVE."""
     payload = await _read_verified_payload(
         request,
         x_make_signature=x_make_signature,

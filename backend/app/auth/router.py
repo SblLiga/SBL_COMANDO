@@ -26,6 +26,7 @@ from app.mailer import send_otp_email, send_password_reset_email
 from app.models import EmailVerificationToken, PasswordResetToken, User
 from app.security import hash_password, verify_password
 from app.serializers import user_to_dict
+from app.subscription import sync_subscription_expiry
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -158,6 +159,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     if not user.email_verified:
         raise HTTPException(status_code=403, detail="Email not verified")
 
+    sync_subscription_expiry(user, db)
     access_token = create_access_token(str(user.id))
     return TokenResponse(access_token=access_token)
 

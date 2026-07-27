@@ -38,6 +38,9 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(32), default="user")
     subscription_status: Mapped[str] = mapped_column(String(32), default="inactive")
+    subscription_end_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     gender: Mapped[str | None] = mapped_column(String(16), nullable=True)
     target: Mapped[str | None] = mapped_column(String(255), nullable=True)
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -74,7 +74,7 @@ class Settings(BaseSettings):
 
     grow_webhook_secret: str = Field(default="", alias="GROW_WEBHOOK_SECRET")
     grow_payment_url: str = Field(
-        default="https://grow.co.il/subscribe",
+        default="https://meshulam.co.il/s/180deaa3-f766-9c23-5820-a8a91ea5a1ff",
         alias="GROW_PAYMENT_URL",
     )
     # Make.com — outbound checkout trigger + inbound webhook auth (falls back to GROW_*)

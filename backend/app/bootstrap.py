@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.models import Goal, Group, Meeting, Member, Notification, SystemSetting, Task, User
 from app.security import hash_password
+from app.subscription import activate_subscription
 
 logger = logging.getLogger(__name__)
 
@@ -277,6 +278,7 @@ def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
             )
             session.add(user)
             session.flush()
+            activate_subscription(user)
             created = True
             changed += 1
         else:
@@ -286,6 +288,7 @@ def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
             user.role = account["role"]
             user.full_name = account.get("full_name") or user.full_name
             user.subscription_status = "active"
+            activate_subscription(user)
             user.onboarding_completed = True
             if "target" in account:
                 user.target = account["target"]

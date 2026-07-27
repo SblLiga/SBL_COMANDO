@@ -1,11 +1,9 @@
-"""Outbound trigger to Make when a user starts the checkout / billing flow."""
+"""Outbound checkout helpers (DEV bypass + payment URL with user id)."""
 
 from __future__ import annotations
 
-import json
 import logging
-import urllib.error
-import urllib.request
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -14,9 +12,20 @@ from app.auth.deps import get_current_user
 from app.config import get_settings
 from app.database import get_db
 from app.models import User
+from app.subscription import activate_subscription
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/integrations/make", tags=["make"])
+
+
+def payment_url_for_user(settings, user_id: int) -> str:
+    base = (settings.make_payment_url or settings.grow_payment_url or "").strip()
+    if not base:
+        return ""
+    parsed = urlparse(base)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query["custom1"] = str(user_id)
+    return urlunparse(parsed._replace(query=urlencode(query)))
 
 
 @router.post("/trigger-checkout")
@@ -26,17 +35,17 @@ def trigger_checkout(
 ):
     """
     Authenticated user starts payment.
-    POSTs user details to Make (MAKE_TRIGGER_URL) when configured,
-    and returns the browser payment URL (GROW_PAYMENT_URL / MAKE_PAYMENT_URL).
 
-    Non-production: skips Make entirely and activates the user so QA can use the app.
+    Non-production: activates subscription (30-day period) so QA can use the app.
+    Production: returns Meshulam URL with custom1=userId (site opens it directly;
+    Make is notified only after payment via /api/webhooks/payment-success).
     """
     settings = get_settings()
 
-    # DEV / non-prod: no Make yet — activate and continue into the product.
     if not settings.is_production:
-        user.subscription_status = "active"
+        activate_subscription(user)
         db.commit()
+        db.refresh(user)
         logger.info("DEV checkout bypass — activated user_id=%s", user.id)
         return {
             "ok": True,
@@ -46,60 +55,25 @@ def trigger_checkout(
             "payment_url": None,
             "redirect": "/thank-you",
             "userId": user.id,
-            "subscription_status": "active",
+            "subscription_status": user.subscription_status,
+            "subscription_end_date": (
+                user.subscription_end_date.isoformat() if user.subscription_end_date else None
+            ),
         }
 
-    payment_url = (settings.make_payment_url or settings.grow_payment_url or "").strip()
-    trigger_url = (settings.make_trigger_url or "").strip()
-
-    payload = {
-        "userId": user.id,
-        "email": user.email,
-        "name": user.full_name,
-        "subscription_status": user.subscription_status,
-        "thank_you_url": f"{(settings.app_public_url or '').rstrip('/')}/thank-you",
-    }
-
-    triggered = False
-    trigger_error = None
-    if trigger_url:
-        try:
-            body = json.dumps(payload).encode("utf-8")
-            headers = {"Content-Type": "application/json"}
-            secret = (
-                settings.make_webhook_secret or settings.grow_webhook_secret or ""
-            ).strip()
-            if secret:
-                headers["X-Webhook-Secret"] = secret
-            req = urllib.request.Request(
-                trigger_url, data=body, headers=headers, method="POST"
-            )
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                if 200 <= getattr(resp, "status", 200) < 300:
-                    triggered = True
-                else:
-                    trigger_error = f"Make returned {resp.status}"
-        except urllib.error.HTTPError as exc:
-            trigger_error = f"Make returned {exc.code}"
-            logger.warning("Make trigger failed status=%s", exc.code)
-        except Exception as exc:
-            trigger_error = str(exc)
-            logger.exception("Make trigger request failed")
-    else:
-        logger.warning("MAKE_TRIGGER_URL not configured — checkout trigger skipped")
-
-    if not payment_url and not triggered:
+    payment_url = payment_url_for_user(settings, user.id)
+    if not payment_url:
         raise HTTPException(
             status_code=503,
-            detail="Checkout is not configured (missing MAKE_TRIGGER_URL / payment URL)",
+            detail="Checkout is not configured (missing GROW_PAYMENT_URL)",
         )
 
     return {
         "ok": True,
         "bypassed": False,
-        "triggered": triggered,
-        "trigger_error": trigger_error,
-        "payment_url": payment_url or None,
+        "triggered": False,
+        "trigger_error": None,
+        "payment_url": payment_url,
         "userId": user.id,
     }
 
@@ -113,11 +87,15 @@ def dev_activate_subscription(
     settings = get_settings()
     if settings.is_production:
         raise HTTPException(status_code=404, detail="Not found")
-    user.subscription_status = "active"
+    activate_subscription(user)
     db.commit()
+    db.refresh(user)
     return {
         "ok": True,
-        "subscription_status": "active",
+        "subscription_status": user.subscription_status,
+        "subscription_end_date": (
+            user.subscription_end_date.isoformat() if user.subscription_end_date else None
+        ),
         "redirect": "/thank-you",
         "userId": user.id,
     }
