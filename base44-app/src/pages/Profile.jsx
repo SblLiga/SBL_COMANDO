@@ -121,7 +121,7 @@ export default function Profile() {
     setAvatarUrl(localPreview);
     let savedUrl = "";
     try {
-      const res = await apiClient.integrations.Core.UploadFile({ file });
+      const res = await apiClient.integrations.Core.UploadFile({ file, purpose: "avatar" });
       const url = res.file_url || res.url;
       if (!url) throw new Error("השרת לא החזיר קישור לתמונה");
       savedUrl = url;

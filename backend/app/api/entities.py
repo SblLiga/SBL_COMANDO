@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
 from app.database import get_db
-from app.models import User
+from app.media_urls import heal_member_avatar
+from app.models import Member, User
 from app.serializers import MODEL_MAP, SERIALIZERS
 
 router = APIRouter(prefix="/api/entities", tags=["entities"])
@@ -54,8 +55,17 @@ def _coerce_payload(data: dict[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
-def _serialize(entity_name: str, row: Any) -> dict[str, Any]:
+def _serialize(entity_name: str, row: Any, db: Session | None = None) -> dict[str, Any]:
+    if entity_name == "Member" and db is not None and isinstance(row, Member):
+        heal_member_avatar(db, row)
     return SERIALIZERS[entity_name](row)
+
+
+def _serialize_many(entity_name: str, rows: list[Any], db: Session) -> list[dict[str, Any]]:
+    out = [_serialize(entity_name, row, db) for row in rows]
+    if entity_name == "Member":
+        db.commit()
+    return out
 
 
 def _apply_filters(query, model, criteria: dict[str, Any]):
@@ -99,7 +109,7 @@ def list_entities(
         query = query.limit(limit)
 
     rows = db.scalars(query).all()
-    return [_serialize(entity_name, row) for row in rows]
+    return _serialize_many(entity_name, rows, db)
 
 
 @router.post("/{entity_name}/filter")
@@ -115,7 +125,7 @@ def filter_entities(
 
     query = _apply_filters(select(model), model, payload.criteria)
     rows = db.scalars(query).all()
-    return [_serialize(entity_name, row) for row in rows]
+    return _serialize_many(entity_name, rows, db)
 
 
 @router.get("/{entity_name}/{entity_id}")
@@ -132,7 +142,10 @@ def get_entity(
     row = db.get(model, int(entity_id))
     if row is None:
         raise HTTPException(status_code=404, detail="Not found")
-    return _serialize(entity_name, row)
+    payload = _serialize(entity_name, row, db)
+    if entity_name == "Member":
+        db.commit()
+    return payload
 
 
 @router.post("/{entity_name}")
@@ -154,7 +167,7 @@ def create_entity(
     db.add(row)
     db.commit()
     db.refresh(row)
-    return _serialize(entity_name, row)
+    return _serialize(entity_name, row, db)
 
 
 @router.patch("/{entity_name}/{entity_id}")
@@ -180,7 +193,7 @@ def update_entity(
             setattr(row, key, value)
     db.commit()
     db.refresh(row)
-    return _serialize(entity_name, row)
+    return _serialize(entity_name, row, db)
 
 
 @router.post("/{entity_name}/bulk")
@@ -204,7 +217,7 @@ def bulk_create(
     db.commit()
     for row in created:
         db.refresh(row)
-    return [_serialize(entity_name, row) for row in created]
+    return [_serialize(entity_name, row, db) for row in created]
 
 
 @router.patch("/{entity_name}/bulk")
@@ -235,7 +248,7 @@ def bulk_update(
     db.commit()
     for row in updated:
         db.refresh(row)
-    return [_serialize(entity_name, row) for row in updated]
+    return [_serialize(entity_name, row, db) for row in updated]
 
 
 @router.delete("/{entity_name}/{entity_id}")

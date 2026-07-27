@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/AuthContext";
 import api from "@/api/dataLayer";
 import { Zap, Bell } from "lucide-react";
 import UserAvatar from "@/components/UserAvatar";
+import { preferDurableAvatar } from "@/lib/mediaUrl";
 
 const LOGO_URL = "/logo.png";
 
@@ -32,14 +33,7 @@ export default function Header({ hideUser = false }) {
   }, [user?.id, user?.avatar_url, hideUser]);
 
   const name = member?.name || user?.full_name || "משתמש";
-  // Prefer user.avatar_url (just patched) and durable /api/media over legacy /uploads
-  const avatarSrc =
-    [user?.avatar_url, member?.avatar_url].find(
-      (u) => typeof u === "string" && u.startsWith("/api/media/")
-    ) ||
-    user?.avatar_url ||
-    member?.avatar_url ||
-    "";
+  const avatarSrc = preferDurableAvatar(user?.avatar_url, member?.avatar_url);
   const xp = member?.xp || 0;
 
   return (

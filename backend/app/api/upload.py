@@ -2,12 +2,13 @@ import logging
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
 from app.database import get_db
+from app.media_urls import sync_avatar_to_members
 from app.models import MediaAsset, User
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,7 @@ def _suffix_for(file: UploadFile) -> str:
 @router.post("/integrations/core/upload-file")
 async def upload_file(
     file: UploadFile = File(...),
+    purpose: str | None = Query(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -83,16 +85,23 @@ async def upload_file(
     except OSError:
         logger.warning("Could not mirror upload to disk cache", exc_info=True)
 
-    db.commit()
-
     # Public (unguessable id) — <img src> cannot send Authorization headers
     url = f"/api/media/{media_id}"
+
+    # Avatar uploads: sync User + Member so League/Manager/HQ all see the photo
+    if (purpose or "").strip().lower() in {"avatar", "profile", "profile_avatar"}:
+        user.avatar_url = url
+        sync_avatar_to_members(db, user, url)
+
+    db.commit()
+
     logger.info(
-        "Upload saved user=%s media_id=%s bytes=%s content_type=%s",
+        "Upload saved user=%s media_id=%s bytes=%s content_type=%s purpose=%s",
         user.id,
         media_id,
         len(content),
         content_type,
+        purpose,
     )
     return {"file_url": url, "url": url, "media_id": media_id}
 

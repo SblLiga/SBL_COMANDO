@@ -79,8 +79,21 @@ export default function Onboarding() {
 
   const uploadReward = async (file) => {
     if (!file) return;
-    if (!file.type?.startsWith("image/")) {
+    const ext = (file.name || "").split(".").pop()?.toLowerCase() || "";
+    const looksLikeImage =
+      !file.type ||
+      file.type.startsWith("image/") ||
+      ["png", "jpg", "jpeg", "webp", "gif", "heic", "heif"].includes(ext);
+    if (!looksLikeImage) {
       toast({ title: "שגיאה", description: "יש לבחור קובץ תמונה בלבד", variant: "destructive" });
+      return;
+    }
+    if (["heic", "heif"].includes(ext) || (file.type || "").includes("heic") || (file.type || "").includes("heif")) {
+      toast({
+        title: "פורמט לא נתמך בדפדפן",
+        description: "שמרי/העלי כ-JPG או PNG (לא HEIC)",
+        variant: "destructive",
+      });
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -89,7 +102,7 @@ export default function Onboarding() {
     }
     setUploading(true);
     try {
-      const res = await apiClient.integrations.Core.UploadFile({ file });
+      const res = await apiClient.integrations.Core.UploadFile({ file, purpose: "reward" });
       const url = res?.file_url || res?.url;
       if (!url) throw new Error("השרת לא החזיר קישור לתמונה");
       setRewardImage(url);

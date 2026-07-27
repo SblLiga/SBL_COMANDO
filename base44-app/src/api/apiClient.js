@@ -193,11 +193,12 @@ const entities = {
 
 const integrations = {
   Core: {
-    async UploadFile({ file }) {
+    async UploadFile({ file, purpose } = {}) {
       const form = new FormData();
       // Explicit filename helps some mobile browsers / FastAPI parsers
       form.append("file", file, file.name || "avatar.jpg");
-      return request("/api/integrations/core/upload-file", {
+      const qs = purpose ? `?purpose=${encodeURIComponent(purpose)}` : "";
+      return request(`/api/integrations/core/upload-file${qs}`, {
         method: "POST",
         body: form,
         // Do not set Content-Type — browser must add multipart boundary

@@ -5,13 +5,14 @@ import { Link } from "react-router-dom";
 import KpiCard from "@/components/KpiCard";
 import MotivationalQuote from "@/components/MotivationalQuote";
 import UserAvatar from "@/components/UserAvatar";
-import { mediaUrl } from "@/lib/mediaUrl";
+import { mediaUrl, preferDurableAvatar } from "@/lib/mediaUrl";
 
 export default function Home() {
   const [goal, setGoal] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [members, setMembers] = useState([]);
   const [myMember, setMyMember] = useState(null);
+  const [meUser, setMeUser] = useState(null);
   const [group, setGroup] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -19,6 +20,7 @@ export default function Home() {
     (async () => {
       try {
         const user = await apiClient.auth.me();
+        setMeUser(user);
         let myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
         let me = myMembers[0];
 
@@ -123,7 +125,7 @@ export default function Home() {
   const sorted = [...members].sort((a, b) => (b.xp || 0) - (a.xp || 0));
   const myRank = myMember ? sorted.findIndex((m) => m.id === myMember.id) + 1 : "—";
   const urgent = tasks.find((t) => !t.is_completed && t.priority === "דחוף");
-  const avatarSrc = myMember?.avatar_url || "";
+  const avatarSrc = preferDurableAvatar(myMember?.avatar_url, meUser?.avatar_url);
 
   return (
     <div className="p-4 space-y-5 overflow-x-hidden">

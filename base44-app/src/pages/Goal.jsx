@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import apiClient from "@/api/apiClient";
-import { Zap, Flame, Plus, Check, EyeOff, Eye, GripVertical, Pencil, Trash2, Gift, Users } from "lucide-react";
+import { Zap, Flame, Plus, Check, EyeOff, Eye, GripVertical, Pencil, Trash2, Gift, Users, Upload, Loader2 } from "lucide-react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import SmartWheel from "@/components/SmartWheel";
 import KpiCard from "@/components/KpiCard";
@@ -23,6 +23,7 @@ export default function Goal() {
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [group, setGroup] = useState(null);
+  const [uploadingReward, setUploadingReward] = useState(false);
 
   useEffect(() => {
     load();
@@ -53,6 +54,44 @@ export default function Goal() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const uploadRewardImage = async (file) => {
+    if (!file || !goal?.id) return;
+    const ext = (file.name || "").split(".").pop()?.toLowerCase() || "";
+    const looksLikeImage =
+      !file.type ||
+      file.type.startsWith("image/") ||
+      ["png", "jpg", "jpeg", "webp", "gif"].includes(ext);
+    if (!looksLikeImage) {
+      toast({ title: "שגיאה", description: "יש לבחור קובץ תמונה בלבד", variant: "destructive" });
+      return;
+    }
+    if (["heic", "heif"].includes(ext) || (file.type || "").includes("heic")) {
+      toast({
+        title: "פורמט לא נתמך",
+        description: "שמרי/העלי כ-JPG או PNG (לא HEIC)",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "שגיאה", description: "גודל מקסימלי 5MB", variant: "destructive" });
+      return;
+    }
+    setUploadingReward(true);
+    try {
+      const res = await apiClient.integrations.Core.UploadFile({ file, purpose: "reward" });
+      const url = res?.file_url || res?.url;
+      if (!url) throw new Error("השרת לא החזיר קישור");
+      const g = await apiClient.entities.Goal.update(goal.id, { reward_image: url });
+      setGoal(g);
+      toast({ title: "תמונת התמריץ עודכנה", description: "התמונה תוצג גם למנהל/ת." });
+    } catch (err) {
+      toast({ title: "שגיאה", description: err.message || "העלאה נכשלה", variant: "destructive" });
+    } finally {
+      setUploadingReward(false);
     }
   };
 
@@ -232,6 +271,25 @@ export default function Goal() {
                 className="mt-3 w-full max-h-40 object-cover rounded-xl ring-1 ring-primary/30"
               />
             )}
+            <label className="mt-3 inline-flex items-center gap-2 text-xs text-primary font-medium cursor-pointer">
+              {uploadingReward ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Upload className="w-3.5 h-3.5" />
+              )}
+              {goal.reward_image ? "החלפת תמונת תמריץ" : "העלאת תמונת תמריץ"}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif,image/*"
+                className="hidden"
+                disabled={uploadingReward}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) uploadRewardImage(f);
+                }}
+              />
+            </label>
             {!goal.reward_text && !goal.reward_image && (
               <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
                 <Gift className="w-3.5 h-3.5 text-primary" /> אין תגמול מוגדר עדיין

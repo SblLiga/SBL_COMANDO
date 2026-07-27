@@ -25,6 +25,7 @@ from app.database import get_db
 from app.mailer import send_otp_email, send_password_reset_email
 from app.models import EmailVerificationToken, PasswordResetToken, User
 from app.security import hash_password, verify_password
+from app.media_urls import sync_avatar_to_members
 from app.serializers import user_to_dict
 from app.subscription import sync_subscription_expiry
 
@@ -191,6 +192,8 @@ def update_me(
         data["onboarding_completed_at"] = datetime.now(timezone.utc)
     for key, value in data.items():
         setattr(current_user, key, value)
+    if "avatar_url" in data and data["avatar_url"]:
+        sync_avatar_to_members(db, current_user, data["avatar_url"])
     db.commit()
     db.refresh(current_user)
     return user_to_dict(current_user)

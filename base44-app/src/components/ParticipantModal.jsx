@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import apiClient from "@/api/apiClient";
-import { X, Lock, Flame, Zap, Check, Send, Edit2, CheckCheck } from "lucide-react";
+import { X, Lock, Flame, Zap, Check, Send, Edit2, CheckCheck, Gift } from "lucide-react";
 import ProgressRing from "@/components/ProgressRing";
 import { useToast } from "@/components/ui/use-toast";
 import UserAvatar from "@/components/UserAvatar";
+import { mediaUrl } from "@/lib/mediaUrl";
 
 const statusColor = {
   "בעקבות": "bg-green-500",
@@ -38,11 +39,15 @@ export default function ParticipantModal({
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
   const [goalDesc, setGoalDesc] = useState(member?.goal_title || "");
+  const [rewardText, setRewardText] = useState("");
+  const [rewardImage, setRewardImage] = useState("");
   const [editingGoal, setEditingGoal] = useState(false);
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
     setGoalDesc(member?.goal_title || "");
+    setRewardText("");
+    setRewardImage("");
     (async () => {
       if (!member?.goal_id) {
         setLoading(false);
@@ -54,6 +59,8 @@ export default function ParticipantModal({
         try {
           const g = await apiClient.entities.Goal.get(member.goal_id);
           if (g?.title) setGoalDesc(g.title);
+          setRewardText(g?.reward_text || "");
+          setRewardImage(g?.reward_image || "");
         } catch {
           /* ignore */
         }
@@ -203,6 +210,22 @@ export default function ParticipantModal({
                     <p className="text-sm font-bold">{goalDesc || "—"}</p>
                   )}
                 </div>
+
+                {(rewardText || rewardImage) && (
+                  <div className="card-gold-rim p-3 space-y-2">
+                    <p className="text-[10px] text-primary font-bold flex items-center gap-1">
+                      <Gift className="w-3.5 h-3.5" /> תמריץ / תגמול
+                    </p>
+                    {rewardText ? <p className="text-sm">{rewardText}</p> : null}
+                    {rewardImage ? (
+                      <img
+                        src={mediaUrl(rewardImage)}
+                        alt="תמריץ"
+                        className="w-full max-h-44 object-cover rounded-xl ring-1 ring-primary/30"
+                      />
+                    ) : null}
+                  </div>
+                )}
 
                 <p className="text-xs font-bold text-muted-foreground">רשימת משימות</p>
                 {tasks.length === 0 && <p className="text-center text-xs text-muted-foreground py-4">אין משימות</p>}
