@@ -80,6 +80,45 @@ DEV_SEED_ACCOUNTS = (
     },
 )
 
+# Temporary PROD QA accounts for client UAT — safe to delete later.
+PROD_QA_SEED_ACCOUNTS = (
+    {
+        "email": "qa.admin@sblliga.com",
+        "password": "SblQa2026!Admin",
+        "full_name": "אדמין בדיקות",
+        "role": "admin",
+    },
+    {
+        "email": "qa.manager@sblliga.com",
+        "password": "SblQa2026!Manager",
+        "full_name": "מנהלת בדיקות",
+        "role": "manager",
+        "target": "מכירות",
+        "gender": "female",
+        "focus_target": "שיפור מכירות",
+        "focus_month": "2026-07",
+        "group": "qa",
+    },
+    {
+        "email": "qa.user@sblliga.com",
+        "password": "SblQa2026!User",
+        "full_name": "משתמשת בדיקות",
+        "role": "user",
+        "target": "שיווק",
+        "gender": "female",
+        "group": "qa",
+    },
+    {
+        "email": "qa.user2@sblliga.com",
+        "password": "SblQa2026!User",
+        "full_name": "משתמש בדיקות ב׳",
+        "role": "user",
+        "target": "מכירות",
+        "gender": "male",
+        "group": "qa",
+    },
+)
+
 _DEMO_TASKS = (
     "שיחת מכירה יומית",
     "מעקב לידים",
@@ -225,38 +264,23 @@ def _upsert_member(
             member.next_month_selected_at = datetime.now(timezone.utc)
 
 
-def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
-    """
-    Idempotent CREATE + repair for DEV demo users, groups, goals and tasks.
-
-    Works even when the DB already has real registered users — missing seed
-    accounts are inserted; existing ones get passwords/roles reset.
-    """
+def _upsert_seed_accounts(
+    session: Session,
+    settings: Settings,
+    accounts: tuple[dict, ...],
+    *,
+    groups: dict[str, Group],
+    manager_links: tuple[tuple[str, str], ...],
+    log_label: str,
+) -> int:
+    """Idempotent CREATE + repair for demo/QA users, groups, goals and tasks."""
     changed = 0
-
-    alpha = _ensure_demo_group(
-        session,
-        name="Dev Alpha Team",
-        description="קבוצת דמו לבדיקות DEV",
-        target="מכירות",
-        gender="female",
-        manager_name="מנהלת דמו א׳",
-    )
-    beta = _ensure_demo_group(
-        session,
-        name="Dev Beta Team",
-        description="קבוצת דמו שנייה לבדיקות DEV",
-        target="גיוס",
-        gender="male",
-        manager_name="מנהל דמו ב׳",
-    )
-    groups = {"alpha": alpha, "beta": beta}
 
     if session.scalar(select(func.count()).select_from(SystemSetting)) == 0:
         session.add(SystemSetting())
         changed += 1
 
-    for account in DEV_SEED_ACCOUNTS:
+    for account in accounts:
         email = account["email"]
         password = _dev_account_password(account, settings)
         user = session.scalar(select(User).where(User.email == email))
@@ -306,7 +330,6 @@ def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
             user.group_id = group.id
 
         if account["role"] == "admin":
-            # Admin is not a league participant
             for row in session.scalars(select(Member).where(Member.user_id == user.id)).all():
                 session.delete(row)
                 changed += 1
@@ -334,21 +357,19 @@ def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
             changed += 1
 
         if created:
-            logger.info("DEV seed created account %s (%s)", email, account["role"])
+            logger.info("%s seed created account %s (%s)", log_label, email, account["role"])
 
-    # Wire managers onto groups
-    for email, group in (
-        ("manager.dev@sbl.local", alpha),
-        ("manager2.dev@sbl.local", beta),
-    ):
+    for email, group_key in manager_links:
+        group = groups.get(group_key)
+        if group is None:
+            continue
         manager = session.scalar(select(User).where(User.email == email))
         if manager:
             group.manager_id = manager.id
             group.manager_name = manager.full_name
             manager.group_id = group.id
 
-    # Refresh participant counts
-    for group in (alpha, beta):
+    for group in groups.values():
         count = (
             session.scalar(
                 select(func.count())
@@ -360,8 +381,66 @@ def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
         group.participant_count = count
 
     session.commit()
-    logger.info("DEV seed accounts upserted/repaired (delta_marker=%s)", changed)
+    logger.info("%s seed accounts upserted/repaired (delta_marker=%s)", log_label, changed)
     return changed
+
+
+def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
+    """
+    Idempotent CREATE + repair for DEV demo users, groups, goals and tasks.
+
+    Works even when the DB already has real registered users — missing seed
+    accounts are inserted; existing ones get passwords/roles reset.
+    """
+    alpha = _ensure_demo_group(
+        session,
+        name="Dev Alpha Team",
+        description="קבוצת דמו לבדיקות DEV",
+        target="מכירות",
+        gender="female",
+        manager_name="מנהלת דמו א׳",
+    )
+    beta = _ensure_demo_group(
+        session,
+        name="Dev Beta Team",
+        description="קבוצת דמו שנייה לבדיקות DEV",
+        target="גיוס",
+        gender="male",
+        manager_name="מנהל דמו ב׳",
+    )
+    groups = {"alpha": alpha, "beta": beta}
+    return _upsert_seed_accounts(
+        session,
+        settings,
+        DEV_SEED_ACCOUNTS,
+        groups=groups,
+        manager_links=(
+            ("manager.dev@sbl.local", "alpha"),
+            ("manager2.dev@sbl.local", "beta"),
+        ),
+        log_label="DEV",
+    )
+
+
+def ensure_prod_qa_accounts(session: Session, settings: Settings) -> int:
+    """Temporary PROD UAT accounts with demo group, goals and tasks."""
+    qa = _ensure_demo_group(
+        session,
+        name="קבוצת בדיקות QA",
+        description="קבוצת דמו זמנית לבדיקות לקוח ב-PROD",
+        target="מכירות",
+        gender="female",
+        manager_name="מנהלת בדיקות",
+    )
+    groups = {"qa": qa}
+    return _upsert_seed_accounts(
+        session,
+        settings,
+        PROD_QA_SEED_ACCOUNTS,
+        groups=groups,
+        manager_links=(("qa.manager@sblliga.com", "qa"),),
+        log_label="PROD-QA",
+    )
 
 
 def ensure_production_admin(session: Session, settings: Settings) -> bool:
@@ -511,10 +590,12 @@ def ensure_manager_operational_alerts(session: Session) -> int:
 def run_database_bootstrap(session: Session, settings: Settings) -> dict[str, bool | int]:
     if is_production(settings):
         created_admin = ensure_production_admin(session, settings)
+        qa_repaired = ensure_prod_qa_accounts(session, settings)
         alerts = ensure_manager_operational_alerts(session)
         return {
             "seeded": False,
             "admin_created": created_admin,
+            "prod_qa_repaired": qa_repaired,
             "dev_repaired": 0,
             "alerts_created": alerts,
         }
