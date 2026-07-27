@@ -76,41 +76,58 @@ export default function Profile() {
   const persistAvatar = async (url) => {
     setAvatarUrl(url);
     let m = member;
-    if (!m) {
-      m = await api.entities.Member.create({
-        name: name || user?.full_name || user?.email || "משתמש",
-        user_id: user.id,
-        role: user.role || "user",
-        avatar_url: url,
-        status: "בעקבות",
-      });
-    } else {
-      m = await api.entities.Member.update(m.id, { avatar_url: url });
+    try {
+      if (!m) {
+        m = await api.entities.Member.create({
+          name: name || user?.full_name || user?.email || "משתמש",
+          user_id: user.id,
+          role: user.role || "user",
+          avatar_url: url,
+          status: "בעקבות",
+        });
+      } else {
+        m = await api.entities.Member.update(m.id, { avatar_url: url });
+      }
+      setMember(m);
+    } catch (err) {
+      console.error("[Profile] member avatar sync failed", err);
+      // Upload already saved user avatar via purpose=avatar — keep going
     }
-    setMember(m);
-    const me = await apiClient.auth.updateMe({ avatar_url: url });
-    // Keep URL from server responses (avoid stale Member filter races)
-    setAvatarUrl(pickAvatarUrl(url, me?.avatar_url, m?.avatar_url));
-    await checkUserAuth?.();
+    try {
+      const me = await apiClient.auth.updateMe({ avatar_url: url });
+      setAvatarUrl(pickAvatarUrl(url, me?.avatar_url, m?.avatar_url));
+    } catch (err) {
+      console.error("[Profile] updateMe avatar failed", err);
+      setAvatarUrl(url);
+    }
+    try {
+      await checkUserAuth?.();
+    } catch {
+      /* ignore */
+    }
   };
 
   const handleUploadAvatar = async (file) => {
     if (!file) return;
-    const localPreview = URL.createObjectURL(file);
     setUploading(true);
-    setAvatarUrl(localPreview);
     let savedUrl = "";
     try {
       const prepared = await prepareImageForUpload(file);
-      const res = await apiClient.integrations.Core.UploadFile({ file: prepared, purpose: "avatar" });
+      const res = await apiClient.integrations.Core.UploadFile({
+        file: prepared,
+        purpose: "avatar",
+      });
       const url = res.file_url || res.url;
       if (!url) throw new Error("השרת לא החזיר קישור לתמונה");
       savedUrl = url;
+      // Set durable URL only (avoid blob preview revoke "jump")
+      setAvatarUrl(url);
       await persistAvatar(url);
-      toast({ title: "התמונה עודכנה", description: "תמונת הפרופיל נשמרה ומוצגת לכל המשתמשים." });
+      toast({ title: "התמונה עודכנה", description: "תמונת הפרופיל נשמרה." });
     } catch (err) {
       console.error("[Profile] avatar upload failed", err);
-      setAvatarUrl(pickAvatarUrl(savedUrl, member?.avatar_url, user?.avatar_url));
+      if (savedUrl) setAvatarUrl(savedUrl);
+      else setAvatarUrl(pickAvatarUrl(member?.avatar_url, user?.avatar_url));
       toast({
         title: "העלאה נכשלה",
         description: formatUploadError(err),
@@ -118,7 +135,6 @@ export default function Profile() {
       });
     } finally {
       setUploading(false);
-      window.setTimeout(() => URL.revokeObjectURL(localPreview), 1500);
     }
   };
 
@@ -202,7 +218,7 @@ export default function Profile() {
               )}
               <input
                 type="file"
-                accept="image/*,.heic,.heif,.png,.jpg,.jpeg,.webp,.gif"
+                accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
@@ -213,9 +229,7 @@ export default function Profile() {
               />
             </label>
           </div>
-          <p className="text-xs text-muted-foreground text-center">
-            לחצ/י על המצלמה כדי להעלות תמונת פרופיל (גם תמונות גדולות מהטלפון — נדחסות אוטומטית)
-          </p>
+          <p className="text-xs text-muted-foreground text-center">לחצ/י על המצלמה כדי להעלות תמונת פרופיל</p>
         </div>
 
         <div className="card-lux p-5 space-y-4">

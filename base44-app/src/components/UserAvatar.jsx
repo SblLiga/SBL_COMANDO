@@ -23,14 +23,21 @@ export default function UserAvatar({
 
   return (
     <img
-      key={src || name}
+      key={resolved}
       src={resolved}
       alt={alt || name}
       className={`${className} rounded-full object-cover ring-1 ring-border shrink-0 bg-muted`}
       onError={() => {
-        // Stale error from revoked blob preview — ignore if src already moved on
         if (srcRef.current !== src) return;
         if (typeof src === "string" && src.startsWith("blob:")) return;
+        // One soft retry for durable media (cache/race right after upload)
+        if (typeof resolved === "string" && resolved.includes("/api/media/") && !broken) {
+          const img = new Image();
+          img.onload = () => setBroken(false);
+          img.onerror = () => setBroken(true);
+          img.src = `${resolved}${resolved.includes("?") ? "&" : "?"}t=${Date.now()}`;
+          return;
+        }
         setBroken(true);
       }}
     />
