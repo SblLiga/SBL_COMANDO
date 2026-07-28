@@ -55,7 +55,21 @@ def verify_webhook_auth(
 
 
 def resolve_user(db: Session, payload: dict) -> User | None:
-    user_id = payload.get("userId") or payload.get("user_id") or payload.get("id")
+    # Meshulam/Grow puts our user id in custom1 (see payment_url_for_user / buildGrowPaymentUrl).
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    custom_fields = (
+        data.get("customFields") if isinstance(data.get("customFields"), dict) else {}
+    )
+    user_id = (
+        payload.get("userId")
+        or payload.get("user_id")
+        or payload.get("custom1")
+        or data.get("custom1")
+        or custom_fields.get("custom1")
+        or data.get("userId")
+        or data.get("user_id")
+        or payload.get("id")
+    )
     if user_id is not None and str(user_id).strip():
         try:
             uid = int(str(user_id).strip())
@@ -70,6 +84,9 @@ def resolve_user(db: Session, payload: dict) -> User | None:
         payload.get("email")
         or payload.get("customer_email")
         or payload.get("userEmail")
+        or data.get("email")
+        or data.get("customer_email")
+        or data.get("userEmail")
         or ""
     )
     email = str(email).strip().lower()
