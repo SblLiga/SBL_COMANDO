@@ -8,7 +8,7 @@ import UserAvatar from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowRight, Camera, Loader2, Lock, User as UserIcon, Mail } from "lucide-react";
+import { ArrowRight, Camera, Loader2, Lock, User as UserIcon, Mail, CreditCard } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUpload";
 
@@ -274,6 +274,20 @@ export default function Profile() {
             {changingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : "שנה סיסמה"}
           </Button>
         </form>
+
+        <div className="card-lux p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-primary" />
+            <h2 className="font-bold text-sm">ניהול מנוי</h2>
+          </div>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            מעוניין לבטל את המנוי החודשי? ניתן לשלוח הודעה למזכירות בוואצאפ למספר{" "}
+            <span className="font-bold text-foreground" dir="ltr">
+              0504170707
+            </span>{" "}
+            בכל עת עם השם המלא ופרטים מזהים
+          </p>
+        </div>
       </main>
     </div>
   );
