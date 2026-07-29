@@ -21,6 +21,17 @@ def activate_subscription(user: User, *, period_days: int = SUBSCRIPTION_PERIOD_
     user.subscription_end_date = _utcnow() + timedelta(days=period_days)
 
 
+def renew_subscription(user: User, *, period_days: int = SUBSCRIPTION_PERIOD_DAYS) -> None:
+    """Renew: add period from current end date when still valid, otherwise from now."""
+    now = _utcnow()
+    end = user.subscription_end_date
+    if end is not None and end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    base = end if end is not None and end > now else now
+    user.subscription_status = "active"
+    user.subscription_end_date = base + timedelta(days=period_days)
+
+
 def deactivate_subscription(user: User) -> None:
     user.subscription_status = "inactive"
     user.subscription_end_date = None

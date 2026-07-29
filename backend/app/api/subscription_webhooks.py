@@ -13,10 +13,75 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models import User
-from app.subscription import activate_subscription, deactivate_subscription
+from app.subscription import (
+    activate_subscription,
+    deactivate_subscription,
+    renew_subscription,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
+
+# Official Grow / Meshulam webhook egress IPs
+ALLOWED_GROW_IPS = frozenset(
+    {
+        "3.123.194.128",
+        "3.124.62.248",
+        "18.198.97.252",
+        "3.75.43.49",
+        "18.156.94.176",
+        "18.158.107.17",
+        "3.121.149.170",
+        "3.76.166.104",
+        "3.69.160.29",
+        "3.78.79.166",
+        "3.71.221.153",
+        "3.78.131.18",
+        "3.67.110.47",
+        "18.192.112.151",
+        "52.59.95.229",
+        "18.158.145.146",
+        "3.75.128.58",
+        "3.78.28.179",
+        "3.122.21.187",
+        "3.66.126.119",
+        "35.158.249.118",
+        "52.29.70.254",
+        "52.59.159.234",
+        "3.76.183.119",
+        "18.157.106.67",
+        "18.197.238.68",
+        "3.66.129.154",
+        "3.77.123.153",
+        "3.70.40.72",
+    }
+)
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = (request.headers.get("x-forwarded-for") or "").strip()
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return ""
+
+
+def _require_grow_ip(request: Request) -> None:
+    ip = _client_ip(request)
+    if ip in ALLOWED_GROW_IPS:
+        return
+    logger.warning("Rejected payment webhook from non-Grow IP: %s", ip)
+    raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _is_grow_recurring(payload: dict) -> bool:
+    """True when Grow marks a standing-order run (paymentSource + directDebitId)."""
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    source = str(payload.get("paymentSource") or data.get("paymentSource") or "").strip()
+    debit_id = payload.get("directDebitId") or data.get("directDebitId")
+    # Grow API value (Hebrew): standing-order run
+    return source == "ריצת הוראת קבע" and bool(debit_id)
 
 
 def webhook_secret() -> str:
@@ -160,7 +225,8 @@ async def payment_success(
     x_webhook_secret: str | None = Header(default=None, alias="X-Webhook-Secret"),
     authorization: str | None = Header(default=None),
 ):
-    """Make/Grow → site: payment approved → ACTIVE for 30 days."""
+    """Grow → site: payment approved → ACTIVE for 30 days (first charge or recurring)."""
+    _require_grow_ip(request)
     payload = await _read_verified_payload(
         request,
         x_make_signature=x_make_signature,
@@ -171,6 +237,33 @@ async def payment_success(
     user = resolve_user(db, payload)
     if user is None:
         return {"received": True, "updated": False, "reason": "user_not_found"}
-    result = apply_subscription_status(db, user, "active")
+
+    recurring = _is_grow_recurring(payload)
+    if recurring:
+        renew_subscription(user)
+        db.commit()
+        db.refresh(user)
+        logger.info(
+            "Grow recurring renew user_id=%s email=%s end=%s directDebitId=%s",
+            user.id,
+            user.email,
+            user.subscription_end_date,
+            payload.get("directDebitId"),
+        )
+        result = {
+            "received": True,
+            "updated": True,
+            "userId": user.id,
+            "email": user.email,
+            "subscription_status": user.subscription_status,
+            "subscription_end_date": (
+                user.subscription_end_date.isoformat() if user.subscription_end_date else None
+            ),
+            "renewal": True,
+        }
+    else:
+        result = apply_subscription_status(db, user, "active")
+        result["renewal"] = False
+
     result["redirect"] = "/thank-you"
     return result
