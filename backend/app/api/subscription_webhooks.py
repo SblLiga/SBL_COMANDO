@@ -81,9 +81,11 @@ def resolve_user(db: Session, payload: dict) -> User | None:
                 return user
 
     email = (
-        payload.get("email")
+        payload.get("payerEmail")
+        or payload.get("email")
         or payload.get("customer_email")
         or payload.get("userEmail")
+        or data.get("payerEmail")
         or data.get("email")
         or data.get("customer_email")
         or data.get("userEmail")
@@ -172,26 +174,3 @@ async def payment_success(
     result = apply_subscription_status(db, user, "active")
     result["redirect"] = "/thank-you"
     return result
-
-
-@router.post("/subscription-cancelled")
-async def subscription_cancelled(
-    request: Request,
-    db: Session = Depends(get_db),
-    x_make_signature: str | None = Header(default=None, alias="X-Make-Signature"),
-    x_grow_signature: str | None = Header(default=None, alias="X-Grow-Signature"),
-    x_webhook_secret: str | None = Header(default=None, alias="X-Webhook-Secret"),
-    authorization: str | None = Header(default=None),
-):
-    """Make/Grow → site: standing order cancelled → INACTIVE."""
-    payload = await _read_verified_payload(
-        request,
-        x_make_signature=x_make_signature,
-        x_grow_signature=x_grow_signature,
-        x_webhook_secret=x_webhook_secret,
-        authorization=authorization,
-    )
-    user = resolve_user(db, payload)
-    if user is None:
-        return {"received": True, "updated": False, "reason": "user_not_found"}
-    return apply_subscription_status(db, user, "inactive")
