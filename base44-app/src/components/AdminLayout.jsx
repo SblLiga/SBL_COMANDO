@@ -17,11 +17,11 @@ export default function AdminLayout() {
   return (
     <div className="min-h-screen bg-background pb-24">
       <div className="relative">
-        {/* Spec: admin chrome stays identity-light; profile/logout via icon only */}
+        {/* Spec: admin chrome stays identity-light; profile + logout live on /profile */}
         <Header hideUser />
         <Link
           to="/profile"
-          aria-label="פרופיל והתנתקות"
+          aria-label="פרופיל"
           className="absolute left-3 top-3 z-50 w-9 h-9 rounded-full bg-muted/80 border border-border flex items-center justify-center hover:bg-accent"
         >
           <UserRound className="w-4 h-4 text-primary" />

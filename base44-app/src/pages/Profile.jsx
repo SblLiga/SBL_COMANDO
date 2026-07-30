@@ -8,7 +8,7 @@ import UserAvatar from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowRight, Camera, Loader2, Lock, User as UserIcon, Mail, CreditCard } from "lucide-react";
+import { ArrowRight, Camera, Loader2, Lock, LogOut, User as UserIcon, Mail, CreditCard } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUpload";
 
@@ -26,7 +26,7 @@ function pickAvatarUrl(...candidates) {
 }
 
 export default function Profile() {
-  const { user, checkUserAuth } = useAuth();
+  const { user, checkUserAuth, logout } = useAuth();
   const { toast } = useToast();
   const [member, setMember] = useState(null);
   const [name, setName] = useState("");
@@ -288,6 +288,16 @@ export default function Profile() {
             בכל עת עם השם המלא ופרטים מזהים
           </p>
         </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full h-11 border-destructive/40 text-destructive hover:bg-destructive/10"
+          onClick={() => logout(true)}
+        >
+          <LogOut className="w-4 h-4 ml-2" />
+          התנתקות
+        </Button>
       </main>
     </div>
   );
