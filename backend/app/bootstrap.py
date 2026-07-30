@@ -5,7 +5,20 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.models import Goal, Group, Meeting, Member, Notification, SystemSetting, Task, User
+from app.models import (
+    EmailVerificationToken,
+    Goal,
+    Group,
+    MediaAsset,
+    Meeting,
+    Member,
+    Notification,
+    PasswordResetToken,
+    Report,
+    SystemSetting,
+    Task,
+    User,
+)
 from app.security import hash_password
 from app.subscription import activate_subscription
 
@@ -423,50 +436,143 @@ def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
 
 
 def ensure_prod_qa_accounts(session: Session, settings: Settings) -> int:
-    """Temporary PROD UAT accounts with demo group, goals and tasks."""
-    qa = _ensure_demo_group(
-        session,
-        name="קבוצת בדיקות QA",
-        description="קבוצת דמו זמנית לבדיקות לקוח ב-PROD",
-        target="מכירות",
-        gender="female",
-        manager_name="מנהלת בדיקות",
-    )
-    groups = {"qa": qa}
-    return _upsert_seed_accounts(
-        session,
-        settings,
-        PROD_QA_SEED_ACCOUNTS,
-        groups=groups,
-        manager_links=(("qa.manager@sblliga.com", "qa"),),
-        log_label="PROD-QA",
-    )
+    """Deprecated: temporary UAT seeding must not run on client handoff PROD."""
+    logger.info("PROD QA seed skipped (disabled for client handoff)")
+    return 0
+
+
+def cleanup_prod_qa_accounts(session: Session) -> int:
+    """Remove temporary QA seed users + demo group before client handoff."""
+    qa_emails = {account["email"].lower() for account in PROD_QA_SEED_ACCOUNTS}
+    qa_group_name = "קבוצת בדיקות QA"
+    removed = 0
+
+    users = session.scalars(select(User).where(User.email.in_(qa_emails))).all()
+    user_ids = [user.id for user in users]
+
+    if user_ids:
+        goals = session.scalars(select(Goal).where(Goal.owner_user_id.in_(user_ids))).all()
+        goal_ids = [goal.id for goal in goals]
+        if goal_ids:
+            for task in session.scalars(select(Task).where(Task.goal_id.in_(goal_ids))).all():
+                session.delete(task)
+                removed += 1
+        for goal in goals:
+            session.delete(goal)
+            removed += 1
+
+        for member in session.scalars(select(Member).where(Member.user_id.in_(user_ids))).all():
+            session.delete(member)
+            removed += 1
+
+        for token in session.scalars(
+            select(EmailVerificationToken).where(EmailVerificationToken.user_id.in_(user_ids))
+        ).all():
+            session.delete(token)
+            removed += 1
+
+        for token in session.scalars(
+            select(PasswordResetToken).where(PasswordResetToken.user_id.in_(user_ids))
+        ).all():
+            session.delete(token)
+            removed += 1
+
+        for note in session.scalars(
+            select(Notification).where(
+                (Notification.target_user_id.in_(user_ids))
+                | (Notification.source_user_id.in_(user_ids))
+            )
+        ).all():
+            session.delete(note)
+            removed += 1
+
+        for asset in session.scalars(
+            select(MediaAsset).where(MediaAsset.owner_user_id.in_(user_ids))
+        ).all():
+            session.delete(asset)
+            removed += 1
+
+        for group in session.scalars(select(Group).where(Group.manager_id.in_(user_ids))).all():
+            group.manager_id = None
+
+        for user in users:
+            user.group_id = None
+            session.delete(user)
+            removed += 1
+
+    qa_group = session.scalar(select(Group).where(Group.name == qa_group_name))
+    if qa_group is not None:
+        for member in session.scalars(
+            select(Member).where(
+                (Member.group_id == qa_group.id) | (Member.group_name == qa_group_name)
+            )
+        ).all():
+            session.delete(member)
+            removed += 1
+        for meeting in session.scalars(
+            select(Meeting).where(
+                (Meeting.group_id == qa_group.id) | (Meeting.group_name == qa_group_name)
+            )
+        ).all():
+            session.delete(meeting)
+            removed += 1
+        for report in session.scalars(select(Report).where(Report.group_id == qa_group.id)).all():
+            session.delete(report)
+            removed += 1
+        session.delete(qa_group)
+        removed += 1
+
+    if removed:
+        session.commit()
+        logger.info("PROD QA cleanup removed %s rows", removed)
+    else:
+        logger.info("PROD QA cleanup: nothing to remove")
+    return removed
 
 
 def ensure_production_admin(session: Session, settings: Settings) -> bool:
-    if _admin_exists(session):
-        logger.info("Production bootstrap skipped: admin user already exists")
-        return False
-
+    """Create or repair the permanent client admin from Secrets Manager."""
     if not settings.admin_email or not settings.admin_password:
         logger.warning(
             "Production bootstrap skipped: ADMIN_EMAIL and ADMIN_PASSWORD must be set"
         )
         return False
 
-    admin = User(
-        email=settings.admin_email.strip().lower(),
-        password_hash=hash_password(settings.admin_password),
-        full_name="System Administrator",
-        role="admin",
-        subscription_status="active",
-        onboarding_completed=True,
-        email_verified=True,
-        is_active=True,
-    )
-    session.add(admin)
+    email = settings.admin_email.strip().lower()
+    password = settings.admin_password
+    admin = session.scalar(select(User).where(User.email == email))
+    created = False
+
+    if admin is None:
+        admin = User(
+            email=email,
+            password_hash=hash_password(password),
+            full_name="אדמין שולי בן לולו",
+            role="admin",
+            subscription_status="active",
+            onboarding_completed=True,
+            email_verified=True,
+            is_active=True,
+        )
+        session.add(admin)
+        created = True
+    else:
+        admin.password_hash = hash_password(password)
+        admin.role = "admin"
+        admin.subscription_status = "active"
+        admin.onboarding_completed = True
+        admin.email_verified = True
+        admin.is_active = True
+        if not admin.full_name:
+            admin.full_name = "אדמין שולי בן לולו"
+
+    activate_subscription(admin)
     session.commit()
-    logger.info("Production bootstrap created default admin user for %s", admin.email)
+    logger.info(
+        "Production admin %s for %s",
+        "created" if created else "repaired",
+        email,
+    )
     return True
 
 
@@ -590,12 +696,12 @@ def ensure_manager_operational_alerts(session: Session) -> int:
 def run_database_bootstrap(session: Session, settings: Settings) -> dict[str, bool | int]:
     if is_production(settings):
         created_admin = ensure_production_admin(session, settings)
-        qa_repaired = ensure_prod_qa_accounts(session, settings)
+        qa_cleaned = cleanup_prod_qa_accounts(session)
         alerts = ensure_manager_operational_alerts(session)
         return {
             "seeded": False,
             "admin_created": created_admin,
-            "prod_qa_repaired": qa_repaired,
+            "prod_qa_cleaned": qa_cleaned,
             "dev_repaired": 0,
             "alerts_created": alerts,
         }

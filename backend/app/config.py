@@ -82,10 +82,9 @@ class Settings(BaseSettings):
     make_trigger_url: str = Field(default="", alias="MAKE_TRIGGER_URL")
     make_payment_url: str = Field(default="", alias="MAKE_PAYMENT_URL")
 
-    # Temporary until SES production access works: show OTP on-screen + accept 000000.
-    # Set ALLOW_OTP_SCREEN_FALLBACK=false in secrets once real email delivery is reliable.
+    # OTP on-screen / 000000 bypass — keep OFF in PROD now that SES production access is live.
     allow_otp_screen_fallback: bool = Field(
-        default=True,
+        default=False,
         alias="ALLOW_OTP_SCREEN_FALLBACK",
     )
 
