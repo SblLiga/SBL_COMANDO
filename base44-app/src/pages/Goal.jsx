@@ -10,15 +10,12 @@ import { ensureMyGoal } from "@/lib/myGoal";
 import { mediaUrl } from "@/lib/mediaUrl";
 import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUpload";
 
-const PRIORITIES = ["דחוף", "בינוני", "נמוך"];
-
 export default function Goal() {
   const { toast } = useToast();
   const [goal, setGoal] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [newTaskPriority, setNewTaskPriority] = useState("בינוני");
   const [showAdd, setShowAdd] = useState(false);
   const [xpPerTask, setXpPerTask] = useState(100);
   const [editingTaskId, setEditingTaskId] = useState(null);
@@ -121,7 +118,7 @@ export default function Goal() {
       title: newTaskTitle,
       order_index: tasks.length,
       is_completed: false,
-      priority: newTaskPriority,
+      priority: "בינוני",
       xp_value: xpPerTask,
     });
     setTasks([...tasks, t]);
@@ -162,12 +159,6 @@ export default function Goal() {
     const reordered = arr.map((t, i) => ({ ...t, order_index: i }));
     setTasks(reordered);
     await apiClient.entities.Task.bulkUpdate(reordered.map((t) => ({ id: t.id, order_index: t.order_index })));
-  };
-
-  const cyclePriority = async (task) => {
-    const next = PRIORITIES[(PRIORITIES.indexOf(task.priority) + 1) % PRIORITIES.length];
-    const updated = await apiClient.entities.Task.update(task.id, { priority: next });
-    setTasks(tasks.map((t) => (t.id === task.id ? updated : t)));
   };
 
   const startEditTask = (task) => {
@@ -328,22 +319,9 @@ export default function Goal() {
               onKeyDown={(e) => e.key === "Enter" && addTask()}
               autoFocus
             />
-            <div className="flex gap-2 items-center">
-              <select
-                value={newTaskPriority}
-                onChange={(e) => setNewTaskPriority(e.target.value)}
-                className="bg-input rounded-lg px-2 py-2 text-sm flex-1"
-              >
-                {PRIORITIES.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <button onClick={addTask} className="gold-bg text-black rounded-lg px-5 py-2 text-sm font-bold">
-                הוסף
-              </button>
-            </div>
+            <button onClick={addTask} className="w-full gold-bg text-black rounded-lg px-5 py-2 text-sm font-bold">
+              הוסף
+            </button>
           </div>
         )}
 
@@ -409,14 +387,12 @@ export default function Goal() {
                           <button type="button" onClick={() => deleteTask(task)} className="p-1.5 text-muted-foreground hover:text-destructive">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => cyclePriority(task)}
-                            title="לחץ לשינוי עדיפות"
-                            className={`text-[10px] px-2.5 py-1 rounded-full font-semibold cursor-pointer transition-all hover:scale-110 hover:ring-2 hover:ring-primary/40 active:scale-95 ${priorityColor}`}
+                          <span
+                            className={`text-[10px] px-2.5 py-1 rounded-full font-semibold ${priorityColor}`}
+                            title="דחיפות נקבעת ע״י מנהל/ת"
                           >
-                            {task.priority}
-                          </button>
+                            {task.priority || "בינוני"}
+                          </span>
                         </div>
                       )}
                     </Draggable>

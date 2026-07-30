@@ -33,7 +33,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # Fields users may never self-assign via PATCH /me
-_FORBIDDEN_ME_FIELDS = {"role", "subscription_status", "email", "password_hash", "email_verified"}
+_FORBIDDEN_ME_FIELDS = {
+    "role",
+    "subscription_status",
+    "subscription_end_date",
+    "email",
+    "password_hash",
+    "email_verified",
+}
 
 
 def _issue_otp(db: Session, user: User) -> str:

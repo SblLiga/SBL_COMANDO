@@ -25,7 +25,14 @@ INT_FIELDS = {
 }
 
 # Non-admins must not escalate privileges via entity CRUD
-_PRIVILEGED_USER_FIELDS = {"role", "subscription_status", "email_verified", "password_hash", "email"}
+_PRIVILEGED_USER_FIELDS = {
+    "role",
+    "subscription_status",
+    "subscription_end_date",
+    "email_verified",
+    "password_hash",
+    "email",
+}
 
 
 def _strip_privileged(entity_name: str, data: dict[str, Any], actor: User) -> dict[str, Any]:
@@ -33,11 +40,13 @@ def _strip_privileged(entity_name: str, data: dict[str, Any], actor: User) -> di
         return data
     if entity_name == "User":
         return {k: v for k, v in data.items() if k not in _PRIVILEGED_USER_FIELDS}
-    if entity_name == "Member" and "role" in data:
-        cleaned = dict(data)
+    cleaned = dict(data)
+    if entity_name == "Member":
         cleaned.pop("role", None)
-        return cleaned
-    return data
+    # Regular users may not set task urgency; managers/admins still can.
+    if entity_name == "Task" and actor.role not in {"admin", "manager"}:
+        cleaned.pop("priority", None)
+    return cleaned
 
 
 def _coerce_payload(data: dict[str, Any]) -> dict[str, Any]:
