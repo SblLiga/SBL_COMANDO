@@ -93,7 +93,7 @@ DEV_SEED_ACCOUNTS = (
     },
 )
 
-# Temporary PROD QA accounts for client UAT — safe to delete later.
+# Temporary PROD QA accounts for client UAT — cleaned on handoff.
 PROD_QA_SEED_ACCOUNTS = (
     {
         "email": "qa.admin@sblliga.com",
@@ -130,6 +130,19 @@ PROD_QA_SEED_ACCOUNTS = (
         "gender": "male",
         "group": "qa",
     },
+)
+
+# Internal test registrations to wipe before client handoff (never recreate).
+PROD_HANDOFF_JUNK_EMAILS = frozenset(
+    {
+        "esthergenauer@gmail.com",
+        "gen@gmail.com",
+        "esti@gmail.com",
+        "hg0527157320@gmail.com",
+        "dmalky100@gmail.com",
+        "e@gmail.com",
+        "genauer1997@gmail.com",
+    }
 )
 
 _DEMO_TASKS = (
@@ -442,12 +455,15 @@ def ensure_prod_qa_accounts(session: Session, settings: Settings) -> int:
 
 
 def cleanup_prod_qa_accounts(session: Session) -> int:
-    """Remove temporary QA seed users + demo group before client handoff."""
+    """Remove temporary QA/test users + demo group before client handoff."""
+    from sqlalchemy import or_
+
     qa_emails = {account["email"].lower() for account in PROD_QA_SEED_ACCOUNTS}
+    junk_emails = set(PROD_HANDOFF_JUNK_EMAILS) | qa_emails
     qa_group_name = "קבוצת בדיקות QA"
     removed = 0
 
-    users = session.scalars(select(User).where(User.email.in_(qa_emails))).all()
+    users = session.scalars(select(User).where(User.email.in_(junk_emails))).all()
     user_ids = [user.id for user in users]
 
     if user_ids:
@@ -479,8 +495,10 @@ def cleanup_prod_qa_accounts(session: Session) -> int:
 
         for note in session.scalars(
             select(Notification).where(
-                (Notification.target_user_id.in_(user_ids))
-                | (Notification.source_user_id.in_(user_ids))
+                or_(
+                    Notification.target_user_id.in_(user_ids),
+                    Notification.source_user_id.in_(user_ids),
+                )
             )
         ).all():
             session.delete(note)
@@ -504,14 +522,14 @@ def cleanup_prod_qa_accounts(session: Session) -> int:
     if qa_group is not None:
         for member in session.scalars(
             select(Member).where(
-                (Member.group_id == qa_group.id) | (Member.group_name == qa_group_name)
+                or_(Member.group_id == qa_group.id, Member.group_name == qa_group_name)
             )
         ).all():
             session.delete(member)
             removed += 1
         for meeting in session.scalars(
             select(Meeting).where(
-                (Meeting.group_id == qa_group.id) | (Meeting.group_name == qa_group_name)
+                or_(Meeting.group_id == qa_group.id, Meeting.group_name == qa_group_name)
             )
         ).all():
             session.delete(meeting)
@@ -524,9 +542,9 @@ def cleanup_prod_qa_accounts(session: Session) -> int:
 
     if removed:
         session.commit()
-        logger.info("PROD QA cleanup removed %s rows", removed)
+        logger.info("PROD handoff cleanup removed %s rows", removed)
     else:
-        logger.info("PROD QA cleanup: nothing to remove")
+        logger.info("PROD handoff cleanup: nothing to remove")
     return removed
 
 
