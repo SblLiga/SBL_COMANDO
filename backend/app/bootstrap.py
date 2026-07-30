@@ -145,6 +145,46 @@ PROD_HANDOFF_JUNK_EMAILS = frozenset(
     }
 )
 
+# Client handoff: real admins + paid customers (temp passwords; users change in Profile).
+CLIENT_HANDOFF_ACCOUNTS = (
+    {
+        "email": "sbl.school1@gmail.com",
+        "password": "SblMichal2026!",
+        "full_name": "מיכל מזכירה",
+        "role": "admin",
+    },
+    {
+        "email": "shuliyazdi2000@gmail.com",
+        "password": "SblShuli2026!",
+        "full_name": "שולי בן לולו",
+        "role": "admin",
+    },
+    {
+        "email": "e6666668@gmail.com",
+        "password": "SblEsti2026!",
+        "full_name": "אסתי לוי",
+        "role": "user",
+    },
+    {
+        "email": "nech0329@gmail.com",
+        "password": "SblNehama2026!",
+        "full_name": "נחמה גלינסקי",
+        "role": "user",
+    },
+    {
+        "email": "yaaras9@gmail.com",
+        "password": "SblItay2026!",
+        "full_name": "איתי פתיה",
+        "role": "user",
+    },
+    {
+        "email": "tehilakadosh10@gmail.com",
+        "password": "SblTehila2026!",
+        "full_name": "תהילה קדוש",
+        "role": "user",
+    },
+)
+
 _DEMO_TASKS = (
     "שיחת מכירה יומית",
     "מעקב לידים",
@@ -594,6 +634,50 @@ def ensure_production_admin(session: Session, settings: Settings) -> bool:
     return True
 
 
+def ensure_client_handoff_accounts(session: Session) -> int:
+    """Upsert real client admins + paid customers with temporary handoff passwords."""
+    changed = 0
+    for account in CLIENT_HANDOFF_ACCOUNTS:
+        email = account["email"].strip().lower()
+        user = session.scalar(select(User).where(User.email == email))
+        is_admin = account["role"] == "admin"
+        if user is None:
+            user = User(
+                email=email,
+                password_hash=hash_password(account["password"]),
+                full_name=account["full_name"],
+                role=account["role"],
+                subscription_status="active",
+                onboarding_completed=is_admin,
+                email_verified=True,
+                is_active=True,
+            )
+            session.add(user)
+            session.flush()
+            activate_subscription(user)
+            changed += 1
+            logger.info(
+                "Handoff account created %s (%s)",
+                email,
+                account["role"],
+            )
+        else:
+            user.password_hash = hash_password(account["password"])
+            user.full_name = account["full_name"] or user.full_name
+            user.role = account["role"]
+            user.subscription_status = "active"
+            user.email_verified = True
+            user.is_active = True
+            if is_admin:
+                user.onboarding_completed = True
+            activate_subscription(user)
+            changed += 1
+            logger.info("Handoff account repaired %s (%s)", email, account["role"])
+        session.commit()
+    logger.info("Client handoff accounts upserted (delta_marker=%s)", changed)
+    return changed
+
+
 def seed_development_data(session: Session, settings: Settings) -> bool:
     """
     Legacy empty-DB path. Prefer ensure_dev_seed_accounts which also creates
@@ -714,11 +798,13 @@ def ensure_manager_operational_alerts(session: Session) -> int:
 def run_database_bootstrap(session: Session, settings: Settings) -> dict[str, bool | int]:
     if is_production(settings):
         created_admin = ensure_production_admin(session, settings)
+        handoff = ensure_client_handoff_accounts(session)
         qa_cleaned = cleanup_prod_qa_accounts(session)
         alerts = ensure_manager_operational_alerts(session)
         return {
             "seeded": False,
             "admin_created": created_admin,
+            "client_handoff": handoff,
             "prod_qa_cleaned": qa_cleaned,
             "dev_repaired": 0,
             "alerts_created": alerts,
@@ -730,11 +816,13 @@ def run_database_bootstrap(session: Session, settings: Settings) -> dict[str, bo
         # Upsert demos even when other users already exist
         repaired = ensure_dev_seed_accounts(session, settings)
         seeded = repaired > 0
+    handoff = ensure_client_handoff_accounts(session)
     alerts = ensure_manager_operational_alerts(session)
 
     return {
         "seeded": seeded,
         "admin_created": False,
+        "client_handoff": handoff,
         "dev_repaired": repaired,
         "alerts_created": alerts,
     }
