@@ -45,12 +45,17 @@ export default function Login() {
       window.location.href = resolveReturnPath(searchParams, u);
     } catch (err) {
       const msg = (err.message || "").toLowerCase();
-      if (msg.includes("verif") || err.status === 403) {
+      const needsEmailVerify =
+        msg.includes("not verified") ||
+        msg.includes("email not verified") ||
+        (err.status === 403 && msg.includes("verif"));
+      if (needsEmailVerify) {
         window.location.href = `/register?verify=true&email=${encodeURIComponent(email)}`;
         return;
       }
       setError(err.message || "אימייל או סיסמה לא תקינים");
-      setShowVerifyButton(true);
+      // Only offer verify jump when the error is clearly about email verification
+      setShowVerifyButton(needsEmailVerify || msg.includes("verif"));
     } finally {
       setLoading(false);
     }

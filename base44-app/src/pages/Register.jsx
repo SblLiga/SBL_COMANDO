@@ -63,7 +63,7 @@ export default function Register() {
       toast({
         title: res?.email_sent ? "הקוד נשלח למייל" : "קוד אימות מוכן",
         description: res?.dev_otp
-          ? `הזיני את הקוד שמוצג למטה (או 000000)`
+          ? `הזיני את הקוד שמוצג למטה`
           : `שלחנו קוד אימות ל-${email}`,
       });
     } catch (err) {
@@ -114,30 +114,34 @@ export default function Register() {
     return (
       <AuthLayout
         title="אימות דוא״ל"
-        subtitle={screenOtp ? "הקוד מוצג למטה — המייל עדיין לא זמין" : `הזיני קוד אימות עבור ${email}`}
+        subtitle={
+          screenOtp
+            ? "הקוד מוצג למטה (מצב פיתוח / גיבוי)"
+            : `הזיני את הקוד שנשלח ל-${email}`
+        }
         footerLink={{ prompt: "כבר יש לך חשבון מאומת?", to: "/login", label: "חזרה להתחברות" }}
       >
-        {/* Always-on temporary verification banner (SES not ready for everyone) */}
-        <div className="mb-5 rounded-2xl border-2 border-primary bg-primary/15 p-5 text-center shadow-[0_0_24px_rgba(212,175,55,0.25)]">
-          <p className="text-sm font-bold text-primary mb-2">קוד האימות שלך</p>
-          {screenOtp ? (
+        {/* Only when backend returns screen fallback (DEV / mail failure with fallback on) */}
+        {screenOtp ? (
+          <div className="mb-5 rounded-2xl border-2 border-primary bg-primary/15 p-5 text-center shadow-[0_0_24px_rgba(212,175,55,0.25)]">
+            <p className="text-sm font-bold text-primary mb-2">קוד האימות שלך</p>
             <p
               className="font-mono text-4xl sm:text-5xl font-black tracking-[0.4em] text-foreground leading-none py-2"
               dir="ltr"
             >
               {screenOtp}
             </p>
-          ) : (
-            <p className="font-mono text-3xl font-black tracking-[0.35em] text-foreground py-2" dir="ltr">
-              000000
+            <p className="text-xs text-muted-foreground mt-2">
+              הקוד כבר הוזן בשדות — לחצי «אימות».
             </p>
-          )}
-          <p className="text-xs text-muted-foreground mt-2">
-            {screenOtp
-              ? "הקוד כבר הוזן בשדות — לחצי «אימות». אפשר גם 000000."
-              : "מייל לא הגיע? הזיני 000000 או לחצי «שלח שוב»."}
-          </p>
-        </div>
+          </div>
+        ) : (
+          <div className="mb-5 rounded-2xl border border-border bg-muted/40 p-4 text-center">
+            <p className="text-sm text-muted-foreground">
+              שלחנו קוד למייל{emailSent ? "" : " (אם החשבון קיים וממתין לאימות)"}. בדקי גם בספאם.
+            </p>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
@@ -180,7 +184,7 @@ export default function Register() {
         <p className="text-center text-sm text-muted-foreground mt-4">
           לא רואה קוד?{" "}
           <button type="button" onClick={handleResend} className="text-primary font-medium hover:underline">
-            הצג / שלח שוב
+            שלח שוב
           </button>
         </p>
         <div className="mt-6 pt-4 border-t border-border text-center">
