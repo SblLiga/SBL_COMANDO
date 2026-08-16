@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { useAuth } from "@/lib/AuthContext";
-import { needsOnboardingWizard, postAuthPath } from "@/lib/postAuth";
+import { postAuthPath } from "@/lib/postAuth";
 import { canAssignToGroup } from "@/lib/calendarRules";
 import { CheckCircle2, Loader2, PartyPopper } from "lucide-react";
 
@@ -101,11 +101,7 @@ export default function ThankYou() {
   const activeUser = latestUser || user;
   const isActive = settledRef.current || (Boolean(user || latestUser) && status === "active");
   const waitEnrollment = Boolean(activeUser) && isActive && !canAssignToGroup(activeUser);
-  const continuePath = isActive
-    ? needsOnboardingWizard(activeUser, member)
-      ? "/onboarding"
-      : postAuthPath(activeUser, member)
-    : "/payment";
+  const continuePath = isActive ? postAuthPath(activeUser, member) : "/payment";
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6">

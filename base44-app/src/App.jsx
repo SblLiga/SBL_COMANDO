@@ -31,7 +31,9 @@ import Onboarding from "@/pages/Onboarding";
 import Profile from "@/pages/Profile";
 import Payment from "@/pages/Payment";
 import ThankYou from "@/pages/ThankYou";
+import PendingPage from "@/pages/PendingPage";
 import SubscriptionGate from "@/components/SubscriptionGate";
+import PendingEnrollmentGate from "@/components/PendingEnrollmentGate";
 import AdminDashboard from "@/pages/AdminDashboard";
 import AdminWheel from "@/pages/AdminWheel";
 import AdminManagers from "@/pages/AdminManagers";
@@ -71,48 +73,53 @@ const AuthenticatedApp = () => {
       <Route path="/thank-you" element={<ThankYou />} />
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route path="/payment" element={<Payment />} />
-        <Route path="/onboarding" element={<Onboarding />} />
-        <Route path="/profile" element={<Profile />} />
 
-        {/* USER interface */}
-        <Route element={<RoleRoute allow="user" />}>
-          <Route element={<SubscriptionGate />}>
-            <Route element={<Layout />}>
-              <Route path="/" element={<Home />} />
-              <Route path="/goal" element={<GoalPage />} />
-              <Route path="/league" element={<League zoneBadge="אזור משתמש" readOnly />} />
-              <Route path="/hq" element={<HQ />} />
-              <Route path="/messages" element={<Messages />} />
+        {/* Wait-window hard lock: only /pending (and incomplete /onboarding) allowed */}
+        <Route element={<PendingEnrollmentGate />}>
+          <Route path="/pending" element={<PendingPage />} />
+          <Route path="/onboarding" element={<Onboarding />} />
+          <Route path="/profile" element={<Profile />} />
+
+          {/* USER interface */}
+          <Route element={<RoleRoute allow="user" />}>
+            <Route element={<SubscriptionGate />}>
+              <Route element={<Layout />}>
+                <Route path="/" element={<Home />} />
+                <Route path="/goal" element={<GoalPage />} />
+                <Route path="/league" element={<League zoneBadge="אזור משתמש" readOnly />} />
+                <Route path="/hq" element={<HQ />} />
+                <Route path="/messages" element={<Messages />} />
+              </Route>
             </Route>
           </Route>
-        </Route>
 
-        {/* MANAGER interface */}
-        <Route element={<RoleRoute allow="manager" />}>
-          <Route element={<ManagerLayout />}>
-            <Route path="/manager" element={<ManagerDashboard />} />
-            <Route path="/manager/group" element={<ManagerGroup />} />
-            <Route path="/manager/managers" element={<ManagerManagers />} />
-            <Route path="/manager/league" element={<League zoneBadge="אזור מנהל" readOnly={false} />} />
-            <Route path="/manager/meeting" element={<ManagerMeeting />} />
-            <Route path="/manager/alerts" element={<ManagerAlerts />} />
+          {/* MANAGER interface */}
+          <Route element={<RoleRoute allow="manager" />}>
+            <Route element={<ManagerLayout />}>
+              <Route path="/manager" element={<ManagerDashboard />} />
+              <Route path="/manager/group" element={<ManagerGroup />} />
+              <Route path="/manager/managers" element={<ManagerManagers />} />
+              <Route path="/manager/league" element={<League zoneBadge="אזור מנהל" readOnly={false} />} />
+              <Route path="/manager/meeting" element={<ManagerMeeting />} />
+              <Route path="/manager/alerts" element={<ManagerAlerts />} />
+            </Route>
           </Route>
-        </Route>
 
-        {/* ADMIN interface */}
-        <Route element={<RoleRoute allow="admin" />}>
-          <Route element={<AdminLayout />}>
-            <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="/admin/wheel" element={<AdminWheel />} />
-            <Route path="/admin/league" element={<League zoneBadge="אזור אדמין" readOnly={false} />} />
-            <Route path="/admin/managers" element={<AdminManagers />} />
-            <Route path="/admin/reports" element={<AdminReports />} />
-            <Route path="/admin/alerts" element={<AdminAlerts />} />
+          {/* ADMIN interface */}
+          <Route element={<RoleRoute allow="admin" />}>
+            <Route element={<AdminLayout />}>
+              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin/wheel" element={<AdminWheel />} />
+              <Route path="/admin/league" element={<League zoneBadge="אזור אדמין" readOnly={false} />} />
+              <Route path="/admin/managers" element={<AdminManagers />} />
+              <Route path="/admin/reports" element={<AdminReports />} />
+              <Route path="/admin/alerts" element={<AdminAlerts />} />
+            </Route>
           </Route>
-        </Route>
 
-        {/* Authenticated but unknown path → role home */}
-        <Route path="*" element={<RoleHomeRedirect />} />
+          {/* Authenticated but unknown path → role home */}
+          <Route path="*" element={<RoleHomeRedirect />} />
+        </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>

@@ -1,10 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { Outlet, Navigate } from "react-router-dom";
+import { Outlet, Navigate, useLocation } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { needsOnboardingWizard, needsPayment } from "@/lib/postAuth";
-import { canAssignToGroup, isSubscriptionStartPending } from "@/lib/calendarRules";
+import { isSubscriptionStartPending } from "@/lib/calendarRules";
 
+/**
+ * Hard gate for deferred wait-window payers (start date in the future):
+ * block Home/Goal/HQ/… and send them to /pending.
+ * Incomplete onboarding may still finish on /onboarding.
+ */
 export default function SubscriptionGate() {
+  const location = useLocation();
   const [user, setUser] = useState(null);
   const [member, setMember] = useState(null);
   const [hasWheel, setHasWheel] = useState(true);
@@ -19,7 +25,6 @@ export default function SubscriptionGate() {
           const rows = await apiClient.entities.Member.filter({ user_id: u.id });
           const m = rows[0] || null;
           setMember(m);
-          // Defense: completed flag but no tasks/goal → force wizard again
           if (u.onboarding_completed) {
             let goal = null;
             if (m?.goal_id) {
@@ -65,14 +70,19 @@ export default function SubscriptionGate() {
     return <Navigate to="/payment" replace />;
   }
 
+  // Hard lock: no dashboard access until subscription_start_date.
+  if (!isStaff && isSubscriptionStartPending(user)) {
+    if (!user.onboarding_completed && location.pathname.startsWith("/onboarding")) {
+      return <Outlet />;
+    }
+    return <Navigate to="/pending" replace />;
+  }
+
   if (!isStaff && needsOnboardingWizard(user, member)) {
     return <Navigate to="/onboarding" replace />;
   }
 
-  // Wait-window enrollment may finish without tasks yet — do not bounce to onboarding.
-  const pendingEnrollment =
-    isSubscriptionStartPending(user) || (!canAssignToGroup(user) && !member?.group_id);
-  if (!isStaff && user.onboarding_completed && !hasWheel && !pendingEnrollment) {
+  if (!isStaff && user.onboarding_completed && !hasWheel) {
     return <Navigate to="/onboarding" replace />;
   }
 

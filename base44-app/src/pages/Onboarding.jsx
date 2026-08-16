@@ -10,7 +10,7 @@ import StepManager from "@/components/onboarding/StepManager";
 import StepTasks from "@/components/onboarding/StepTasks";
 import StepReward from "@/components/onboarding/StepReward";
 import { toast } from "@/components/ui/use-toast";
-import { currentCycleMonth, needsMonthlyOnboarding, canAssignToGroup } from "@/lib/calendarRules";
+import { currentCycleMonth, needsMonthlyOnboarding, canAssignToGroup, isSubscriptionStartPending } from "@/lib/calendarRules";
 import { needsOnboardingWizard, needsPayment } from "@/lib/postAuth";
 import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUpload";
 
@@ -35,6 +35,7 @@ export default function Onboarding() {
 
   const assignmentOpen = canAssignToGroup(user);
   const waitEnrollment = Boolean(user) && !assignmentOpen;
+  const hardPendingLock = isSubscriptionStartPending(user);
 
   useEffect(() => {
     (async () => {
@@ -43,6 +44,11 @@ export default function Onboarding() {
         setUser(u);
         if (needsPayment(u)) {
           navigate("/payment", { replace: true });
+          return;
+        }
+        // Completed + deferred start → hard lock page (no dashboard).
+        if (u?.role === "user" && u?.onboarding_completed && isSubscriptionStartPending(u)) {
+          navigate("/pending", { replace: true });
           return;
         }
         const monthly = needsMonthlyOnboarding(u);
@@ -198,13 +204,15 @@ export default function Onboarding() {
 
         toast({
           title: isNewCycle ? "סבב חדש נשמר" : "הרשמה הושלמה",
-          description: waitEnrollment
-            ? "המנוי פעיל. השיבוץ לקבוצות יפתח ב-25 בחודש — נתראה אז!"
-            : isNewCycle
-              ? "הגלגל החדש מוכן. השיבוץ לקבוצה ייפתח לפי לוח השנה."
-              : "נשבץ אותך לקבוצה מה־25 לחודש.",
+          description: hardPendingLock
+            ? "חשבונך מוקפא עד פתיחת השיבוצים ב-25 בחודש."
+            : waitEnrollment
+              ? "המנוי פעיל. השיבוץ לקבוצות יפתח ב-25 בחודש — נתראה אז!"
+              : isNewCycle
+                ? "הגלגל החדש מוכן. השיבוץ לקבוצה ייפתח לפי לוח השנה."
+                : "נשבץ אותך לקבוצה מה־25 לחודש.",
         });
-        navigate("/", { replace: true });
+        navigate(hardPendingLock ? "/pending" : "/", { replace: true });
         return;
       }
 
