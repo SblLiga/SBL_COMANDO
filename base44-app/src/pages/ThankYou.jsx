@@ -1,56 +1,89 @@
-import React, { useEffect, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 import { needsOnboardingWizard, postAuthPath } from "@/lib/postAuth";
 import { CheckCircle2, Loader2, PartyPopper } from "lucide-react";
 
 export default function ThankYou() {
-  const { user, checkUserAuth, isLoadingAuth } = useAuth();
+  const { user, isLoadingAuth } = useAuth();
   const navigate = useNavigate();
   const [member, setMember] = useState(null);
-  const [polling, setPolling] = useState(true);
+  const [polling, setPolling] = useState(() => apiClient.auth.isAuthenticated());
   const [status, setStatus] = useState(user?.subscription_status || "inactive");
   const [latestUser, setLatestUser] = useState(user);
+  // Once payment success is confirmed, freeze UI — never re-enter loading/polling.
+  const settledRef = useRef(user?.subscription_status === "active");
 
   useEffect(() => {
+    if (settledRef.current) {
+      setPolling(false);
+      setStatus("active");
+      return;
+    }
+
+    // Guests / Grow: no session → no /auth/me polling (avoids repeated 401s).
+    if (!apiClient.auth.isAuthenticated()) {
+      setPolling(false);
+      return;
+    }
+
+    // Already active in session — settle without calling checkUserAuth
+    // (that sets isLoadingAuth=true and remounts App → spinner loop).
+    if (user?.subscription_status === "active") {
+      settledRef.current = true;
+      setStatus("active");
+      setPolling(false);
+      return;
+    }
+
     let cancelled = false;
     let tries = 0;
+    let timerId = null;
 
     const tick = async () => {
+      if (cancelled || settledRef.current) return;
       try {
         const u = await apiClient.auth.me();
-        if (cancelled) return;
-        setLatestUser(u);
+        if (cancelled || settledRef.current) return;
         const next = u?.subscription_status || "inactive";
-        setStatus(next);
+        setLatestUser((prev) => (prev?.id === u?.id && prev?.subscription_status === next ? prev : u));
+        setStatus((prev) => (prev === next ? prev : next));
         if (u?.role === "user") {
           const rows = await apiClient.entities.Member.filter({ user_id: u.id });
-          if (!cancelled) setMember(rows[0] || null);
+          if (!cancelled && !settledRef.current) {
+            const row = rows[0] || null;
+            setMember((prev) => (prev?.id === row?.id ? prev : row));
+          }
         }
         if (next === "active") {
-          await checkUserAuth?.();
-          if (!cancelled) setPolling(false);
+          // Do NOT call checkUserAuth — it flips App-level isLoadingAuth and remounts routes.
+          settledRef.current = true;
+          setPolling(false);
           return;
         }
       } catch {
         /* keep polling briefly */
       }
+      if (cancelled || settledRef.current) return;
       tries += 1;
       if (tries >= 12) {
-        if (!cancelled) setPolling(false);
+        setPolling(false);
         return;
       }
-      if (!cancelled) setTimeout(tick, 2500);
+      timerId = setTimeout(tick, 2500);
     };
 
     tick();
     return () => {
       cancelled = true;
+      if (timerId != null) clearTimeout(timerId);
     };
-  }, [checkUserAuth]);
+    // Mount-once only. Never depend on AuthContext function identities.
+  }, []);
 
-  if (isLoadingAuth && !user) {
+  // After success is settled, never show the auth loading spinner again.
+  if (isLoadingAuth && !user && !settledRef.current) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -58,10 +91,8 @@ export default function ThankYou() {
     );
   }
 
-  if (!user) return <Navigate to="/login" replace />;
-
   const activeUser = latestUser || user;
-  const isActive = status === "active";
+  const isActive = settledRef.current || (Boolean(user || latestUser) && status === "active");
   const continuePath = isActive
     ? needsOnboardingWizard(activeUser, member)
       ? "/onboarding"
@@ -109,10 +140,10 @@ export default function ThankYou() {
             </div>
             <button
               type="button"
-              onClick={() => navigate("/payment", { replace: true })}
+              onClick={() => navigate(user ? "/payment" : "/login", { replace: true })}
               className="w-full border border-border rounded-xl py-3 text-sm font-medium"
             >
-              חזרה לסליקה
+              {user ? "חזרה לסליקה" : "התחברות"}
             </button>
           </>
         )}
