@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.subscription_webhooks import (
     apply_subscription_status,
+    is_grow_failed_recurring,
     resolve_user,
     verify_webhook_auth,
     webhook_secret,
@@ -27,6 +28,7 @@ def grow_health():
         "ok": True,
         "webhook_path": "/api/integrations/grow/webhook",
         "payment_success_path": "/api/webhooks/payment-success",
+        "payment_failed_path": "/api/webhooks/payment-failed",
         "subscription_cancelled_path": "/api/webhooks/subscription-cancelled",
         "secret_configured": bool(webhook_secret()),
         "payment_url": settings.grow_payment_url or settings.make_payment_url or None,
@@ -45,8 +47,9 @@ async def grow_webhook(
 ):
     """
     Legacy / Grow-compatible webhook.
-    Prefer dedicated Make routes:
+    Prefer dedicated routes:
       POST /api/webhooks/payment-success
+      POST /api/webhooks/payment-failed
       POST /api/webhooks/subscription-cancelled
     """
     import json
@@ -65,17 +68,17 @@ async def grow_webhook(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON") from None
 
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload must be a JSON object")
+
     event = (payload.get("event") or payload.get("type") or "").lower()
     status_raw = (payload.get("subscription_status") or payload.get("status") or "").lower()
 
     logger.info(
         "GROW webhook received event=%s keys=%s",
         event,
-        list(payload.keys()) if isinstance(payload, dict) else type(payload),
+        list(payload.keys()),
     )
-
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail="Payload must be a JSON object")
 
     user = resolve_user(db, payload)
     if user is None:
@@ -95,15 +98,18 @@ async def grow_webhook(
     }
 
     new_status = None
-    if event in activate_events or status_raw in {"active", "paid", "success"}:
-        new_status = "active"
-    elif event in deactivate_events or status_raw in {
+    if is_grow_failed_recurring(payload) or event in deactivate_events or status_raw in {
         "inactive",
         "cancelled",
         "expired",
         "failed",
     }:
         new_status = "inactive"
+    elif event in activate_events or status_raw in {"active", "paid", "success", "1", "שולם"}:
+        new_status = "active"
+    elif payload.get("payerEmail") or payload.get("transactionCode") or payload.get("directDebitId"):
+        # Official Grow success payloads often omit event/type.
+        new_status = "active"
 
     if new_status is None:
         return {"received": True, "updated": False, "reason": "unmapped_event", "event": event}
@@ -111,4 +117,7 @@ async def grow_webhook(
     result = apply_subscription_status(db, user, new_status)
     if new_status == "active":
         result["redirect"] = "/thank-you"
+    else:
+        result["error_message"] = payload.get("error_message")
+        result["regular_payment_id"] = payload.get("regular_payment_id")
     return result

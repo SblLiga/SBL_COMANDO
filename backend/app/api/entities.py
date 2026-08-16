@@ -29,6 +29,7 @@ _PRIVILEGED_USER_FIELDS = {
     "role",
     "subscription_status",
     "subscription_end_date",
+    "subscription_start_date",
     "email_verified",
     "password_hash",
     "email",

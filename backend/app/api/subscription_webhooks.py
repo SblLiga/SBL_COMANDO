@@ -84,6 +84,13 @@ def _is_grow_recurring(payload: dict) -> bool:
     return source == "ריצת הוראת קבע" and bool(debit_id)
 
 
+def is_grow_failed_recurring(payload: dict) -> bool:
+    """Official Grow 'Failed Recurring Payment' payload (error_message + regular_payment_id)."""
+    if payload.get("error_message") is None:
+        return False
+    return bool(payload.get("regular_payment_id") or payload.get("email") or payload.get("payer_email"))
+
+
 def webhook_secret() -> str:
     settings = get_settings()
     return (settings.make_webhook_secret or settings.grow_webhook_secret or "").strip()
@@ -147,10 +154,12 @@ def resolve_user(db: Session, payload: dict) -> User | None:
 
     email = (
         payload.get("payerEmail")
+        or payload.get("payer_email")
         or payload.get("email")
         or payload.get("customer_email")
         or payload.get("userEmail")
         or data.get("payerEmail")
+        or data.get("payer_email")
         or data.get("email")
         or data.get("customer_email")
         or data.get("userEmail")
@@ -166,7 +175,7 @@ def apply_subscription_status(db: Session, user: User, new_status: str) -> dict:
     if new_status == "active":
         activate_subscription(user)
     else:
-        deactivate_subscription(user)
+        deactivate_subscription(user, db)
     db.commit()
     db.refresh(user)
     logger.info(
@@ -266,4 +275,32 @@ async def payment_success(
         result["renewal"] = False
 
     result["redirect"] = "/thank-you"
+    return result
+
+
+@router.post("/payment-failed")
+@router.post("/subscription-cancelled")
+async def payment_failed(
+    request: Request,
+    db: Session = Depends(get_db),
+    x_make_signature: str | None = Header(default=None, alias="X-Make-Signature"),
+    x_grow_signature: str | None = Header(default=None, alias="X-Grow-Signature"),
+    x_webhook_secret: str | None = Header(default=None, alias="X-Webhook-Secret"),
+    authorization: str | None = Header(default=None),
+):
+    """Grow failed recurring / cancel → inactive + immediate group unassign."""
+    _require_grow_ip(request)
+    payload = await _read_verified_payload(
+        request,
+        x_make_signature=x_make_signature,
+        x_grow_signature=x_grow_signature,
+        x_webhook_secret=x_webhook_secret,
+        authorization=authorization,
+    )
+    user = resolve_user(db, payload)
+    if user is None:
+        return {"received": True, "updated": False, "reason": "user_not_found"}
+    result = apply_subscription_status(db, user, "inactive")
+    result["error_message"] = payload.get("error_message")
+    result["regular_payment_id"] = payload.get("regular_payment_id")
     return result

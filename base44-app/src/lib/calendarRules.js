@@ -1,8 +1,10 @@
 /**
  * Calendar rules from product specs (Israel calendar day).
  * - Managers: next-month target selection from day 23 until chosen.
- * - Users: registration from day 23; group assignment / monthly onboarding from day 25.
+ * - Users: registration from day 23; monthly onboarding from day 25.
  * - From day 25 the active cycle is the *next* calendar month (new wheel + group).
+ * - Group assignment window: ONLY days 25–26, and only if subscription is active
+ *   and not waiting on subscription_start_date (deferred payment in window 27→24).
  */
 
 export function calendarDay(date = new Date()) {
@@ -17,8 +19,37 @@ export function isUserRegistrationWindow(date = new Date()) {
   return calendarDay(date) >= 23;
 }
 
+/** Monthly onboarding / cycle helpers still use day ≥ 25. */
 export function isUserAssignmentWindow(date = new Date()) {
   return calendarDay(date) >= 25;
+}
+
+/** Strict group-assignment open days: 25 and 26 only. */
+export function isGroupAssignmentOpenDay(date = new Date()) {
+  const d = calendarDay(date);
+  return d === 25 || d === 26;
+}
+
+/**
+ * Paid user whose period has not started yet (paid in wait window 27→24).
+ * Legacy users without subscription_start_date are never pending.
+ */
+export function isSubscriptionStartPending(user, date = new Date()) {
+  if (!user || user.subscription_status !== "active") return false;
+  if (!user.subscription_start_date) return false;
+  const start = new Date(user.subscription_start_date);
+  if (Number.isNaN(start.getTime())) return false;
+  return start.getTime() > date.getTime();
+}
+
+/**
+ * May actively pick a manager / join a group:
+ * active subscription + not deferred-pending + calendar day is 25 or 26.
+ */
+export function canAssignToGroup(user, date = new Date()) {
+  if (!user || user.subscription_status !== "active") return false;
+  if (isSubscriptionStartPending(user, date)) return false;
+  return isGroupAssignmentOpenDay(date);
 }
 
 export function isMonthlyOnboardingResetDay(date = new Date()) {
@@ -58,10 +89,10 @@ export function needsMonthlyOnboarding(user, date = new Date()) {
   return !doneThisWindow;
 }
 
-/** Waiting-list users must complete manager/group assignment once day ≥ 25. */
+/** Waiting-list users must pick a group only while assignment is actually open (25–26). */
 export function needsWaitingListAssignment(user, member, date = new Date()) {
   if (!user || user.role !== "user") return false;
-  if (!isUserAssignmentWindow(date)) return false;
+  if (!canAssignToGroup(user, date)) return false;
   if (!user.onboarding_completed) return false;
   return !member?.group_id;
 }

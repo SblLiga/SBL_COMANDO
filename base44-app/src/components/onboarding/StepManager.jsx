@@ -1,10 +1,19 @@
 import React, { useEffect } from "react";
 import { Users, Check, MessageCircle, Clock } from "lucide-react";
-import { isUserAssignmentWindow } from "@/lib/calendarRules";
+import { canAssignToGroup } from "@/lib/calendarRules";
 import UserAvatar from "@/components/UserAvatar";
 
-export default function StepManager({ managers, groups, gender, target, manager, setManager }) {
-  const assignmentOpen = isUserAssignmentWindow();
+export default function StepManager({
+  user,
+  managers,
+  groups,
+  gender,
+  target,
+  manager,
+  setManager,
+}) {
+  // Payment (active) ≠ assignment. Assignment only on days 25–26 when not deferred-pending.
+  const assignmentOpen = canAssignToGroup(user);
 
   useEffect(() => {
     if (!assignmentOpen) {
@@ -17,15 +26,18 @@ export default function StepManager({ managers, groups, gender, target, manager,
       <>
         <div className="text-center">
           <Clock className="w-8 h-8 text-primary mx-auto mb-2" />
-          <h2 className="font-display text-xl font-bold">שיבוץ לקבוצה מה־25</h2>
+          <h2 className="font-display text-xl font-bold">ממתינים לחלון השיבוץ</h2>
           <p className="text-xs text-muted-foreground mt-1">
-            ניתן להירשם עכשיו, אך השיבוץ לקבוצה ומנהל/ת מתחיל רק ב־25 לחודש.
+            השיבוץ יתחדש ב-25 בחודש
           </p>
         </div>
         <div className="card-lux p-4 space-y-2">
-          <p className="text-sm font-bold">נרשמת לרשימת המתנה</p>
+          <p className="text-sm font-bold">השיבוץ לקבוצה סגור כרגע</p>
           <p className="text-xs text-muted-foreground">
-            יעד: {target} · {gender === "female" ? "נשים" : "גברים"}. מה־25 לחודש תוכלי לבחור מנהל/ת ולהצטרף לקבוצה.
+            יעד: {target} · {gender === "female" ? "נשים" : "גברים"}.
+            {user?.subscription_status === "active"
+              ? " המנוי פעיל — אין צורך לשלם שוב. השיבוץ ייפתח ב־25–26 לחודש."
+              : " לאחר תשלום מוצלח תוכלו להשתבץ בחלון השיבוץ (25–26)."}
           </p>
           <div className="flex items-center gap-2 text-xs text-primary">
             <Check className="w-4 h-4" /> רשימת המתנה נבחרה

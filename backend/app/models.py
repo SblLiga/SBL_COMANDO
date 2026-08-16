@@ -41,6 +41,10 @@ class User(Base):
     subscription_end_date: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Future start = paid during wait window; period/assignment open from this instant.
+    subscription_start_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     gender: Mapped[str | None] = mapped_column(String(16), nullable=True)
     target: Mapped[str | None] = mapped_column(String(255), nullable=True)
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False)

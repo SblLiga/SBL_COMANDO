@@ -37,6 +37,7 @@ _FORBIDDEN_ME_FIELDS = {
     "role",
     "subscription_status",
     "subscription_end_date",
+    "subscription_start_date",
     "email",
     "password_hash",
     "email_verified",

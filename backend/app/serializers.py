@@ -44,6 +44,7 @@ def user_to_dict(user: User) -> dict[str, Any]:
             "role": user.role,
             "subscription_status": user.subscription_status,
             "subscription_end_date": _dt(user.subscription_end_date),
+            "subscription_start_date": _dt(user.subscription_start_date),
             "gender": user.gender,
             "target": user.target,
             "onboarding_completed": user.onboarding_completed,

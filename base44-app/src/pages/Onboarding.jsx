@@ -299,6 +299,7 @@ export default function Onboarding() {
           {step === 1 && <StepGender gender={gender} setGender={(g) => { setGender(g); setManager(null); }} />}
           {step === 2 && (
             <StepManager
+              user={user}
               managers={managers}
               groups={groups}
               gender={gender}
