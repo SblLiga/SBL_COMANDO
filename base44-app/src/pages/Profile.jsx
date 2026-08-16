@@ -281,7 +281,7 @@ export default function Profile() {
             <h2 className="font-bold text-sm">ניהול מנוי</h2>
           </div>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            מעוניין לבטל את המנוי החודשי? ניתן לשלוח הודעה למזכירות בוואצאפ למספר{" "}
+            מעוניינים לבטל את המנוי החודשי? ניתן לשלוח הודעה למזכירות בוואצאפ למספר{" "}
             <span className="font-bold text-foreground" dir="ltr">
               0504170707
             </span>{" "}
