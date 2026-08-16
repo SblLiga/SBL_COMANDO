@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { Outlet, Navigate, useLocation } from "react-router-dom";
 import apiClient from "@/api/apiClient";
-import { isSubscriptionStartPending } from "@/lib/calendarRules";
+import { isSubscriptionActive, isSubscriptionStartPending } from "@/lib/calendarRules";
 
 /**
  * Hermetic lock for deferred payers: only /onboarding (if incomplete) and /pending are allowed.
+ * Never lock users who are already active in the current period.
  */
 export default function PendingEnrollmentGate() {
   const location = useLocation();
@@ -36,7 +37,10 @@ export default function PendingEnrollmentGate() {
   if (!user) return <Navigate to="/login" replace />;
 
   const isPendingAccessLocked =
-    user.role === "user" && isSubscriptionStartPending(user) && !user.group_id;
+    user.role === "user" &&
+    !isSubscriptionActive(user) &&
+    isSubscriptionStartPending(user) &&
+    !user.group_id;
 
   if (isPendingAccessLocked) {
     const onOnboarding = location.pathname.startsWith("/onboarding");

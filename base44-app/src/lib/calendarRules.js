@@ -43,6 +43,20 @@ export function isSubscriptionStartPending(user, date = new Date()) {
 }
 
 /**
+ * True when the user may use the app now: status active and start date has arrived
+ * (or legacy users with no start date). Deferred wait-window payers are not active yet.
+ */
+export function isSubscriptionActive(user, date = new Date()) {
+  if (!user || String(user.subscription_status || "").toLowerCase() !== "active") {
+    return false;
+  }
+  if (!user.subscription_start_date) return true;
+  const start = new Date(user.subscription_start_date);
+  if (Number.isNaN(start.getTime())) return true;
+  return start.getTime() <= date.getTime();
+}
+
+/**
  * May actively pick a manager / join a group:
  * active subscription + not deferred-pending + calendar day is 25 or 26.
  */
