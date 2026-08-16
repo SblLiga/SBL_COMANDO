@@ -1,5 +1,9 @@
 import { isSubscriptionStartPending } from "@/lib/calendarRules";
 
+export function isAdmin(user) {
+  return user?.role === "admin";
+}
+
 /** Today is inside subscription_start_date .. subscription_end_date (inclusive). */
 export function isUserActiveToday(user, date = new Date()) {
   if (!user?.subscription_start_date || !user?.subscription_end_date) return false;
@@ -9,11 +13,23 @@ export function isUserActiveToday(user, date = new Date()) {
   return start <= date && end >= date;
 }
 
-/** Lock to /pending: not active today, start still pending, and no group. */
+/**
+ * Skip onboarding / target re-selection.
+ * Admin: always. Manager/user: only via group_id or active date range — never by role alone.
+ */
+export function shouldBypassOnboarding(user, date = new Date()) {
+  if (isAdmin(user)) return true;
+  return Boolean(user?.group_id) || isUserActiveToday(user, date);
+}
+
+/**
+ * Lock to /pending for manager + user when start is still in the future and they are not active today.
+ * Admin is never locked. Regular users who already have a group stay unlocked.
+ */
 export function isPendingAccessLocked(user, date = new Date()) {
-  return (
-    !isUserActiveToday(user, date) &&
-    isSubscriptionStartPending(user, date) &&
-    !user?.group_id
-  );
+  if (!user || isAdmin(user)) return false;
+  if (isUserActiveToday(user, date)) return false;
+  if (!isSubscriptionStartPending(user, date)) return false;
+  if (user.role === "user" && user.group_id) return false;
+  return user.role === "user" || user.role === "manager";
 }

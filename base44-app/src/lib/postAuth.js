@@ -1,15 +1,18 @@
-import { needsMonthlyOnboarding, needsWaitingListAssignment, isSubscriptionStartPending } from "@/lib/calendarRules";
+import { needsMonthlyOnboarding, needsWaitingListAssignment } from "@/lib/calendarRules";
 import { homePathForRole } from "@/components/RoleRoute";
+import { isAdmin, isPendingAccessLocked, shouldBypassOnboarding } from "@/lib/subscriptionUtils";
 
 /**
  * "Registered" for product purposes = auth verified AND onboarding wizard finished
- * (target, tasks/wheel, reward). Incomplete users must always resume /onboarding.
+ * (target, tasks/wheel, reward). Incomplete users must always resume /onboarding —
+ * except enrolled / currently-active users who go straight to the dashboard.
+ * Admin always bypasses; managers are not forced through user onboarding.
  */
 export function needsOnboardingWizard(user, member = null) {
   if (!user) return true;
-  if (user.role === "admin" || user.role === "manager") return false;
-  // Hard lock: wait-window payers stay off the app until the 25th (except finishing onboarding).
-  if (isSubscriptionStartPending(user) && user.onboarding_completed) return false;
+  if (isAdmin(user) || user.role === "manager") return false;
+  if (shouldBypassOnboarding(user)) return false;
+  if (isPendingAccessLocked(user) && user.onboarding_completed) return false;
   if (!user.onboarding_completed) return true;
   if (needsMonthlyOnboarding(user)) return true;
   if (needsWaitingListAssignment(user, member)) return true;
@@ -18,16 +21,19 @@ export function needsOnboardingWizard(user, member = null) {
 
 export function needsPayment(user) {
   if (!user) return false;
-  if (user.role === "admin" || user.role === "manager") return false;
+  if (isAdmin(user) || user.role === "manager") return false;
   return user.subscription_status === "inactive";
 }
 
 /** Where to send the user right after login / OTP. */
 export function postAuthPath(user, member = null) {
+  if (isAdmin(user)) return homePathForRole("admin");
   if (needsPayment(user)) return "/payment";
-  if (user?.role === "user" && isSubscriptionStartPending(user)) {
-    return user.onboarding_completed ? "/pending" : "/onboarding";
+  if (isPendingAccessLocked(user)) {
+    if (user?.role === "user" && !user.onboarding_completed) return "/onboarding";
+    return "/pending";
   }
+  if (shouldBypassOnboarding(user)) return homePathForRole(user?.role);
   if (needsOnboardingWizard(user, member)) return "/onboarding";
   return homePathForRole(user?.role);
 }

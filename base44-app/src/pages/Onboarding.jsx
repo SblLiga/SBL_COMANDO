@@ -10,8 +10,9 @@ import StepManager from "@/components/onboarding/StepManager";
 import StepTasks from "@/components/onboarding/StepTasks";
 import StepReward from "@/components/onboarding/StepReward";
 import { toast } from "@/components/ui/use-toast";
-import { currentCycleMonth, needsMonthlyOnboarding, canAssignToGroup, isSubscriptionStartPending } from "@/lib/calendarRules";
+import { currentCycleMonth, needsMonthlyOnboarding, canAssignToGroup } from "@/lib/calendarRules";
 import { needsOnboardingWizard, needsPayment } from "@/lib/postAuth";
+import { isPendingAccessLocked, shouldBypassOnboarding } from "@/lib/subscriptionUtils";
 import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUpload";
 
 export default function Onboarding() {
@@ -35,7 +36,7 @@ export default function Onboarding() {
 
   const assignmentOpen = canAssignToGroup(user);
   const waitEnrollment = Boolean(user) && !assignmentOpen;
-  const hardPendingLock = isSubscriptionStartPending(user);
+  const hardPendingLock = isPendingAccessLocked(user);
 
   useEffect(() => {
     (async () => {
@@ -46,14 +47,16 @@ export default function Onboarding() {
           navigate("/payment", { replace: true });
           return;
         }
-        // Completed + deferred start → hard lock page (no dashboard).
-        if (u?.role === "user" && u?.onboarding_completed && isSubscriptionStartPending(u)) {
+        if (u?.role === "user" && u?.onboarding_completed && isPendingAccessLocked(u)) {
           navigate("/pending", { replace: true });
+          return;
+        }
+        if (u?.role === "user" && shouldBypassOnboarding(u)) {
+          navigate("/", { replace: true });
           return;
         }
         const monthly = needsMonthlyOnboarding(u);
         setIsNewCycle(Boolean(u?.onboarding_completed && monthly));
-        // Already fully registered for this cycle → app home
         if (u?.role === "user" && !needsOnboardingWizard(u)) {
           navigate("/", { replace: true });
           return;

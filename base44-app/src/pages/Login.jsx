@@ -7,15 +7,20 @@ import { Label } from "@/components/ui/label";
 import { Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import { postAuthPath } from "@/lib/postAuth";
-import { isSubscriptionStartPending } from "@/lib/calendarRules";
+import { isPendingAccessLocked, shouldBypassOnboarding } from "@/lib/subscriptionUtils";
 
 function resolveReturnPath(searchParams, user, member = null) {
   const role = (user?.role || "user").toLowerCase();
-  // Hard lock for deferred wait-window payers
-  if (role === "user" && isSubscriptionStartPending(user)) {
-    return user?.onboarding_completed ? "/pending" : "/onboarding";
+  if (role === "admin") {
+    return postAuthPath(user, member);
   }
-  // Incomplete registration (no wheel yet) always resumes onboarding
+  if (isPendingAccessLocked(user)) {
+    if (role === "user" && !user?.onboarding_completed) return "/onboarding";
+    return "/pending";
+  }
+  if (role === "user" && shouldBypassOnboarding(user)) {
+    return postAuthPath(user, member);
+  }
   if (role === "user" && !user?.onboarding_completed) {
     return "/onboarding";
   }

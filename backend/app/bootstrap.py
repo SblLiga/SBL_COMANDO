@@ -21,11 +21,20 @@ from app.models import (
     User,
 )
 from app.security import hash_password
-from app.subscription import activate_subscription
+from app.subscription import (
+    activate_subscription,
+    end_of_cycle_paid_through_after,
+    end_of_immediate_paid_through_after,
+    next_assignment_open_at,
+)
 
 logger = logging.getLogger(__name__)
 
 # Canonical DEV accounts — created/repaired on every non-prod startup.
+# seed_subscription:
+#   active  → start/end cover "today" (usable dashboard)
+#   pending → start = next 25th, no group (hard-lock /pending)
+#   none    → admin: status active, no date gate
 DEV_SEED_ACCOUNTS = (
     {
         "email": "admin.dev@sbl.local",
@@ -33,6 +42,7 @@ DEV_SEED_ACCOUNTS = (
         "password_fallback": "Admin123!",
         "full_name": "אדמין דמו",
         "role": "admin",
+        "seed_subscription": "none",
     },
     {
         "email": "manager.dev@sbl.local",
@@ -44,6 +54,7 @@ DEV_SEED_ACCOUNTS = (
         "focus_target": "שיפור מכירות",
         "focus_month": "2026-07",
         "group": "alpha",
+        "seed_subscription": "active",
     },
     {
         "email": "manager2.dev@sbl.local",
@@ -55,6 +66,7 @@ DEV_SEED_ACCOUNTS = (
         "focus_target": "גיוס לקוחות",
         "focus_month": "2026-07",
         "group": "beta",
+        "seed_subscription": "active",
     },
     {
         "email": "user.dev@sbl.local",
@@ -64,6 +76,7 @@ DEV_SEED_ACCOUNTS = (
         "target": "שיווק",
         "gender": "female",
         "group": "alpha",
+        "seed_subscription": "active",
     },
     {
         "email": "user2.dev@sbl.local",
@@ -73,6 +86,7 @@ DEV_SEED_ACCOUNTS = (
         "target": "מכירות",
         "gender": "male",
         "group": "alpha",
+        "seed_subscription": "active",
     },
     {
         "email": "user3.dev@sbl.local",
@@ -82,15 +96,17 @@ DEV_SEED_ACCOUNTS = (
         "target": "גיוס",
         "gender": "female",
         "group": "beta",
+        "seed_subscription": "active",
     },
     {
         "email": "user4.dev@sbl.local",
         "password": "User123!",
-        "full_name": "משתמש דמו ד׳ (רשימת המתנה)",
+        "full_name": "משתמש דמו ד׳ (בהמתנה)",
         "role": "user",
         "target": "שיווק",
         "gender": "male",
-        "group": None,  # waiting list — no group yet
+        "group": None,
+        "seed_subscription": "pending",
     },
 )
 
@@ -224,6 +240,34 @@ def _dev_account_password(account: dict, settings: Settings) -> str:
     return account["password"]
 
 
+def _apply_seed_subscription(user: User, mode: str) -> None:
+    """Force demo subscription windows independent of today's wait-window calendar."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        israel = ZoneInfo("Asia/Jerusalem")
+    except Exception:
+        israel = timezone(timedelta(hours=3))
+
+    user.subscription_status = "active"
+    if mode == "pending":
+        start = next_assignment_open_at()
+        user.subscription_start_date = start
+        user.subscription_end_date = end_of_cycle_paid_through_after(start)
+        user.group_id = None
+        return
+    if mode == "active":
+        local = datetime.now(israel)
+        start_local = datetime(local.year, local.month, 1, 0, 0, 0, tzinfo=israel)
+        start = start_local.astimezone(timezone.utc)
+        user.subscription_start_date = start
+        user.subscription_end_date = end_of_immediate_paid_through_after(start)
+        return
+    # admin / none — status only
+    user.subscription_start_date = None
+    user.subscription_end_date = None
+
+
 def _ensure_demo_group(
     session: Session,
     *,
@@ -351,6 +395,12 @@ def _upsert_seed_accounts(
     for account in accounts:
         email = account["email"]
         password = _dev_account_password(account, settings)
+        seed_sub = account.get("seed_subscription") or (
+            "pending" if account.get("group") is None and account["role"] == "user" else "active"
+        )
+        if account["role"] == "admin":
+            seed_sub = "none"
+
         user = session.scalar(select(User).where(User.email == email))
         created = False
         if user is None:
@@ -361,6 +411,7 @@ def _upsert_seed_accounts(
                 role=account["role"],
                 subscription_status="active",
                 onboarding_completed=True,
+                onboarding_completed_at=datetime.now(timezone.utc),
                 email_verified=True,
                 is_active=True,
                 target=account.get("target"),
@@ -370,7 +421,6 @@ def _upsert_seed_accounts(
             )
             session.add(user)
             session.flush()
-            activate_subscription(user)
             created = True
             changed += 1
         else:
@@ -379,9 +429,9 @@ def _upsert_seed_accounts(
             user.password_hash = hash_password(password)
             user.role = account["role"]
             user.full_name = account.get("full_name") or user.full_name
-            user.subscription_status = "active"
-            activate_subscription(user)
             user.onboarding_completed = True
+            if not user.onboarding_completed_at:
+                user.onboarding_completed_at = datetime.now(timezone.utc)
             if "target" in account:
                 user.target = account["target"]
             if "gender" in account:
@@ -392,9 +442,14 @@ def _upsert_seed_accounts(
                 user.focus_month = account["focus_month"]
             changed += 1
 
+        _apply_seed_subscription(user, seed_sub)
+
         group_key = account.get("group")
         group = groups.get(group_key) if group_key else None
-        if group is not None:
+        if seed_sub == "pending" or group is None:
+            user.group_id = None
+            group = None
+        elif group is not None:
             user.group_id = group.id
 
         if account["role"] == "admin":

@@ -1,28 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Outlet, Navigate, useLocation } from "react-router-dom";
-import apiClient from "@/api/apiClient";
-import { isPendingAccessLocked } from "@/lib/subscriptionUtils";
+import { useAuth } from "@/lib/AuthContext";
+import { isAdmin, isPendingAccessLocked } from "@/lib/subscriptionUtils";
 
 export default function PendingEnrollmentGate() {
   const location = useLocation();
-  const [user, setUser] = useState(undefined);
+  const { user, isLoadingAuth, isAuthenticated } = useAuth();
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const u = await apiClient.auth.me();
-        if (!cancelled) setUser(u);
-      } catch {
-        if (!cancelled) setUser(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (user === undefined) {
+  if (isLoadingAuth) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -30,16 +15,21 @@ export default function PendingEnrollmentGate() {
     );
   }
 
-  if (!user) return <Navigate to="/login" replace />;
+  if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
 
-  if (user.role === "user" && isPendingAccessLocked(user)) {
-    if (!user.onboarding_completed && location.pathname.startsWith("/onboarding")) {
-      return <Outlet />;
-    }
+  if (isAdmin(user)) return <Outlet />;
+
+  if (isPendingAccessLocked(user)) {
     if (location.pathname.startsWith("/pending")) {
       return <Outlet />;
     }
-    return <Navigate to={user.onboarding_completed ? "/pending" : "/onboarding"} replace />;
+    if (user.role === "user" && !user.onboarding_completed && location.pathname.startsWith("/onboarding")) {
+      return <Outlet />;
+    }
+    if (user.role === "user" && !user.onboarding_completed) {
+      return <Navigate to="/onboarding" replace />;
+    }
+    return <Navigate to="/pending" replace />;
   }
 
   return <Outlet />;
