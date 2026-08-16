@@ -8,6 +8,7 @@ import ParticipantModal from "@/components/ParticipantModal";
 import NudgeModal from "@/components/NudgeModal";
 import UserAvatar from "@/components/UserAvatar";
 import MotivationalQuote from "@/components/MotivationalQuote";
+import { loadManagerGroupMembers, resolveManagerOwnedGroup } from "@/lib/managerGroup";
 
 const statusColor = {
   "בעקבות": "bg-green-500",
@@ -30,21 +31,10 @@ export default function ManagerDashboard() {
       try {
         const user = await apiClient.auth.me();
         setCurrentUserId(user.id);
-        const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
-        const me = myMembers[0];
-        setCurrentMember(me);
-
-        if (me?.group_id) {
-          const [groupMembers, groups] = await Promise.all([
-            apiClient.entities.Member.filter({ group_id: me.group_id }),
-            apiClient.entities.Group.list(),
-          ]);
-          setMembers(groupMembers.filter((m) => m.role === "user"));
-          setGroup(groups.find((g) => String(g.id) === String(me.group_id)) || null);
-        } else {
-          setMembers([]);
-          setGroup(null);
-        }
+        const { group: owned, member } = await resolveManagerOwnedGroup(user);
+        setCurrentMember(member);
+        setGroup(owned);
+        setMembers(owned ? await loadManagerGroupMembers(owned) : []);
       } finally {
         setLoading(false);
       }

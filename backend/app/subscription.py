@@ -47,8 +47,12 @@ def sync_subscription_expiry(user: User, db: Session) -> bool:
     if user.subscription_status != "active":
         return False
     end = user.subscription_end_date
+    # NULL end date on a regular user = broken/eternal grant — treat as expired.
     if end is None:
-        return False
+        user.subscription_status = "inactive"
+        db.commit()
+        db.refresh(user)
+        return True
     if end.tzinfo is None:
         end = end.replace(tzinfo=timezone.utc)
     if _utcnow() <= end:

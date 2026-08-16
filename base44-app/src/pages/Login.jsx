@@ -8,7 +8,7 @@ import { Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import { postAuthPath } from "@/lib/postAuth";
 
-function resolveReturnPath(searchParams, user) {
+function resolveReturnPath(searchParams, user, member = null) {
   const role = (user?.role || "user").toLowerCase();
   // Incomplete registration (no wheel yet) always resumes onboarding
   if (role === "user" && !user?.onboarding_completed) {
@@ -16,14 +16,14 @@ function resolveReturnPath(searchParams, user) {
   }
   const raw = searchParams.get("return");
   if (!raw || !raw.startsWith("/") || raw.startsWith("//")) {
-    return postAuthPath(user);
+    return postAuthPath(user, member);
   }
   if (role === "admin" && raw.startsWith("/admin")) return raw;
   if (role === "manager" && raw.startsWith("/manager")) return raw;
   if (role === "user" && !raw.startsWith("/admin") && !raw.startsWith("/manager")) {
-    return raw === "/" || raw === "/goal" ? postAuthPath(user) : raw;
+    return raw === "/" || raw === "/goal" ? postAuthPath(user, member) : raw;
   }
-  return postAuthPath(user);
+  return postAuthPath(user, member);
 }
 
 export default function Login() {
@@ -42,7 +42,16 @@ export default function Login() {
     try {
       await apiClient.auth.loginViaEmailPassword(email, password);
       const u = await apiClient.auth.me();
-      window.location.href = resolveReturnPath(searchParams, u);
+      let member = null;
+      try {
+        if (u?.role === "user" && u?.subscription_status === "active") {
+          const rows = await apiClient.entities.Member.filter({ user_id: u.id });
+          member = rows[0] || null;
+        }
+      } catch {
+        member = null;
+      }
+      window.location.href = resolveReturnPath(searchParams, u, member);
     } catch (err) {
       const msg = (err.message || "").toLowerCase();
       const needsEmailVerify =

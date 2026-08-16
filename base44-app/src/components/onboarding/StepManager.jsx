@@ -35,13 +35,30 @@ export default function StepManager({ managers, groups, gender, target, manager,
     );
   }
 
-  const filteredManagers = managers.filter(
-    (m) => m.role === "manager" && (!gender || m.gender === gender) && (!target || m.target === target)
-  );
+  const filteredManagers = managers.filter((m) => {
+    if (m.role !== "manager") return false;
+    if (gender && m.gender && m.gender !== gender) return false;
+    // Prefer next-month target (set from day 23); fall back to current target.
+    const effectiveTarget = m.next_month_target || m.target;
+    if (target && effectiveTarget && effectiveTarget !== target) return false;
+    if (target && !effectiveTarget) return false;
+    return true;
+  });
 
   const managerCapacity = (mgr) => {
-    const mgrGroups = groups.filter((g) => g.manager_name === mgr.name);
-    const count = mgrGroups.reduce((s, g) => s + (g.participant_count || 0), 0);
+    const mgrKey = mgr.user_id || mgr.id;
+    const mgrGroups = groups.filter(
+      (g) =>
+        (mgrKey && String(g.manager_id) === String(mgrKey)) ||
+        g.manager_name === mgr.name
+    );
+    // Capacity is per target + gender, not across all of a manager's groups.
+    const scoped = mgrGroups.filter(
+      (g) =>
+        (!target || g.target === target) &&
+        (!gender || g.gender === gender)
+    );
+    const count = scoped.reduce((s, g) => s + (g.participant_count || 0), 0);
     return { count, full: count >= 5 };
   };
 
@@ -105,7 +122,7 @@ export default function StepManager({ managers, groups, gender, target, manager,
           </button>
 
           <a
-            href="https://wa.me/972500000000"
+            href="https://wa.me/972504170707"
             target="_blank"
             rel="noopener noreferrer"
             className="w-full p-4 rounded-xl flex items-center gap-3 transition-all bg-muted hover:bg-muted/80"

@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
@@ -145,41 +146,42 @@ PROD_HANDOFF_JUNK_EMAILS = frozenset(
     }
 )
 
-# Client handoff: real admins + paid customers (temp passwords; users change in Profile).
+# Client handoff emails (create-only). Passwords MUST come from env / Secrets Manager —
+# never store plaintext credentials in git.
 CLIENT_HANDOFF_ACCOUNTS = (
     {
         "email": "sbl.school1@gmail.com",
-        "password": "SblMichal2026!",
+        "password_env": "HANDOFF_PASSWORD_MICHAL",
         "full_name": "מיכל מזכירה",
         "role": "admin",
     },
     {
         "email": "shuliyazdi2000@gmail.com",
-        "password": "SblShuli2026!",
+        "password_env": "HANDOFF_PASSWORD_SHULI",
         "full_name": "שולי בן לולו",
         "role": "admin",
     },
     {
         "email": "e6666668@gmail.com",
-        "password": "SblEsti2026!",
+        "password_env": "HANDOFF_PASSWORD_ESTI",
         "full_name": "אסתי לוי",
         "role": "user",
     },
     {
         "email": "nech0329@gmail.com",
-        "password": "SblNehama2026!",
+        "password_env": "HANDOFF_PASSWORD_NEHAMA",
         "full_name": "נחמה גלינסקי",
         "role": "user",
     },
     {
         "email": "yaaras9@gmail.com",
-        "password": "SblItay2026!",
+        "password_env": "HANDOFF_PASSWORD_ITAY",
         "full_name": "איתי פתיה",
         "role": "user",
     },
     {
         "email": "tehilakadosh10@gmail.com",
-        "password": "SblTehila2026!",
+        "password_env": "HANDOFF_PASSWORD_TEHILA",
         "full_name": "תהילה קדוש",
         "role": "user",
     },
@@ -613,18 +615,17 @@ def ensure_production_admin(session: Session, settings: Settings) -> bool:
             is_active=True,
         )
         session.add(admin)
+        activate_subscription(admin)
         created = True
     else:
-        admin.password_hash = hash_password(password)
+        # Create-only for password: never overwrite a password the admin changed in-app.
         admin.role = "admin"
-        admin.subscription_status = "active"
         admin.onboarding_completed = True
         admin.email_verified = True
         admin.is_active = True
         if not admin.full_name:
             admin.full_name = "אדמין שולי בן לולו"
 
-    activate_subscription(admin)
     session.commit()
     logger.info(
         "Production admin %s for %s",
@@ -635,16 +636,28 @@ def ensure_production_admin(session: Session, settings: Settings) -> bool:
 
 
 def ensure_client_handoff_accounts(session: Session) -> int:
-    """Upsert real client admins + paid customers with temporary handoff passwords."""
+    """
+    Create missing handoff accounts once.
+    Never overwrite password_hash or renew subscription for existing users
+    (avoids wiping Profile password changes on every deploy).
+    """
     changed = 0
     for account in CLIENT_HANDOFF_ACCOUNTS:
         email = account["email"].strip().lower()
         user = session.scalar(select(User).where(User.email == email))
         is_admin = account["role"] == "admin"
         if user is None:
+            password = (os.environ.get(account.get("password_env") or "") or "").strip()
+            if not password:
+                logger.warning(
+                    "Handoff account %s missing — set %s to create (create-only)",
+                    email,
+                    account.get("password_env"),
+                )
+                continue
             user = User(
                 email=email,
-                password_hash=hash_password(account["password"]),
+                password_hash=hash_password(password),
                 full_name=account["full_name"],
                 role=account["role"],
                 subscription_status="active",
@@ -662,17 +675,23 @@ def ensure_client_handoff_accounts(session: Session) -> int:
                 account["role"],
             )
         else:
-            user.password_hash = hash_password(account["password"])
-            user.full_name = account["full_name"] or user.full_name
-            user.role = account["role"]
-            user.subscription_status = "active"
-            user.email_verified = True
-            user.is_active = True
-            if is_admin:
+            # Soft repair only — never reset password, extend subscription, or force-activate.
+            touched = False
+            if account["full_name"] and user.full_name != account["full_name"]:
+                user.full_name = account["full_name"]
+                touched = True
+            if user.role != account["role"] and is_admin:
+                user.role = account["role"]
+                touched = True
+            if not user.email_verified:
+                user.email_verified = True
+                touched = True
+            if is_admin and not user.onboarding_completed:
                 user.onboarding_completed = True
-            activate_subscription(user)
-            changed += 1
-            logger.info("Handoff account repaired %s (%s)", email, account["role"])
+                touched = True
+            if touched:
+                changed += 1
+                logger.info("Handoff account soft-repaired %s (%s)", email, account["role"])
         session.commit()
     logger.info("Client handoff accounts upserted (delta_marker=%s)", changed)
     return changed

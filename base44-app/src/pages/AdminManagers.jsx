@@ -41,6 +41,8 @@ function buildRows(users, members) {
       role: u.role === "manager" || member?.role === "manager" ? "manager" : "user",
       has_member: Boolean(member),
       subscription_status: u.subscription_status,
+      gender: member?.gender || u.gender || null,
+      target: member?.next_month_target || member?.target || u.target || null,
     });
   }
 
@@ -105,24 +107,51 @@ export default function AdminManagers() {
     const newRole = row.role === "manager" ? "user" : "manager";
     setBusyId(row.key);
     try {
+      let gender = row.gender || null;
+      let target = row.target || null;
+      if (newRole === "manager") {
+        if (!gender) {
+          gender = window.prompt("מגדר למנהל/ת (female / male):", "female")?.trim() || null;
+        }
+        if (!target) {
+          target = window.prompt("יעד למנהל/ת (למשל מכירות / גיוס):", "")?.trim() || null;
+        }
+        if (!gender || !target) {
+          toast({
+            title: "חסרים פרטים",
+            description: "כדי שיופיע/ו באונבורדינג צריך מגדר ויעד",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
       if (row.user_id) {
         await apiClient.entities.User.update(row.user_id, {
           role: newRole,
-          // Managers skip payment gate + user onboarding wizard
           ...(newRole === "manager"
-            ? { subscription_status: "active", onboarding_completed: true }
+            ? {
+                subscription_status: "active",
+                onboarding_completed: true,
+                gender,
+                target,
+              }
             : {}),
         });
       }
 
       if (row.member_id) {
-        await apiClient.entities.Member.update(row.member_id, { role: newRole });
+        await apiClient.entities.Member.update(row.member_id, {
+          role: newRole,
+          ...(newRole === "manager" ? { gender, target } : {}),
+        });
       } else if (row.user_id && newRole === "manager") {
-        // No Member yet (pre-onboarding) — create one so they appear everywhere
         await apiClient.entities.Member.create({
           name: row.name,
           user_id: row.user_id,
           role: "manager",
+          gender,
+          target,
           status: "בעקבות",
           progress: 0,
           xp: 0,

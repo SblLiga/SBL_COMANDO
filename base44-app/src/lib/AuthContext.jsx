@@ -50,6 +50,15 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  /** Soft update of session user without flipping global isLoadingAuth (ThankYou settle). */
+  const applyUser = (nextUser) => {
+    if (!nextUser) return;
+    setUser(nextUser);
+    setIsAuthenticated(true);
+    setAuthError(null);
+    setAuthChecked(true);
+  };
+
   const logout = (shouldRedirect = true) => {
     apiClient.auth.logout();
     setUser(null);
@@ -76,6 +85,7 @@ export const AuthProvider = ({ children }) => {
         logout,
         navigateToLogin,
         checkUserAuth,
+        applyUser,
         checkAppState,
       }}
     >

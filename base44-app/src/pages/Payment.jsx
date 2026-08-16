@@ -56,16 +56,19 @@ export default function Payment() {
           "פתחנו את דף התשלום. לאחר אישור חזרי לאתר — הסטטוס יתעדכן אוטומטית.",
       });
     } catch (err) {
-      try {
-        const bypass = await apiClient.integrations.Make.devActivate();
-        toast({
-          title: "מצב בדיקה (DEV)",
-          description: "הסליקה דולגה — ממשיכים לאתר.",
-        });
-        await finishBypass(bypass?.redirect || "/thank-you");
-        return;
-      } catch {
-        /* fall through */
+      // DEV Vite only — never call payment bypass from a production build.
+      if (import.meta.env.DEV) {
+        try {
+          const bypass = await apiClient.integrations.Make.devActivate();
+          toast({
+            title: "מצב בדיקה (DEV)",
+            description: "הסליקה דולגה — ממשיכים לאתר.",
+          });
+          await finishBypass(bypass?.redirect || "/thank-you");
+          return;
+        } catch {
+          /* fall through */
+        }
       }
       toast({
         title: "סליקה עדיין לא מחוברת",

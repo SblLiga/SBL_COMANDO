@@ -40,3 +40,17 @@ def get_optional_user(
         return get_current_user(credentials, db)
     except HTTPException:
         return None
+
+
+def require_active_subscription(
+    user: User = Depends(get_current_user),
+) -> User:
+    """Staff always pass; regular users need an active subscription for app APIs."""
+    if user.role in {"admin", "manager"}:
+        return user
+    if (user.subscription_status or "").lower() == "active":
+        return user
+    raise HTTPException(
+        status_code=status.HTTP_402_PAYMENT_REQUIRED,
+        detail="Active subscription required",
+    )

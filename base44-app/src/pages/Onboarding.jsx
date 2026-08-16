@@ -144,10 +144,23 @@ export default function Onboarding() {
   const finish = async () => {
     setSubmitting(true);
     try {
-      // Spec: each monthly cycle gets a fresh goal + task wheel (+ new group pick).
-      const goal = await createCycleGoalWithTasks();
       const existingRows = await apiClient.entities.Member.filter({ user_id: user.id });
       const existing = existingRows[0] || null;
+      // Returning from waiting list (already has a wheel for this cycle): assign only.
+      const assignmentOnly =
+        Boolean(user?.onboarding_completed) &&
+        Boolean(existing?.goal_id) &&
+        !needsMonthlyOnboarding(user);
+
+      let goal;
+      if (assignmentOnly) {
+        goal = {
+          id: existing.goal_id,
+          title: existing.goal_title || `יעד חודשי - ${target}`,
+        };
+      } else {
+        goal = await createCycleGoalWithTasks();
+      }
 
       if (manager?.id === "waiting_list") {
         const payload = {
@@ -161,9 +174,9 @@ export default function Onboarding() {
           group_id: null,
           role: "user",
           status: "דרושה התייחסות",
-          progress: 0,
-          xp: 0,
-          streak: 0,
+          progress: assignmentOnly ? existing?.progress || 0 : 0,
+          xp: assignmentOnly ? existing?.xp || 0 : 0,
+          streak: assignmentOnly ? existing?.streak || 0 : 0,
         };
         if (existing) {
           await leaveOldGroupIfNeeded(existing, null);
@@ -230,9 +243,9 @@ export default function Onboarding() {
         group_id: group.id,
         role: "user",
         status: "בעקבות",
-        progress: 0,
+        progress: assignmentOnly ? existing?.progress || 0 : 0,
         xp: existing?.xp || 0,
-        streak: 0,
+        streak: assignmentOnly ? existing?.streak || 0 : 0,
       };
       if (existing) {
         await apiClient.entities.Member.update(existing.id, memberPayload);
