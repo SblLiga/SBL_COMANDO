@@ -11,8 +11,8 @@ import { isAdmin, isPendingAccessLocked, shouldBypassOnboarding } from "@/lib/su
 export function needsOnboardingWizard(user, member = null) {
   if (!user) return true;
   if (isAdmin(user) || user.role === "manager") return false;
-  if (shouldBypassOnboarding(user)) return false;
-  if (isPendingAccessLocked(user) && user.onboarding_completed) return false;
+  if (shouldBypassOnboarding(user, member)) return false;
+  if (isPendingAccessLocked(user, member) && user.onboarding_completed) return false;
   if (!user.onboarding_completed) return true;
   if (needsMonthlyOnboarding(user)) return true;
   if (needsWaitingListAssignment(user, member)) return true;
@@ -29,11 +29,11 @@ export function needsPayment(user) {
 export function postAuthPath(user, member = null) {
   if (isAdmin(user)) return homePathForRole("admin");
   if (needsPayment(user)) return "/payment";
-  if (isPendingAccessLocked(user)) {
+  if (isPendingAccessLocked(user, member)) {
     if (user?.role === "user" && !user.onboarding_completed) return "/onboarding";
     return "/pending";
   }
-  if (shouldBypassOnboarding(user)) return homePathForRole(user?.role);
+  if (shouldBypassOnboarding(user, member)) return homePathForRole(user?.role);
   if (needsOnboardingWizard(user, member)) return "/onboarding";
   return homePathForRole(user?.role);
 }

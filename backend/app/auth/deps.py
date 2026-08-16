@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.auth.jwt import decode_access_token
 from app.database import get_db
 from app.models import User
-from app.subscription import sync_subscription_expiry
+from app.subscription import sync_subscription_expiry, sync_user_group_from_member
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -27,6 +27,7 @@ def get_current_user(
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     sync_subscription_expiry(user, db)
+    sync_user_group_from_member(user, db)
     return user
 
 

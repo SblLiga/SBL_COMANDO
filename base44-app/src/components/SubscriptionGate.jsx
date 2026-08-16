@@ -22,7 +22,8 @@ export default function SubscriptionGate() {
       return;
     }
 
-    // Admin / enrolled-or-active: no extra fetches, no onboarding bounce.
+    // Admin / enrolled-or-active via User fields: no extra fetches.
+    // Member.group_id heal is handled after fetch / backend sync on /me.
     if (user.role !== "user" || shouldBypassOnboarding(user)) {
       setMember(null);
       setHasWheel(true);
@@ -98,13 +99,13 @@ export default function SubscriptionGate() {
   if (isAdmin(user)) return <Outlet />;
 
   const isManager = user.role === "manager";
-  const bypass = shouldBypassOnboarding(user);
+  const bypass = shouldBypassOnboarding(user, member);
 
   if (!isManager && needsPayment(user)) {
     return <Navigate to="/payment" replace />;
   }
 
-  if (isPendingAccessLocked(user)) {
+  if (isPendingAccessLocked(user, member)) {
     if (user.role === "user" && !user.onboarding_completed && location.pathname.startsWith("/onboarding")) {
       return <Outlet />;
     }

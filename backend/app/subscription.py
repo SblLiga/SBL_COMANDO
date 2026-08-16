@@ -120,7 +120,30 @@ def activate_subscription(user: User, *, period_days: int = SUBSCRIPTION_PERIOD_
 
 
 def renew_subscription(user: User, *, period_days: int = SUBSCRIPTION_PERIOD_DAYS) -> None:
-    """Successful renew/charge: recalculate calendar dates (same as activate)."""
+    """
+    Successful renew/charge.
+    If the user is already inside an active paid window, extend paid-through without
+    moving start into the future (avoids locking live users to /pending mid-cycle).
+    Otherwise behave like a fresh activate (including deferred wait-window starts).
+    """
+    _ = period_days
+    now = _utcnow()
+    start = user.subscription_start_date
+    end = user.subscription_end_date
+    if start is not None and end is not None:
+        start_utc = _as_utc(start)
+        end_utc = _as_utc(end)
+        if start_utc <= now <= end_utc:
+            user.subscription_status = "active"
+            if is_deferred_enrollment(now):
+                # Stretch end through the next wait-window cycle without deferring access.
+                cycle_start = next_assignment_open_at(now)
+                new_end = end_of_cycle_paid_through_after(cycle_start)
+            else:
+                new_end = end_of_immediate_paid_through_after(now)
+            if new_end > end_utc:
+                user.subscription_end_date = new_end
+            return
     activate_subscription(user, period_days=period_days)
 
 
@@ -145,8 +168,10 @@ def sync_subscription_expiry(user: User, db: Session) -> bool:
         return False
 
     end = user.subscription_end_date
-    # NULL end on an active regular user = broken/eternal grant — expire + unassign.
+    # Legacy active rows with no calendar end (and no start) — do not wipe on deploy.
     if end is None:
+        if start is None:
+            return False
         deactivate_subscription(user, db)
         db.commit()
         db.refresh(user)
@@ -155,6 +180,20 @@ def sync_subscription_expiry(user: User, db: Session) -> bool:
         return False
 
     deactivate_subscription(user, db)
+    db.commit()
+    db.refresh(user)
+    return True
+
+
+def sync_user_group_from_member(user: User, db: Session) -> bool:
+    """Keep User.group_id aligned with Member.group_id for pending/dashboard gates."""
+    member = db.scalar(select(Member).where(Member.user_id == user.id).limit(1))
+    if member is None:
+        return False
+    desired = member.group_id
+    if user.group_id == desired:
+        return False
+    user.group_id = desired
     db.commit()
     db.refresh(user)
     return True
