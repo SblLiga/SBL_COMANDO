@@ -59,9 +59,12 @@ ALLOWED_GROW_IPS = frozenset(
 
 
 def _client_ip(request: Request) -> str:
+    """Prefer peer IP; when XFF is present, use the rightmost hop (last trusted proxy)."""
     forwarded = (request.headers.get("x-forwarded-for") or "").strip()
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+        if parts:
+            return parts[-1]
     if request.client and request.client.host:
         return request.client.host
     return ""
@@ -128,6 +131,7 @@ def verify_webhook_auth(
 
 def resolve_user(db: Session, payload: dict) -> User | None:
     # Meshulam/Grow puts our user id in custom1 (see payment_url_for_user / buildGrowPaymentUrl).
+    # Never fall back to payload["id"] — that is Grow's transaction id, not our users.id.
     data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
     custom_fields = (
         data.get("customFields") if isinstance(data.get("customFields"), dict) else {}
@@ -136,11 +140,13 @@ def resolve_user(db: Session, payload: dict) -> User | None:
         payload.get("userId")
         or payload.get("user_id")
         or payload.get("custom1")
+        or payload.get("cField1")
         or data.get("custom1")
+        or data.get("cField1")
         or custom_fields.get("custom1")
+        or custom_fields.get("cField1")
         or data.get("userId")
         or data.get("user_id")
-        or payload.get("id")
     )
     if user_id is not None and str(user_id).strip():
         try:
@@ -169,6 +175,60 @@ def resolve_user(db: Session, payload: dict) -> User | None:
     if not email:
         return None
     return db.scalar(select(User).where(User.email == email))
+
+
+def _payment_approved(payload: dict) -> bool:
+    """
+    Accept clearly successful / approved payment events.
+    Reject explicit failures. If no status fields are present (Make.com slim payload),
+    allow through once auth already passed.
+    """
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    status_raw = (
+        payload.get("statusCode")
+        or payload.get("status_code")
+        or payload.get("StatusCode")
+        or data.get("statusCode")
+        or data.get("status_code")
+        or payload.get("status")
+        or data.get("status")
+        or payload.get("payment_status")
+        or data.get("payment_status")
+    )
+    approve = (
+        payload.get("ApproveTransaction")
+        or payload.get("approveTransaction")
+        or data.get("ApproveTransaction")
+        or data.get("approveTransaction")
+    )
+    event = str(payload.get("event") or payload.get("type") or data.get("event") or "").lower()
+
+    fail_tokens = ("fail", "cancel", "refuse", "decline", "error", "void", "chargedback", "reject")
+    if status_raw is not None:
+        status_s = str(status_raw).strip().lower()
+        if any(t in status_s for t in fail_tokens):
+            return False
+        # Meshulam often uses 0 / "000" / "1" for success depending on API version
+        if status_s in {"0", "00", "000", "1", "2", "success", "succeeded", "paid", "approved", "completed"}:
+            return True
+        if status_s.isdigit() and int(status_s) != 0:
+            # Unknown non-zero numeric — treat as failure unless approve flag says otherwise
+            if approve in (True, "true", "1", 1, "yes"):
+                return True
+            return False
+
+    if approve in (False, "false", "0", 0, "no"):
+        return False
+    if approve in (True, "true", "1", 1, "yes"):
+        return True
+
+    if any(t in event for t in fail_tokens):
+        return False
+    if event and any(t in event for t in ("success", "paid", "approved", "completed", "charge")):
+        return True
+
+    # Authenticated Make.com payloads may omit Grow status fields — allow.
+    return True
 
 
 def apply_subscription_status(db: Session, user: User, new_status: str) -> dict:
@@ -225,6 +285,22 @@ async def _read_verified_payload(
     return payload
 
 
+def _has_shared_secret_auth(
+    *,
+    x_make_signature: str | None,
+    x_webhook_secret: str | None,
+    authorization: str | None,
+) -> bool:
+    """Make.com (and similar) authenticate with shared secret — skip Grow IP allowlist."""
+    if x_webhook_secret and x_webhook_secret.strip():
+        return True
+    if x_make_signature and x_make_signature.strip():
+        return True
+    if authorization and authorization.strip():
+        return True
+    return False
+
+
 @router.post("/payment-success")
 async def payment_success(
     request: Request,
@@ -234,8 +310,15 @@ async def payment_success(
     x_webhook_secret: str | None = Header(default=None, alias="X-Webhook-Secret"),
     authorization: str | None = Header(default=None),
 ):
-    """Grow → site: payment approved → ACTIVE for 30 days (first charge or recurring)."""
-    _require_grow_ip(request)
+    """Grow / Make → site: payment approved → ACTIVE for 30 days (first charge or recurring)."""
+    # Make.com is not on Grow egress IPs — skip IP allowlist when shared-secret auth is used.
+    if not _has_shared_secret_auth(
+        x_make_signature=x_make_signature,
+        x_webhook_secret=x_webhook_secret,
+        authorization=authorization,
+    ):
+        _require_grow_ip(request)
+
     payload = await _read_verified_payload(
         request,
         x_make_signature=x_make_signature,
@@ -243,6 +326,11 @@ async def payment_success(
         x_webhook_secret=x_webhook_secret,
         authorization=authorization,
     )
+
+    if not _payment_approved(payload):
+        logger.warning("payment-success rejected: non-success payload keys=%s", list(payload.keys()))
+        raise HTTPException(status_code=400, detail="Payment not successful")
+
     user = resolve_user(db, payload)
     if user is None:
         return {"received": True, "updated": False, "reason": "user_not_found"}
@@ -289,7 +377,13 @@ async def payment_failed(
     authorization: str | None = Header(default=None),
 ):
     """Grow failed recurring / cancel → inactive + immediate group unassign."""
-    _require_grow_ip(request)
+    if not _has_shared_secret_auth(
+        x_make_signature=x_make_signature,
+        x_webhook_secret=x_webhook_secret,
+        authorization=authorization,
+    ):
+        _require_grow_ip(request)
+
     payload = await _read_verified_payload(
         request,
         x_make_signature=x_make_signature,

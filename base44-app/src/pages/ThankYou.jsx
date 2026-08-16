@@ -6,7 +6,7 @@ import { needsOnboardingWizard, postAuthPath } from "@/lib/postAuth";
 import { CheckCircle2, Loader2, PartyPopper } from "lucide-react";
 
 export default function ThankYou() {
-  const { user, isLoadingAuth } = useAuth();
+  const { user, isLoadingAuth, applyUser } = useAuth();
   const navigate = useNavigate();
   const [member, setMember] = useState(null);
   const [polling, setPolling] = useState(() => apiClient.auth.isAuthenticated());
@@ -49,15 +49,20 @@ export default function ThankYou() {
         const next = u?.subscription_status || "inactive";
         setLatestUser((prev) => (prev?.id === u?.id && prev?.subscription_status === next ? prev : u));
         setStatus((prev) => (prev === next ? prev : next));
-        if (u?.role === "user") {
-          const rows = await apiClient.entities.Member.filter({ user_id: u.id });
-          if (!cancelled && !settledRef.current) {
-            const row = rows[0] || null;
-            setMember((prev) => (prev?.id === row?.id ? prev : row));
-          }
-        }
         if (next === "active") {
-          // Do NOT call checkUserAuth — it flips App-level isLoadingAuth and remounts routes.
+          // Soft-patch AuthContext without flipping isLoadingAuth (avoids remount loop).
+          applyUser?.(u);
+          if (u?.role === "user") {
+            try {
+              const rows = await apiClient.entities.Member.filter({ user_id: u.id });
+              if (!cancelled && !settledRef.current) {
+                const row = rows[0] || null;
+                setMember((prev) => (prev?.id === row?.id ? prev : row));
+              }
+            } catch {
+              /* optional */
+            }
+          }
           settledRef.current = true;
           setPolling(false);
           return;
@@ -80,6 +85,7 @@ export default function ThankYou() {
       if (timerId != null) clearTimeout(timerId);
     };
     // Mount-once only. Never depend on AuthContext function identities.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // After success is settled, never show the auth loading spinner again.

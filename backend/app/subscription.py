@@ -145,7 +145,13 @@ def sync_subscription_expiry(user: User, db: Session) -> bool:
         return False
 
     end = user.subscription_end_date
-    if end is None or now <= _as_utc(end):
+    # NULL end on an active regular user = broken/eternal grant — expire + unassign.
+    if end is None:
+        deactivate_subscription(user, db)
+        db.commit()
+        db.refresh(user)
+        return True
+    if now <= _as_utc(end):
         return False
 
     deactivate_subscription(user, db)

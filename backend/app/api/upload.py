@@ -19,6 +19,15 @@ UPLOAD_DIR = (Path.cwd() / "static" / "uploads").resolve()
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"}
+ALLOWED_CONTENT_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "image/heic",
+    "image/heif",
+}
+BLOCKED_SUFFIXES = {".svg", ".svgz", ".xml", ".html", ".htm", ".js"}
 MAX_BYTES = 15 * 1024 * 1024  # 15MB (frontend compresses phone photos first)
 
 
@@ -34,7 +43,7 @@ def _suffix_for(file: UploadFile) -> str:
         "image/gif": ".gif",
         "image/heic": ".heic",
         "image/heif": ".heif",
-    }.get(content_type, ".jpg")
+    }.get(content_type, "")
 
 
 @router.post("/integrations/core/upload-file")
@@ -47,11 +56,16 @@ async def upload_file(
     suffix = (Path(file.filename or "upload.bin").suffix or "").lower()
     content_type = (file.content_type or "").lower() or "application/octet-stream"
 
-    if suffix not in ALLOWED_SUFFIXES and not content_type.startswith("image/"):
+    if suffix in BLOCKED_SUFFIXES or "svg" in content_type or "xml" in content_type:
+        raise HTTPException(status_code=400, detail="SVG and scriptable images are not allowed")
+
+    if suffix not in ALLOWED_SUFFIXES and content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail="Only image uploads are allowed")
 
     suffix = _suffix_for(file)
-    if not content_type.startswith("image/"):
+    if not suffix:
+        raise HTTPException(status_code=400, detail="Unsupported image type")
+    if content_type not in ALLOWED_CONTENT_TYPES:
         content_type = {
             ".jpg": "image/jpeg",
             ".jpeg": "image/jpeg",

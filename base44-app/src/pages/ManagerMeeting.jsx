@@ -4,6 +4,7 @@ import { Calendar, Play, Clock, FileText, ChevronLeft, Send, Lock, X, Edit2 } fr
 import PageHeader from "@/components/PageHeader";
 import LiveMeeting, { AGENDA } from "@/components/LiveMeeting";
 import { useToast } from "@/components/ui/use-toast";
+import { resolveManagerOwnedGroup } from "@/lib/managerGroup";
 
 export default function ManagerMeeting() {
   const { toast } = useToast();
@@ -15,6 +16,7 @@ export default function ManagerMeeting() {
   const [schedDate, setSchedDate] = useState("");
   const [schedTime, setSchedTime] = useState("");
   const [groupName, setGroupName] = useState("הקבוצה שלי");
+  const [groupId, setGroupId] = useState(null);
   const [editingSummary, setEditingSummary] = useState(null);
   const [editText, setEditText] = useState("");
   const [expandedPrev, setExpandedPrev] = useState(false);
@@ -23,16 +25,16 @@ export default function ManagerMeeting() {
     (async () => {
       try {
         const user = await apiClient.auth.me();
-        const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
-        const me = myMembers[0];
-        if (me?.group_id) {
-          const groups = await apiClient.entities.Group.list();
-          const g = groups.find((x) => x.id === me.group_id);
-          if (g) setGroupName(g.name);
+        const { group } = await resolveManagerOwnedGroup(user);
+        if (group) {
+          setGroupName(group.name || "הקבוצה שלי");
+          setGroupId(group.id);
         }
 
-        const m = await apiClient.entities.Meeting.list("-created_date", 20);
-        setMeetings(m);
+        const m = group?.id
+          ? await apiClient.entities.Meeting.filter({ group_id: group.id })
+          : await apiClient.entities.Meeting.list("-created_date", 20);
+        setMeetings(Array.isArray(m) ? m : []);
       } finally {
         setLoading(false);
       }
@@ -40,8 +42,10 @@ export default function ManagerMeeting() {
   }, []);
 
   const refresh = async () => {
-    const m = await apiClient.entities.Meeting.list("-created_date", 20);
-    setMeetings(m);
+    const m = groupId
+      ? await apiClient.entities.Meeting.filter({ group_id: groupId })
+      : await apiClient.entities.Meeting.list("-created_date", 20);
+    setMeetings(Array.isArray(m) ? m : []);
   };
 
   const scheduleMeeting = async () => {
@@ -49,6 +53,7 @@ export default function ManagerMeeting() {
     const dt = new Date(`${schedDate}T${schedTime}`);
     const m = await apiClient.entities.Meeting.create({
       group_name: groupName,
+      group_id: groupId || undefined,
       scheduled_date: dt.toISOString(),
       status: "scheduled",
       current_section: 0,

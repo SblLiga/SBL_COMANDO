@@ -1,14 +1,16 @@
+import hmac
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
 from app.auth.jwt import create_access_token
+from app.auth.rate_limit import rate_limit
 from app.auth.schemas import (
     ChangePasswordRequest,
     LoginRequest,
@@ -41,6 +43,8 @@ _FORBIDDEN_ME_FIELDS = {
     "email",
     "password_hash",
     "email_verified",
+    "group_id",
+    "is_active",
 }
 
 
@@ -68,8 +72,8 @@ def _otp_response(email: str, code: str, sent: bool) -> dict:
         "email": email,
         "email_sent": sent,
     }
-    # Show code on screen when mail failed, or while temporary fallback is on.
-    if (not sent) or _otp_screen_fallback_enabled(settings):
+    # Show code on screen only while temporary fallback is explicitly on.
+    if _otp_screen_fallback_enabled(settings):
         payload["dev_otp"] = code
         payload["screen_fallback"] = True
     return payload
@@ -93,15 +97,14 @@ def _deliver_otp(db: Session, user: User) -> dict:
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest, db: Session = Depends(get_db)):
+def register(payload: RegisterRequest, request: Request, db: Session = Depends(get_db)):
+    rate_limit(request, key="register", limit=8, window_seconds=600)
     email = payload.email.strip().lower()
     existing = db.scalar(select(User).where(User.email == email))
     if existing:
         if existing.email_verified:
             raise HTTPException(status_code=400, detail="Email already registered")
-        # Unverified account: refresh password + re-issue OTP (recovery path)
-        existing.password_hash = hash_password(payload.password)
-        db.commit()
+        # Unverified account: re-issue OTP only — never overwrite password without proof.
         return _deliver_otp(db, existing)
 
     user = User(
@@ -120,7 +123,8 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/verify-otp", response_model=TokenResponse)
-def verify_otp(payload: VerifyOtpRequest, db: Session = Depends(get_db)):
+def verify_otp(payload: VerifyOtpRequest, request: Request, db: Session = Depends(get_db)):
+    rate_limit(request, key="verify-otp", limit=20, window_seconds=600)
     email = payload.email.strip().lower()
     user = db.scalar(select(User).where(User.email == email))
     if user is None:
@@ -136,19 +140,24 @@ def verify_otp(payload: VerifyOtpRequest, db: Session = Depends(get_db)):
     dev_bypass = _otp_screen_fallback_enabled(settings) and payload.otpCode == "000000"
 
     if not dev_bypass:
-        if token_row is None or token_row.code != payload.otpCode:
+        if token_row is None or not hmac.compare_digest(token_row.code, payload.otpCode):
             raise HTTPException(status_code=400, detail="Invalid verification code")
         if token_row.expires_at < datetime.now(timezone.utc):
             raise HTTPException(status_code=400, detail="Verification code expired")
 
     user.email_verified = True
+    # Consume all OTPs for this user so the code cannot be reused.
+    db.query(EmailVerificationToken).filter(
+        EmailVerificationToken.user_id == user.id
+    ).delete()
     db.commit()
     access_token = create_access_token(str(user.id))
     return TokenResponse(access_token=access_token)
 
 
 @router.post("/resend-otp")
-def resend_otp(payload: ResendOtpRequest, db: Session = Depends(get_db)):
+def resend_otp(payload: ResendOtpRequest, request: Request, db: Session = Depends(get_db)):
+    rate_limit(request, key="resend-otp", limit=5, window_seconds=600)
     email = payload.email.strip().lower()
     user = db.scalar(select(User).where(User.email == email))
     if user is None:
@@ -159,7 +168,8 @@ def resend_otp(payload: ResendOtpRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
+def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    rate_limit(request, key="login", limit=30, window_seconds=600)
     email = payload.email.strip().lower()
     user = db.scalar(select(User).where(User.email == email))
     if user is None or not verify_password(payload.password, user.password_hash):
@@ -221,7 +231,10 @@ def change_password(
 
 
 @router.post("/reset-password-request")
-def reset_password_request(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+def reset_password_request(
+    payload: ResetPasswordRequest, request: Request, db: Session = Depends(get_db)
+):
+    rate_limit(request, key="reset-password", limit=5, window_seconds=600)
     email = payload.email.strip().lower()
     user = db.scalar(select(User).where(User.email == email))
     if user is None:
@@ -241,11 +254,16 @@ def reset_password_request(payload: ResetPasswordRequest, db: Session = Depends(
         "message": "If the email exists, reset instructions were sent",
         "email_sent": sent,
     }
-    # Same temporary fallback as OTP: expose reset link when mail cannot be delivered.
-    if (not sent) or _otp_screen_fallback_enabled(settings):
+    # Never leak reset tokens in production. Non-prod screen fallback only when explicitly enabled.
+    if (not settings.is_production) and _otp_screen_fallback_enabled(settings):
         response["reset_token"] = token
         response["reset_url"] = reset_url
         response["screen_fallback"] = True
+    elif settings.is_production and not sent:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not send reset email. Try again later.",
+        )
     return response
 
 
