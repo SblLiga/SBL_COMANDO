@@ -2,14 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Outlet, Navigate, useLocation } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { needsOnboardingWizard, needsPayment } from "@/lib/postAuth";
-import { isSubscriptionActive, isSubscriptionStartPending } from "@/lib/calendarRules";
+import { isPendingAccessLocked } from "@/lib/subscriptionUtils";
 
-/**
- * Hard gate for deferred wait-window payers (start date in the future):
- * block Home/Goal/HQ/… and send them to /pending.
- * Incomplete onboarding may still finish on /onboarding.
- * Currently-active users are never locked.
- */
 export default function SubscriptionGate() {
   const location = useLocation();
   const [user, setUser] = useState(null);
@@ -71,9 +65,7 @@ export default function SubscriptionGate() {
     return <Navigate to="/payment" replace />;
   }
 
-  const isPendingAccessLocked =
-    !isSubscriptionActive(user) && isSubscriptionStartPending(user) && !user.group_id;
-  if (!isStaff && isPendingAccessLocked) {
+  if (!isStaff && isPendingAccessLocked(user)) {
     if (!user.onboarding_completed && location.pathname.startsWith("/onboarding")) {
       return <Outlet />;
     }
