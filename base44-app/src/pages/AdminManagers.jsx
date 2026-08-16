@@ -8,9 +8,18 @@ import UserAvatar from "@/components/UserAvatar";
 
 /**
  * Build admin-facing rows from Users + Members.
- * Paid/handoff users exist as User before onboarding creates a Member —
+ * Paid users exist as User before onboarding creates a Member —
  * Shuli must still be able to promote them to manager.
+ * Unpaid (inactive) users are hidden — they are not site members yet.
  */
+function isVisibleToAdmin(user) {
+  if (!user) return false;
+  if (user.role === "admin") return false;
+  // Managers always visible (staff). Everyone else only after payment.
+  if (user.role === "manager") return true;
+  return String(user.subscription_status || "").toLowerCase() === "active";
+}
+
 function buildRows(users, members) {
   const byUserId = new Map();
   for (const m of members) {
@@ -19,7 +28,7 @@ function buildRows(users, members) {
 
   const rows = [];
   for (const u of users) {
-    if (u.role === "admin") continue;
+    if (!isVisibleToAdmin(u)) continue;
     const member = byUserId.get(Number(u.id));
     rows.push({
       key: `user-${u.id}`,
@@ -31,13 +40,15 @@ function buildRows(users, members) {
       group_name: member?.group_name || null,
       role: u.role === "manager" || member?.role === "manager" ? "manager" : "user",
       has_member: Boolean(member),
+      subscription_status: u.subscription_status,
     });
   }
 
-  // Orphan members (no linked user) — keep visible for legacy data
+  // Orphan members (no linked user) — only managers (legacy); skip unpaid unknowns
   for (const m of members) {
     if (m.user_id != null) continue;
     if (m.role === "admin") continue;
+    if (m.role !== "manager") continue;
     rows.push({
       key: `member-${m.id}`,
       user_id: null,
@@ -46,7 +57,7 @@ function buildRows(users, members) {
       email: null,
       avatar_url: m.avatar_url,
       group_name: m.group_name || null,
-      role: m.role === "manager" ? "manager" : "user",
+      role: "manager",
       has_member: true,
     });
   }
@@ -174,7 +185,7 @@ export default function AdminManagers() {
       <PageHeader
         badge="אזור אדמין"
         title="מנהלות"
-        subtitle={`${managerCount} מנהלות · ${rows.length} משתמשים`}
+        subtitle={`${managerCount} מנהלות · ${rows.length} משלמים/פעילים`}
       />
 
       <button

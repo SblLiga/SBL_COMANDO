@@ -21,12 +21,26 @@ export default function AdminWheel() {
   useEffect(() => {
     (async () => {
       try {
-        const [m, g, me] = await Promise.all([
+        const [m, g, me, users] = await Promise.all([
           apiClient.entities.Member.list(),
           apiClient.entities.Group.list(),
           apiClient.auth.me(),
+          apiClient.entities.User.list(),
         ]);
-        setMembers(m);
+        const paidOrStaff = new Set(
+          (users || [])
+            .filter(
+              (u) =>
+                u.role === "manager" ||
+                u.role === "admin" ||
+                String(u.subscription_status || "").toLowerCase() === "active"
+            )
+            .map((u) => Number(u.id))
+        );
+        // Hide members linked to unpaid users; keep legacy orphans
+        setMembers(
+          (m || []).filter((row) => row.user_id == null || paidOrStaff.has(Number(row.user_id)))
+        );
         setGroups(g);
         setAdminUserId(me.id);
       } finally {
