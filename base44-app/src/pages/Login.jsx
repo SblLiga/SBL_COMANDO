@@ -14,11 +14,11 @@ function resolveReturnPath(searchParams, user, member = null) {
   if (role === "admin") {
     return postAuthPath(user, member);
   }
-  if (isPendingAccessLocked(user)) {
+  if (isPendingAccessLocked(user, member)) {
     if (role === "user" && !user?.onboarding_completed) return "/onboarding";
     return "/pending";
   }
-  if (role === "user" && shouldBypassOnboarding(user)) {
+  if (role === "user" && shouldBypassOnboarding(user, member)) {
     return postAuthPath(user, member);
   }
   if (role === "user" && !user?.onboarding_completed) {
