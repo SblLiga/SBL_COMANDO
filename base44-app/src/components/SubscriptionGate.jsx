@@ -70,8 +70,9 @@ export default function SubscriptionGate() {
     return <Navigate to="/payment" replace />;
   }
 
-  // Hard lock: no dashboard access until subscription_start_date.
-  if (!isStaff && isSubscriptionStartPending(user)) {
+  // Hard lock only for deferred wait-window users who are not already in a group.
+  const isPendingAccessLocked = isSubscriptionStartPending(user) && !user.group_id;
+  if (!isStaff && isPendingAccessLocked) {
     if (!user.onboarding_completed && location.pathname.startsWith("/onboarding")) {
       return <Outlet />;
     }

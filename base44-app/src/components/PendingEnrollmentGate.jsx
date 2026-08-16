@@ -35,7 +35,10 @@ export default function PendingEnrollmentGate() {
 
   if (!user) return <Navigate to="/login" replace />;
 
-  if (user.role === "user" && isSubscriptionStartPending(user)) {
+  const isPendingAccessLocked =
+    user.role === "user" && isSubscriptionStartPending(user) && !user.group_id;
+
+  if (isPendingAccessLocked) {
     const onOnboarding = location.pathname.startsWith("/onboarding");
     if (!user.onboarding_completed && onOnboarding) {
       return <Outlet />;
