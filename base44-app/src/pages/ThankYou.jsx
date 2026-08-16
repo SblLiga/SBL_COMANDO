@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 import { needsOnboardingWizard, postAuthPath } from "@/lib/postAuth";
+import { canAssignToGroup } from "@/lib/calendarRules";
 import { CheckCircle2, Loader2, PartyPopper } from "lucide-react";
 
 export default function ThankYou() {
@@ -99,6 +100,7 @@ export default function ThankYou() {
 
   const activeUser = latestUser || user;
   const isActive = settledRef.current || (Boolean(user || latestUser) && status === "active");
+  const waitEnrollment = Boolean(activeUser) && isActive && !canAssignToGroup(activeUser);
   const continuePath = isActive
     ? needsOnboardingWizard(activeUser, member)
       ? "/onboarding"
@@ -120,7 +122,9 @@ export default function ThankYou() {
             <div>
               <h1 className="font-display text-xl font-bold mb-2">התשלום התקבל!</h1>
               <p className="text-sm text-muted-foreground">
-                המנוי פעיל. אפשר להמשיך לבחירת המשימות ולהתחיל את המסע.
+                {waitEnrollment
+                  ? "המנוי פעיל. השיבוץ לקבוצות יפתח ב-25 בחודש — בינתיים נשלים את פרטי ההרשמה."
+                  : "המנוי פעיל. אפשר להמשיך לבחירת המשימות ולהתחיל את המסע."}
               </p>
             </div>
             <div className="flex items-center justify-center gap-2 text-sm text-primary font-medium">
@@ -131,7 +135,7 @@ export default function ThankYou() {
               onClick={() => navigate(continuePath, { replace: true })}
               className="w-full gold-gradient text-black font-bold rounded-xl py-3 text-sm"
             >
-              המשך לבחירת משימות
+              {waitEnrollment ? "המשך להשלמת ההרשמה" : "המשך לבחירת משימות"}
             </button>
           </>
         ) : (

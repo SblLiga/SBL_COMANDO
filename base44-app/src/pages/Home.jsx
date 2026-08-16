@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from "react";
 import apiClient from "@/api/apiClient";
-import { Flame, Zap, Trophy, Gift, AlertCircle, ChevronLeft, Bell, Users } from "lucide-react";
+import { Flame, Zap, Trophy, Gift, AlertCircle, ChevronLeft, Bell, Users, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
 import KpiCard from "@/components/KpiCard";
 import MotivationalQuote from "@/components/MotivationalQuote";
 import UserAvatar from "@/components/UserAvatar";
 import { mediaUrl, preferDurableAvatar } from "@/lib/mediaUrl";
+import {
+  canAssignToGroup,
+  isSubscriptionStartPending,
+  isGroupAssignmentOpenDay,
+} from "@/lib/calendarRules";
 
 export default function Home() {
   const [goal, setGoal] = useState(null);
@@ -127,9 +132,29 @@ export default function Home() {
   const urgent = tasks.find((t) => !t.is_completed && t.priority === "דחוף");
   const avatarSrc = preferDurableAvatar(myMember?.avatar_url, meUser?.avatar_url);
 
+  const noGroup = !group && !myMember?.group_id && !meUser?.group_id;
+  const showAssignmentWait =
+    meUser?.role === "user" &&
+    meUser?.subscription_status === "active" &&
+    (isSubscriptionStartPending(meUser) || (noGroup && !isGroupAssignmentOpenDay()) || (noGroup && !canAssignToGroup(meUser)));
+
   return (
     <div className="p-4 space-y-5 overflow-x-hidden">
-      <div className="pt-3 pb-1 flex items-center gap-3">
+      {showAssignmentWait && (
+        <div className="rounded-2xl border-2 border-primary/50 bg-primary/10 px-4 py-3.5 flex items-start gap-3">
+          <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+            <Clock className="w-5 h-5 text-primary" />
+          </div>
+          <div className="min-w-0 text-right">
+            <p className="text-sm font-bold text-primary">השיבוץ לקבוצות יפתח ב-25 בחודש</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+              המנוי פעיל. עד אז אפשר להמשיך בגלגל האישי — השיבוץ לקבוצה ייפתח בחלון 25–26.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="pt-1 pb-1 flex items-center gap-3">
         <UserAvatar
           src={avatarSrc}
           name={myMember?.name || "משתמש"}
@@ -141,7 +166,7 @@ export default function Home() {
         </div>
       </div>
 
-      {group && (
+      {group ? (
         <Link to="/hq" className="block">
           <div className="card-lux p-3 flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
@@ -154,7 +179,19 @@ export default function Home() {
             <ChevronLeft className="w-5 h-5 text-muted-foreground" />
           </div>
         </Link>
-      )}
+      ) : showAssignmentWait ? (
+        <div className="card-lux p-4 flex items-center gap-3 border border-primary/25">
+          <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+            <Users className="w-5 h-5 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold">ממתינים לשיבוץ לקבוצה</p>
+            <p className="text-[10px] text-muted-foreground">
+              חלון השיבוץ יפתח ב-25 בחודש — אין צורך לפעולה נוספת כרגע.
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <div className="card-gold-rim p-5 text-center">
         <p className="text-xs text-muted-foreground mb-1">התקדמות כללית אל היעד</p>

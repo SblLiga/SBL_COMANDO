@@ -10,7 +10,7 @@ import StepManager from "@/components/onboarding/StepManager";
 import StepTasks from "@/components/onboarding/StepTasks";
 import StepReward from "@/components/onboarding/StepReward";
 import { toast } from "@/components/ui/use-toast";
-import { currentCycleMonth, needsMonthlyOnboarding } from "@/lib/calendarRules";
+import { currentCycleMonth, needsMonthlyOnboarding, canAssignToGroup } from "@/lib/calendarRules";
 import { needsOnboardingWizard, needsPayment } from "@/lib/postAuth";
 import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUpload";
 
@@ -32,6 +32,9 @@ export default function Onboarding() {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isNewCycle, setIsNewCycle] = useState(false);
+
+  const assignmentOpen = canAssignToGroup(user);
+  const waitEnrollment = Boolean(user) && !assignmentOpen;
 
   useEffect(() => {
     (async () => {
@@ -194,12 +197,14 @@ export default function Onboarding() {
         });
 
         toast({
-          title: isNewCycle ? "סבב חדש נשמר" : "נרשמת לרשימת המתנה",
-          description: isNewCycle
-            ? "הגלגל החדש מוכן. השיבוץ לקבוצה ייפתח לפי לוח השנה."
-            : "נשבץ אותך לקבוצה מה־25 לחודש.",
+          title: isNewCycle ? "סבב חדש נשמר" : "הרשמה הושלמה",
+          description: waitEnrollment
+            ? "המנוי פעיל. השיבוץ לקבוצות יפתח ב-25 בחודש — נתראה אז!"
+            : isNewCycle
+              ? "הגלגל החדש מוכן. השיבוץ לקבוצה ייפתח לפי לוח השנה."
+              : "נשבץ אותך לקבוצה מה־25 לחודש.",
         });
-        navigate("/");
+        navigate("/", { replace: true });
         return;
       }
 
@@ -270,7 +275,7 @@ export default function Onboarding() {
           ? `גלגל משימות חדש + שיבוץ לקבוצת ${group.name}`
           : `שובצת לקבוצת ${group.name}`,
       });
-      navigate("/");
+      navigate("/", { replace: true });
     } catch (err) {
       console.error("[Onboarding] finish failed", err);
       toast({
@@ -291,8 +296,13 @@ export default function Onboarding() {
     );
   }
 
-  // Reward text is required; image is optional
-  const canNext = [!!target, !!gender, !!manager, tasks.length >= 4, !!rewardText.trim()][step];
+  // Reward text is required; image is optional.
+  // Wait enrollment may finish from the assignment step (no tasks/reward yet).
+  const canNext = waitEnrollment && step === 2
+    ? Boolean(target && gender && manager)
+    : [!!target, !!gender, !!manager, tasks.length >= 4, !!rewardText.trim()][step];
+
+  const finishFromWaitStep = waitEnrollment && step === 2;
 
   return (
     <div className="min-h-screen bg-background p-4" dir="rtl">
@@ -345,39 +355,61 @@ export default function Onboarding() {
             />
           )}
 
-          <div className="flex gap-2 pt-2">
-            {step > 0 && (
+          <div className="flex flex-col gap-2 pt-2">
+            <div className="flex gap-2">
+              {step > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setStep(step - 1)}
+                  className="flex-1 bg-muted rounded-xl py-2.5 text-sm font-bold"
+                >
+                  חזרה
+                </button>
+              )}
+              {finishFromWaitStep ? (
+                <button
+                  type="button"
+                  onClick={finish}
+                  disabled={!canNext || submitting}
+                  className="flex-1 gold-gradient text-black rounded-xl py-2.5 text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "סיום והבנתי"}
+                </button>
+              ) : step < STEPS.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={() => canNext && setStep(step + 1)}
+                  disabled={!canNext}
+                  className="flex-1 gold-bg text-black rounded-xl py-2.5 text-sm font-bold disabled:opacity-40"
+                >
+                  {waitEnrollment ? "המשך להשלמת ההרשמה ←" : "המשך ←"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={finish}
+                  disabled={!canNext || submitting || uploading}
+                  className="flex-1 gold-gradient text-black rounded-xl py-2.5 text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  {submitting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : waitEnrollment ? (
+                    "סיום והבנתי"
+                  ) : isNewCycle ? (
+                    "סיום והתחלת סבב חדש 🚀"
+                  ) : (
+                    "סיום והתחלה! 🚀"
+                  )}
+                </button>
+              )}
+            </div>
+            {finishFromWaitStep && (
               <button
                 type="button"
-                onClick={() => setStep(step - 1)}
-                className="flex-1 bg-muted rounded-xl py-2.5 text-sm font-bold"
+                onClick={() => setStep(3)}
+                className="w-full text-xs text-muted-foreground underline py-1"
               >
-                חזרה
-              </button>
-            )}
-            {step < STEPS.length - 1 ? (
-              <button
-                type="button"
-                onClick={() => canNext && setStep(step + 1)}
-                disabled={!canNext}
-                className="flex-1 gold-bg text-black rounded-xl py-2.5 text-sm font-bold disabled:opacity-40"
-              >
-                המשך ←
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={finish}
-                disabled={!canNext || submitting || uploading}
-                className="flex-1 gold-gradient text-black rounded-xl py-2.5 text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2"
-              >
-                {submitting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : isNewCycle ? (
-                  "סיום והתחלת סבב חדש 🚀"
-                ) : (
-                  "סיום והתחלה! 🚀"
-                )}
+                רוצה להגדיר גם גלגל משימות ותגמול עכשיו?
               </button>
             )}
           </div>

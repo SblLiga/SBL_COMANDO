@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Outlet, Navigate } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { needsOnboardingWizard, needsPayment } from "@/lib/postAuth";
+import { canAssignToGroup, isSubscriptionStartPending } from "@/lib/calendarRules";
 
 export default function SubscriptionGate() {
   const [user, setUser] = useState(null);
@@ -64,7 +65,14 @@ export default function SubscriptionGate() {
     return <Navigate to="/payment" replace />;
   }
 
-  if (!isStaff && (needsOnboardingWizard(user, member) || !hasWheel)) {
+  if (!isStaff && needsOnboardingWizard(user, member)) {
+    return <Navigate to="/onboarding" replace />;
+  }
+
+  // Wait-window enrollment may finish without tasks yet — do not bounce to onboarding.
+  const pendingEnrollment =
+    isSubscriptionStartPending(user) || (!canAssignToGroup(user) && !member?.group_id);
+  if (!isStaff && user.onboarding_completed && !hasWheel && !pendingEnrollment) {
     return <Navigate to="/onboarding" replace />;
   }
 

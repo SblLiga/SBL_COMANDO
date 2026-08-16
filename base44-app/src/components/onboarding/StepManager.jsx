@@ -23,27 +23,28 @@ export default function StepManager({
 
   if (!assignmentOpen) {
     return (
-      <>
+      <div className="space-y-4">
         <div className="text-center">
-          <Clock className="w-8 h-8 text-primary mx-auto mb-2" />
-          <h2 className="font-display text-xl font-bold">ממתינים לחלון השיבוץ</h2>
-          <p className="text-xs text-muted-foreground mt-1">
-            השיבוץ יתחדש ב-25 בחודש
-          </p>
-        </div>
-        <div className="card-lux p-4 space-y-2">
-          <p className="text-sm font-bold">השיבוץ לקבוצה סגור כרגע</p>
-          <p className="text-xs text-muted-foreground">
-            יעד: {target} · {gender === "female" ? "נשים" : "גברים"}.
-            {user?.subscription_status === "active"
-              ? " המנוי פעיל — אין צורך לשלם שוב. השיבוץ ייפתח ב־25–26 לחודש."
-              : " לאחר תשלום מוצלח תוכלו להשתבץ בחלון השיבוץ (25–26)."}
-          </p>
-          <div className="flex items-center gap-2 text-xs text-primary">
-            <Check className="w-4 h-4" /> רשימת המתנה נבחרה
+          <div className="w-14 h-14 rounded-full bg-primary/15 flex items-center justify-center mx-auto mb-3">
+            <Clock className="w-7 h-7 text-primary" />
           </div>
+          <h2 className="font-display text-xl font-bold">הרשמה נקלטה</h2>
         </div>
-      </>
+        <div className="rounded-2xl border-2 border-primary/50 bg-primary/10 p-5 space-y-3 text-center">
+          <Check className="w-8 h-8 text-primary mx-auto" />
+          <p className="text-base font-bold leading-snug">
+            הרשמתך נקלטה בהצלחה! המנוי שלך פעיל.
+          </p>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            חלון השיבוץ לקבוצות יפתח ב-25 בחודש.
+          </p>
+          {(target || gender) && (
+            <p className="text-[11px] text-muted-foreground pt-1 border-t border-primary/20">
+              יעד: {target || "—"} · {gender === "female" ? "נשים" : gender === "male" ? "גברים" : "—"}
+            </p>
+          )}
+        </div>
+      </div>
     );
   }
 
