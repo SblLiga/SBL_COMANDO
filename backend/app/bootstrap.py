@@ -162,46 +162,7 @@ PROD_HANDOFF_JUNK_EMAILS = frozenset(
     }
 )
 
-# Client handoff emails (create-only). Passwords MUST come from env / Secrets Manager —
-# never store plaintext credentials in git.
-CLIENT_HANDOFF_ACCOUNTS = (
-    {
-        "email": "sbl.school1@gmail.com",
-        "password_env": "HANDOFF_PASSWORD_MICHAL",
-        "full_name": "מיכל מזכירה",
-        "role": "admin",
-    },
-    {
-        "email": "shuliyazdi2000@gmail.com",
-        "password_env": "HANDOFF_PASSWORD_SHULI",
-        "full_name": "שולי בן לולו",
-        "role": "admin",
-    },
-    {
-        "email": "e6666668@gmail.com",
-        "password_env": "HANDOFF_PASSWORD_ESTI",
-        "full_name": "אסתי לוי",
-        "role": "user",
-    },
-    {
-        "email": "nech0329@gmail.com",
-        "password_env": "HANDOFF_PASSWORD_NEHAMA",
-        "full_name": "נחמה גלינסקי",
-        "role": "user",
-    },
-    {
-        "email": "yaaras9@gmail.com",
-        "password_env": "HANDOFF_PASSWORD_ITAY",
-        "full_name": "איתי פתיה",
-        "role": "user",
-    },
-    {
-        "email": "tehilakadosh10@gmail.com",
-        "password_env": "HANDOFF_PASSWORD_TEHILA",
-        "full_name": "תהילה קדוש",
-        "role": "user",
-    },
-)
+from app.handoff_accounts import CLIENT_HANDOFF_ACCOUNTS
 
 _DEMO_TASKS = (
     "שיחת מכירה יומית",
@@ -741,8 +702,15 @@ def ensure_client_handoff_accounts(session: Session) -> int:
             if not user.email_verified:
                 user.email_verified = True
                 touched = True
+            if not user.is_active:
+                user.is_active = True
+                touched = True
             if is_admin and not user.onboarding_completed:
                 user.onboarding_completed = True
+                touched = True
+            # Paid commitment: ensure active subscription without touching password.
+            if account.get("paid_commitment") and user.subscription_status != "active":
+                activate_subscription(user)
                 touched = True
             if touched:
                 changed += 1
