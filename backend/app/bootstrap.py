@@ -651,7 +651,21 @@ def ensure_production_admin(session: Session, settings: Settings) -> bool:
     return True
 
 
-def ensure_client_handoff_accounts(session: Session) -> int:
+def _handoff_password(account: dict, settings: Settings | None) -> str:
+    env_key = (account.get("password_env") or "").strip()
+    from_settings = ""
+    if settings is not None:
+        attr = {
+            "HANDOFF_PASSWORD_COMMITMENT": "handoff_password_commitment",
+            "HANDOFF_PASSWORD_MICHAL": "handoff_password_michal",
+            "HANDOFF_PASSWORD_SHULI": "handoff_password_shuli",
+        }.get(env_key)
+        if attr:
+            from_settings = (getattr(settings, attr, None) or "").strip()
+    return from_settings or (os.environ.get(env_key) or "").strip()
+
+
+def ensure_client_handoff_accounts(session: Session, settings: Settings | None = None) -> int:
     """
     Create missing handoff accounts once.
     Never overwrite password_hash or renew subscription for existing users
@@ -663,7 +677,7 @@ def ensure_client_handoff_accounts(session: Session) -> int:
         user = session.scalar(select(User).where(User.email == email))
         is_admin = account["role"] == "admin"
         if user is None:
-            password = (os.environ.get(account.get("password_env") or "") or "").strip()
+            password = _handoff_password(account, settings)
             if not password:
                 logger.warning(
                     "Handoff account %s missing — set %s to create (create-only)",
@@ -840,7 +854,7 @@ def ensure_manager_operational_alerts(session: Session) -> int:
 def run_database_bootstrap(session: Session, settings: Settings) -> dict[str, bool | int]:
     if is_production(settings):
         created_admin = ensure_production_admin(session, settings)
-        handoff = ensure_client_handoff_accounts(session)
+        handoff = ensure_client_handoff_accounts(session, settings)
         qa_cleaned = cleanup_prod_qa_accounts(session)
         alerts = ensure_manager_operational_alerts(session)
         return {
@@ -858,7 +872,7 @@ def run_database_bootstrap(session: Session, settings: Settings) -> dict[str, bo
         # Upsert demos even when other users already exist
         repaired = ensure_dev_seed_accounts(session, settings)
         seeded = repaired > 0
-    handoff = ensure_client_handoff_accounts(session)
+    handoff = ensure_client_handoff_accounts(session, settings)
     alerts = ensure_manager_operational_alerts(session)
 
     return {

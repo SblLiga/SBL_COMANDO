@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     # DEV seed only — never use as a real secret store; override via APP_SECRET_ARN
     dev_admin_password: str = Field(default="Admin123!", alias="DEV_ADMIN_PASSWORD")
 
+    # Shared temp password for Grow ₪1 payers created on first boot (create-only).
+    handoff_password_commitment: str = Field(default="", alias="HANDOFF_PASSWORD_COMMITMENT")
+    handoff_password_michal: str = Field(default="", alias="HANDOFF_PASSWORD_MICHAL")
+    handoff_password_shuli: str = Field(default="", alias="HANDOFF_PASSWORD_SHULI")
+
     mail_from: str = Field(default="", alias="MAIL_FROM")
     app_public_url: str = Field(default="", alias="APP_PUBLIC_URL")
     aws_region: str = Field(default="", alias="AWS_REGION")
@@ -110,6 +115,18 @@ class Settings(BaseSettings):
             "admin_email": ("admin_email", "ADMIN_EMAIL"),
             "admin_password": ("admin_password", "ADMIN_PASSWORD"),
             "dev_admin_password": ("dev_admin_password", "DEV_ADMIN_PASSWORD"),
+            "handoff_password_commitment": (
+                "handoff_password_commitment",
+                "HANDOFF_PASSWORD_COMMITMENT",
+            ),
+            "handoff_password_michal": (
+                "handoff_password_michal",
+                "HANDOFF_PASSWORD_MICHAL",
+            ),
+            "handoff_password_shuli": (
+                "handoff_password_shuli",
+                "HANDOFF_PASSWORD_SHULI",
+            ),
         }
         updates = {}
         for attr, keys in mapping.items():
