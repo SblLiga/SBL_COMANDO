@@ -698,6 +698,14 @@ def ensure_client_handoff_accounts(session: Session, settings: Settings | None =
             session.add(user)
             session.flush()
             activate_subscription(user)
+            # Paid ₪1 outside the site: they must be able to log in and change password now.
+            # Do not leave start in the future (wait-window would hard-lock /pending).
+            if account.get("paid_commitment") and user.subscription_start_date:
+                start = user.subscription_start_date
+                if start.tzinfo is None:
+                    start = start.replace(tzinfo=timezone.utc)
+                if start > datetime.now(timezone.utc):
+                    user.subscription_start_date = datetime.now(timezone.utc)
             changed += 1
             logger.info(
                 "Handoff account created %s (%s)",
@@ -725,6 +733,12 @@ def ensure_client_handoff_accounts(session: Session, settings: Settings | None =
             # Paid commitment: ensure active subscription without touching password.
             if account.get("paid_commitment") and user.subscription_status != "active":
                 activate_subscription(user)
+                if user.subscription_start_date:
+                    start = user.subscription_start_date
+                    if start.tzinfo is None:
+                        start = start.replace(tzinfo=timezone.utc)
+                    if start > datetime.now(timezone.utc):
+                        user.subscription_start_date = datetime.now(timezone.utc)
                 touched = True
             if touched:
                 changed += 1
