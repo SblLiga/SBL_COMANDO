@@ -221,7 +221,8 @@ export default function Onboarding() {
                 ? "הגלגל החדש מוכן. השיבוץ לקבוצה ייפתח לפי לוח השנה."
                 : "נשבץ אותך לקבוצה מה־25 לחודש.",
         });
-        navigate(hardPendingLock ? "/pending" : "/", { replace: true });
+        // No group after waiting_list finish — always land on /pending (not dashboard).
+        navigate("/pending", { replace: true });
         return;
       }
 
