@@ -414,15 +414,6 @@ export default function Onboarding() {
                 </button>
               )}
             </div>
-            {finishFromWaitStep && (
-              <button
-                type="button"
-                onClick={() => setStep(3)}
-                className="w-full text-xs text-muted-foreground underline py-1"
-              >
-                רוצה להגדיר גם גלגל משימות ותגמול עכשיו?
-              </button>
-            )}
           </div>
         </div>
       </div>
