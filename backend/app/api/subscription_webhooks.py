@@ -129,6 +129,47 @@ def verify_webhook_auth(
     return False
 
 
+def _email_from_purchase_custom_fields(payload: dict, data: dict) -> str:
+    """
+    Fallback for Grow ₪1 / standing-order payloads that put registration email
+    only in purchaseCustomField (e.g. label "המייל שאיתו נרשמתם").
+    Does not override payerEmail / custom1 — callers use this only when those are empty.
+    """
+    buckets = (
+        payload.get("purchaseCustomField"),
+        payload.get("purchaseCustomFields"),
+        data.get("purchaseCustomField"),
+        data.get("purchaseCustomFields"),
+    )
+    for bucket in buckets:
+        if not isinstance(bucket, list):
+            continue
+        for item in bucket:
+            if not isinstance(item, dict):
+                continue
+            label = str(
+                item.get("name")
+                or item.get("label")
+                or item.get("fieldName")
+                or item.get("key")
+                or ""
+            ).strip().lower()
+            value = str(item.get("value") or item.get("fieldValue") or "").strip()
+            if not value or "@" not in value:
+                continue
+            # Prefer the registration-email custom field; otherwise first email-looking value.
+            if "מייל" in label or "mail" in label or "email" in label:
+                return value.lower()
+        # Second pass: any email-shaped value if no labeled mail field matched.
+        for item in bucket:
+            if not isinstance(item, dict):
+                continue
+            value = str(item.get("value") or item.get("fieldValue") or "").strip()
+            if value and "@" in value and "." in value.split("@")[-1]:
+                return value.lower()
+    return ""
+
+
 def resolve_user(db: Session, payload: dict) -> User | None:
     # Meshulam/Grow puts our user id in custom1 (see payment_url_for_user / buildGrowPaymentUrl).
     # Never fall back to payload["id"] — that is Grow's transaction id, not our users.id.
@@ -172,6 +213,9 @@ def resolve_user(db: Session, payload: dict) -> User | None:
         or ""
     )
     email = str(email).strip().lower()
+    # Non-breaking fallback: Grow custom checkout fields (only when flat email missing).
+    if not email:
+        email = _email_from_purchase_custom_fields(payload, data)
     if not email:
         return None
     return db.scalar(select(User).where(User.email == email))
