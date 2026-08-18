@@ -266,8 +266,9 @@ export default function Onboarding() {
         group_id: group.id,
         role: "user",
         status: "בעקבות",
+        // New monthly cycle always opens clean XP (league + wheel); assignment-only keeps scores.
         progress: assignmentOnly ? existing?.progress || 0 : 0,
-        xp: existing?.xp || 0,
+        xp: assignmentOnly ? existing?.xp || 0 : 0,
         streak: assignmentOnly ? existing?.streak || 0 : 0,
       };
       if (existing) {

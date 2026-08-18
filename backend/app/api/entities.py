@@ -7,6 +7,7 @@ from sqlalchemy import asc, desc, select
 from sqlalchemy.orm import Session
 
 from app.auth.deps import require_active_subscription
+from app.cycle_xp import current_cycle_month, ensure_goal_cycle, ensure_member_cycle
 from app.database import get_db
 from app.media_urls import heal_member_avatar
 from app.models import Goal, Group, Member, User
@@ -66,14 +67,18 @@ def _coerce_payload(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _serialize(entity_name: str, row: Any, db: Session | None = None) -> dict[str, Any]:
-    if entity_name == "Member" and db is not None and isinstance(row, Member):
-        heal_member_avatar(db, row)
+    if db is not None:
+        if entity_name == "Member" and isinstance(row, Member):
+            heal_member_avatar(db, row)
+            ensure_member_cycle(db, row)
+        elif entity_name == "Goal" and isinstance(row, Goal):
+            ensure_goal_cycle(db, row)
     return SERIALIZERS[entity_name](row)
 
 
 def _serialize_many(entity_name: str, rows: list[Any], db: Session) -> list[dict[str, Any]]:
     out = [_serialize(entity_name, row, db) for row in rows]
-    if entity_name == "Member":
+    if entity_name in {"Member", "Goal"}:
         db.commit()
     return out
 
@@ -302,7 +307,7 @@ def get_entity(
     if not _can_access_row(entity_name, row, current_user, db):
         raise HTTPException(status_code=403, detail="Forbidden")
     payload = _serialize(entity_name, row, db)
-    if entity_name == "Member":
+    if entity_name in {"Member", "Goal"}:
         db.commit()
     return payload
 
@@ -328,6 +333,22 @@ def create_entity(
             data.pop("role", None)
         if entity_name == "Notification":
             data["target_user_id"] = current_user.id
+    elif current_user.role in {"manager", "admin"}:
+        # Personal wheel: force ownership onto the acting staff account.
+        if entity_name == "Goal":
+            data["owner_user_id"] = current_user.id
+        if entity_name == "Member":
+            uid = data.get("user_id")
+            if uid is None or int(uid) == int(current_user.id):
+                data["user_id"] = current_user.id
+                # Managers cannot self-assign role via strip; restore from auth role.
+                if current_user.role == "manager":
+                    data["role"] = "manager"
+                elif current_user.role == "admin" and not data.get("role"):
+                    data["role"] = "admin"
+
+    if entity_name == "Goal" and not data.get("cycle_month"):
+        data["cycle_month"] = current_cycle_month()
 
     allowed = {c.name for c in model.__table__.columns} - {"id", "created_at"}
     row = model(**{k: v for k, v in data.items() if k in allowed})

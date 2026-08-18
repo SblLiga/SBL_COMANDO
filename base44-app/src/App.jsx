@@ -97,6 +97,7 @@ const AuthenticatedApp = () => {
           <Route element={<RoleRoute allow="manager" />}>
             <Route element={<ManagerLayout />}>
               <Route path="/manager" element={<ManagerDashboard />} />
+              <Route path="/manager/goal" element={<GoalPage />} />
               <Route path="/manager/group" element={<ManagerGroup />} />
               <Route path="/manager/managers" element={<ManagerManagers />} />
               <Route path="/manager/league" element={<League zoneBadge="אזור מנהל" readOnly={false} />} />
@@ -109,6 +110,7 @@ const AuthenticatedApp = () => {
           <Route element={<RoleRoute allow="admin" />}>
             <Route element={<AdminLayout />}>
               <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin/my-goal" element={<GoalPage />} />
               <Route path="/admin/wheel" element={<AdminWheel />} />
               <Route path="/admin/league" element={<League zoneBadge="אזור אדמין" readOnly={false} />} />
               <Route path="/admin/managers" element={<AdminManagers />} />

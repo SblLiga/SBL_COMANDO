@@ -26,7 +26,11 @@ export default function League({ zoneBadge = "אזור משתמש", readOnly = t
           apiClient.entities.Member.list(),
           apiClient.auth.me().catch(() => null),
         ]);
-        setMembers(m.filter((row) => row.role === "user"));
+        // League: users + managers; admins stay out of the board.
+        setMembers(m.filter((row) => {
+          const role = (row.role || "user").toLowerCase();
+          return role === "user" || role === "manager";
+        }));
         if (u) setCurrentUserId(u.id);
       } finally {
         setLoading(false);
@@ -54,6 +58,12 @@ export default function League({ zoneBadge = "אזור משתמש", readOnly = t
   const podium = isSearching ? [] : filtered.slice(0, 3);
   const rest = isSearching ? filtered : filtered.slice(3);
   const podiumOrder = [1, 0, 2]; // silver, gold, bronze → left, center, right (RTL)
+  const isManager = (m) => (m.role || "").toLowerCase() === "manager";
+  const ManagerBadge = () => (
+    <span className="inline-block text-[9px] font-medium text-muted-foreground/80 border border-border/60 rounded px-1 py-px align-middle mr-1">
+      מנהל
+    </span>
+  );
 
   return (
     <div className="p-4 space-y-5 pb-4">
@@ -116,7 +126,10 @@ export default function League({ zoneBadge = "אזור משתמש", readOnly = t
                   </div>
                 </div>
                 <div className="text-center w-full px-1">
-                  <p className="text-xs font-bold truncate">{m.name}</p>
+                  <p className="text-xs font-bold truncate">
+                    {m.name}
+                    {isManager(m) && <ManagerBadge />}
+                  </p>
                   <p className="text-[11px] gold-text font-bold">{m.xp || 0} XP</p>
                 </div>
                 <div className={`w-full ${heightClass} ${podiumBg} rounded-t-xl flex items-center justify-center border border-border shadow-md`}>
@@ -139,7 +152,11 @@ export default function League({ zoneBadge = "אזור משתמש", readOnly = t
             <span className="font-display text-lg font-bold text-muted-foreground w-6 text-center">{isSearching ? i + 1 : i + 4}</span>
             <UserAvatar src={m.avatar_url} name={m.name} className="w-9 h-9 ring-1 ring-border" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{m.name} {isMe(m) && <span className="text-primary text-[10px]">(את/ה)</span>}</p>
+              <p className="text-sm font-medium truncate">
+                {m.name}
+                {isManager(m) && <ManagerBadge />}
+                {isMe(m) && <span className="text-primary text-[10px]"> (את/ה)</span>}
+              </p>
               <p className="text-[10px] text-muted-foreground truncate">{m.group_name}</p>
             </div>
             <div className={`w-2 h-2 rounded-full ${statusDot[m.status] || "bg-gray-500"}`} />

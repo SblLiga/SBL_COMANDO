@@ -2,10 +2,11 @@ import React from "react";
 import { Link, Outlet } from "react-router-dom";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
-import { LayoutDashboard, Target, Trophy, Users, Flag, Bell, UserRound } from "lucide-react";
+import { LayoutDashboard, CircleDot, Target, Trophy, Users, Flag, Bell, UserRound } from "lucide-react";
 
 const items = [
   { to: "/admin", label: "בית", icon: LayoutDashboard },
+  { to: "/admin/my-goal", label: "היעד שלי", icon: CircleDot },
   { to: "/admin/wheel", label: "הגלגל", icon: Target },
   { to: "/admin/league", label: "ליגה", icon: Trophy },
   { to: "/admin/managers", label: "מנהלות", icon: Users },

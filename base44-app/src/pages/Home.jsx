@@ -11,6 +11,7 @@ import {
   isSubscriptionStartPending,
   isGroupAssignmentOpenDay,
 } from "@/lib/calendarRules";
+import { ensureMyGoal } from "@/lib/myGoal";
 
 export default function Home() {
   const [goal, setGoal] = useState(null);
@@ -24,25 +25,12 @@ export default function Home() {
   useEffect(() => {
     (async () => {
       try {
-        const user = await apiClient.auth.me();
+        // ensureMyGoal also rolls monthly XP when cycle_month changes (day ≥ 25).
+        const ensured = await ensureMyGoal(apiClient);
+        const user = ensured.user;
         setMeUser(user);
-        let myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
-        let me = myMembers[0];
-
-        let g = null;
-        if (me?.goal_id) {
-          try {
-            g = await apiClient.entities.Goal.get(me.goal_id);
-          } catch {
-            g = null;
-          }
-        }
-        if (!g) {
-          const owned = await apiClient.entities.Goal.filter({ owner_user_id: user.id });
-          g = owned.sort(
-            (a, b) => new Date(b.created_date || 0) - new Date(a.created_date || 0)
-          )[0] || null;
-        }
+        let me = ensured.member;
+        let g = ensured.goal;
 
         // Streak: increment on consecutive calendar-day login
         const today = new Date().toDateString();
