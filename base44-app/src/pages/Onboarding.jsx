@@ -14,9 +14,11 @@ import { currentCycleMonth, needsMonthlyOnboarding, canAssignToGroup } from "@/l
 import { needsOnboardingWizard, needsPayment } from "@/lib/postAuth";
 import { isPendingAccessLocked, shouldBypassOnboarding } from "@/lib/subscriptionUtils";
 import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUpload";
+import { useAuth } from "@/lib/AuthContext";
 
 export default function Onboarding() {
   const navigate = useNavigate();
+  const { applyUser } = useAuth();
   const [step, setStep] = useState(0);
   const [user, setUser] = useState(null);
   const [target, setTarget] = useState("");
@@ -197,13 +199,17 @@ export default function Onboarding() {
           await apiClient.entities.Member.create({ ...payload, user_id: user.id });
         }
 
-        await apiClient.auth.updateMe({
+        const me = await apiClient.auth.updateMe({
           gender,
           target,
           group_id: null,
           onboarding_completed: true,
           onboarding_completed_at: new Date().toISOString(),
         });
+        if (me) {
+          applyUser?.(me);
+          setUser(me);
+        }
 
         toast({
           title: isNewCycle ? "סבב חדש נשמר" : "הרשמה הושלמה",
@@ -272,13 +278,17 @@ export default function Onboarding() {
         });
       }
 
-      await apiClient.auth.updateMe({
+      const me = await apiClient.auth.updateMe({
         gender,
         target,
         group_id: group.id,
         onboarding_completed: true,
         onboarding_completed_at: new Date().toISOString(),
       });
+      if (me) {
+        applyUser?.(me);
+        setUser(me);
+      }
 
       toast({
         title: isNewCycle ? "סבב חדש התחיל!" : "ההרשמה הושלמה",
