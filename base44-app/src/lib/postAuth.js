@@ -1,4 +1,4 @@
-import { needsMonthlyOnboarding, needsWaitingListAssignment } from "@/lib/calendarRules";
+import { canAssignToGroup, needsMonthlyOnboarding, needsWaitingListAssignment } from "@/lib/calendarRules";
 import { homePathForRole } from "@/components/RoleRoute";
 import { isAdmin, isPendingAccessLocked, shouldBypassOnboarding } from "@/lib/subscriptionUtils";
 
@@ -31,6 +31,12 @@ export function postAuthPath(user, member = null) {
   if (needsPayment(user)) return "/payment";
   if (isPendingAccessLocked(user, member)) {
     if (user?.role === "user" && !user.onboarding_completed) return "/onboarding";
+    return "/pending";
+  }
+  // Waiting-list / unassigned users outside 25–26 stay on /pending (not dashboard).
+  const hasGroup = Boolean(user?.group_id || member?.group_id);
+  if (user?.role === "user" && !hasGroup && !canAssignToGroup(user)) {
+    if (!user.onboarding_completed) return "/onboarding";
     return "/pending";
   }
   if (shouldBypassOnboarding(user, member)) return homePathForRole(user?.role);
