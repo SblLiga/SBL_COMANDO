@@ -3,6 +3,7 @@ import { Outlet, Navigate, useLocation } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 import { needsOnboardingWizard, needsPayment } from "@/lib/postAuth";
+import { canAssignToGroup, isSubscriptionStartPending } from "@/lib/calendarRules";
 import {
   isAdmin,
   isPendingAccessLocked,
@@ -116,7 +117,10 @@ export default function SubscriptionGate() {
     return <Navigate to="/onboarding" replace />;
   }
 
-  if (!isManager && !bypass && user.onboarding_completed && !hasWheel) {
+  // Wait-window finish may create a goal with zero tasks — do not bounce to /onboarding.
+  const pendingEnrollment =
+    isSubscriptionStartPending(user) || (!canAssignToGroup(user) && !member?.group_id);
+  if (!isManager && !bypass && user.onboarding_completed && !hasWheel && !pendingEnrollment) {
     return <Navigate to="/onboarding" replace />;
   }
 
