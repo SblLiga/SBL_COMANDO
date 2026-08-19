@@ -158,7 +158,6 @@ PROD_HANDOFF_JUNK_EMAILS = frozenset(
         "hg0527157320@gmail.com",
         "dmalky100@gmail.com",
         "e@gmail.com",
-        "genauer1997@gmail.com",
     }
 )
 

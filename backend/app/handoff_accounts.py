@@ -70,6 +70,13 @@ CLIENT_HANDOFF_ACCOUNTS = (
         "paid_commitment": True,
     },
     {
+        "email": "genauer1997@gmail.com",
+        "password_env": "HANDOFF_PASSWORD_COMMITMENT",
+        "full_name": "אסתי גנאור",
+        "role": "user",
+        "paid_commitment": True,
+    },
+    {
         "email": "hadasa.dadon@gmail.com",
         "password_env": "HANDOFF_PASSWORD_COMMITMENT",
         "full_name": "אביבית דדון",
