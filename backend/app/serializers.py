@@ -42,6 +42,8 @@ def user_to_dict(user: User) -> dict[str, Any]:
             "email": user.email,
             "full_name": user.full_name,
             "role": user.role,
+            "pending_manager": bool(getattr(user, "pending_manager", False)),
+            "manager_effective_on": _dt(getattr(user, "manager_effective_on", None)),
             "subscription_status": user.subscription_status,
             "subscription_end_date": _dt(user.subscription_end_date),
             "subscription_start_date": _dt(user.subscription_start_date),

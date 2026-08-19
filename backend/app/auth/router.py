@@ -45,6 +45,8 @@ _FORBIDDEN_ME_FIELDS = {
     "email_verified",
     "group_id",
     "is_active",
+    "pending_manager",
+    "manager_effective_on",
 }
 
 

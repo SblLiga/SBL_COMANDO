@@ -11,6 +11,10 @@ from app.cycle_xp import current_cycle_month, ensure_goal_cycle, ensure_member_c
 from app.database import get_db
 from app.media_urls import heal_member_avatar
 from app.models import Goal, Group, Member, User
+from app.pending_manager import (
+    apply_admin_user_role,
+    clamp_member_role_to_user_status,
+)
 from app.serializers import MODEL_MAP, SERIALIZERS
 
 router = APIRouter(prefix="/api/entities", tags=["entities"])
@@ -27,6 +31,8 @@ INT_FIELDS = {
 
 _PRIVILEGED_USER_FIELDS = {
     "role",
+    "pending_manager",
+    "manager_effective_on",
     "subscription_status",
     "subscription_end_date",
     "subscription_start_date",
@@ -353,6 +359,9 @@ def create_entity(
     allowed = {c.name for c in model.__table__.columns} - {"id", "created_at"}
     row = model(**{k: v for k, v in data.items() if k in allowed})
     db.add(row)
+    db.flush()
+    if entity_name == "Member":
+        clamp_member_role_to_user_status(db, row)
     db.commit()
     db.refresh(row)
     return _serialize(entity_name, row, db)
@@ -383,10 +392,20 @@ def update_entity(
         raise HTTPException(status_code=403, detail="Forbidden")
 
     data = _strip_privileged(entity_name, _coerce_payload(payload), current_user)
+    if entity_name == "User" and current_user.role == "admin" and "role" in data:
+        apply_admin_user_role(db, row, str(data.get("role") or ""))
+        if row.pending_manager:
+            data.pop("onboarding_completed", None)
+            data.pop("subscription_status", None)
+        data.pop("role", None)
+        data.pop("pending_manager", None)
+        data.pop("manager_effective_on", None)
     allowed = {c.name for c in model.__table__.columns} - {"id", "created_at"}
     for key, value in data.items():
         if key in allowed:
             setattr(row, key, value)
+    if entity_name == "Member":
+        clamp_member_role_to_user_status(db, row)
     db.commit()
     db.refresh(row)
     return _serialize(entity_name, row, db)
@@ -421,6 +440,10 @@ def bulk_create(
         row = model(**{k: v for k, v in data.items() if k in allowed})
         db.add(row)
         created.append(row)
+    db.flush()
+    if entity_name == "Member":
+        for row in created:
+            clamp_member_role_to_user_status(db, row)
     db.commit()
     for row in created:
         db.refresh(row)
@@ -456,9 +479,19 @@ def bulk_update(
             _coerce_payload({k: v for k, v in item.items() if k != "id"}),
             current_user,
         )
+        if entity_name == "User" and current_user.role == "admin" and "role" in data:
+            apply_admin_user_role(db, row, str(data.get("role") or ""))
+            if row.pending_manager:
+                data.pop("onboarding_completed", None)
+                data.pop("subscription_status", None)
+            data.pop("role", None)
+            data.pop("pending_manager", None)
+            data.pop("manager_effective_on", None)
         for key, value in data.items():
             if key in allowed:
                 setattr(row, key, value)
+        if entity_name == "Member":
+            clamp_member_role_to_user_status(db, row)
         updated.append(row)
     db.commit()
     for row in updated:

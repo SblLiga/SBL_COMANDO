@@ -37,6 +37,11 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(32), default="user")
+    # Nominated by admin; stays a regular user until manager_effective_on (next 25th).
+    pending_manager: Mapped[bool] = mapped_column(Boolean, default=False)
+    manager_effective_on: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     subscription_status: Mapped[str] = mapped_column(String(32), default="inactive")
     subscription_end_date: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

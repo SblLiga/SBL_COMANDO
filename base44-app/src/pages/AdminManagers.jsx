@@ -30,6 +30,7 @@ function buildRows(users, members) {
   for (const u of users) {
     if (!isVisibleToAdmin(u)) continue;
     const member = byUserId.get(Number(u.id));
+    const pending = Boolean(u.pending_manager) && u.role !== "manager";
     rows.push({
       key: `user-${u.id}`,
       user_id: u.id,
@@ -38,7 +39,9 @@ function buildRows(users, members) {
       email: u.email,
       avatar_url: member?.avatar_url || u.avatar_url,
       group_name: member?.group_name || null,
-      role: u.role === "manager" || member?.role === "manager" ? "manager" : "user",
+      role: u.role === "manager" ? "manager" : "user",
+      pending_manager: pending,
+      manager_effective_on: u.manager_effective_on || null,
       has_member: Boolean(member),
       subscription_status: u.subscription_status,
       gender: member?.gender || u.gender || null,
@@ -60,12 +63,15 @@ function buildRows(users, members) {
       avatar_url: m.avatar_url,
       group_name: m.group_name || null,
       role: "manager",
+      pending_manager: false,
+      manager_effective_on: null,
       has_member: true,
     });
   }
 
   return rows.sort((a, b) => {
-    if (a.role !== b.role) return a.role === "manager" ? -1 : 1;
+    const rank = (r) => (r.role === "manager" || r.pending_manager ? 0 : 1);
+    if (rank(a) !== rank(b)) return rank(a) - rank(b);
     return String(a.name).localeCompare(String(b.name), "he");
   });
 }
@@ -102,46 +108,37 @@ export default function AdminManagers() {
 
   const rows = useMemo(() => buildRows(users, members), [users, members]);
   const managerCount = rows.filter((r) => r.role === "manager").length;
+  const pendingCount = rows.filter((r) => r.pending_manager).length;
 
   const toggleRole = async (row) => {
-    const newRole = row.role === "manager" ? "user" : "manager";
+    const nominated = row.role === "manager" || row.pending_manager;
+    const newRole = nominated ? "user" : "manager";
     setBusyId(row.key);
     try {
+      let updatedUser = null;
       if (row.user_id) {
-        await apiClient.entities.User.update(row.user_id, {
+        updatedUser = await apiClient.entities.User.update(row.user_id, {
           role: newRole,
-          ...(newRole === "manager"
-            ? {
-                subscription_status: "active",
-                onboarding_completed: true,
-              }
-            : {}),
         });
       }
 
-      if (row.member_id) {
-        await apiClient.entities.Member.update(row.member_id, { role: newRole });
-      } else if (row.user_id && newRole === "manager") {
-        await apiClient.entities.Member.create({
-          name: row.name,
-          user_id: row.user_id,
-          role: "manager",
-          gender: row.gender || null,
-          target: row.target || null,
-          status: "בעקבות",
-          progress: 0,
-          xp: 0,
-          streak: 0,
-        });
+      // Live demote only: keep Member.role aligned. Do not promote Member
+      // until the backend actually sets User.role = manager (the 25th).
+      if (row.member_id && newRole === "user") {
+        await apiClient.entities.Member.update(row.member_id, { role: "user" });
       }
 
       await load();
+      const pending = Boolean(updatedUser?.pending_manager);
       toast({
-        title: newRole === "manager" ? "קודם/ה למנהל/ת! ⭐" : "הורד/ה למשתמש/ת",
-        description:
-          newRole === "manager"
-            ? `${row.name} · היעד לניהול ייבחר על ידי המנהל/ת`
-            : row.name,
+        title: nominated
+          ? "הורד/ה למשתמש/ת"
+          : pending
+            ? "סומן/ה למנהל/ת מה-25"
+            : "קודם/ה למנהל/ת! ⭐",
+        description: pending
+          ? `${row.name} נשאר/ת משתמש/ת בקבוצה עד ה-25`
+          : row.name,
       });
     } catch (err) {
       console.error("[AdminManagers] toggleRole failed:", err);
@@ -161,7 +158,7 @@ export default function AdminManagers() {
       return;
     }
     const dayName = new Date(`${date}T${startTime}`).toLocaleDateString("he-IL", { weekday: "long" });
-    const managersOnly = rows.filter((r) => r.role === "manager" && r.user_id);
+    const managersOnly = rows.filter((r) => r.role === "manager" && !r.pending_manager && r.user_id);
     try {
       await apiClient.entities.Notification.bulkCreate(
         managersOnly.map((m) => ({
@@ -193,7 +190,7 @@ export default function AdminManagers() {
       <PageHeader
         badge="אזור אדמין"
         title="מנהלות"
-        subtitle={`${managerCount} מנהלות · ${rows.length} משלמים/פעילים`}
+        subtitle={`${managerCount} מנהלות${pendingCount ? ` · ${pendingCount} מה-25` : ""} · ${rows.length} משלמים/פעילים`}
       />
 
       <button
@@ -256,7 +253,9 @@ export default function AdminManagers() {
           <div key={m.key} className="card-lux p-3 flex items-center gap-3">
             <div className="relative">
               <UserAvatar src={m.avatar_url} name={m.name} className="w-10 h-10 ring-1 ring-border" />
-              {m.role === "manager" && <Star className="absolute -top-1 -left-1 w-4 h-4 text-primary fill-primary" />}
+              {(m.role === "manager" || m.pending_manager) && (
+                <Star className="absolute -top-1 -left-1 w-4 h-4 text-primary fill-primary" />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{m.name}</p>
@@ -268,11 +267,15 @@ export default function AdminManagers() {
               )}
             </div>
             <div className="flex flex-col items-center gap-1">
-              <span className={`text-[10px] font-bold ${m.role === "manager" ? "gold-text" : "text-muted-foreground"}`}>
-                {m.role === "manager" ? "מנהל/ת" : "משתמש/ת"}
+              <span
+                className={`text-[10px] font-bold ${
+                  m.role === "manager" || m.pending_manager ? "gold-text" : "text-muted-foreground"
+                }`}
+              >
+                {m.pending_manager ? "מנהל/ת מה-25" : m.role === "manager" ? "מנהל/ת" : "משתמש/ת"}
               </span>
               <Switch
-                checked={m.role === "manager"}
+                checked={m.role === "manager" || m.pending_manager}
                 disabled={busyId === m.key}
                 onCheckedChange={() => toggleRole(m)}
               />
