@@ -32,6 +32,7 @@ INT_FIELDS = {
 _PRIVILEGED_USER_FIELDS = {
     "role",
     "pending_manager",
+    "pending_demotion",
     "manager_effective_on",
     "subscription_status",
     "subscription_end_date",
@@ -399,6 +400,7 @@ def update_entity(
             data.pop("subscription_status", None)
         data.pop("role", None)
         data.pop("pending_manager", None)
+        data.pop("pending_demotion", None)
         data.pop("manager_effective_on", None)
     allowed = {c.name for c in model.__table__.columns} - {"id", "created_at"}
     for key, value in data.items():
@@ -486,6 +488,7 @@ def bulk_update(
                 data.pop("subscription_status", None)
             data.pop("role", None)
             data.pop("pending_manager", None)
+            data.pop("pending_demotion", None)
             data.pop("manager_effective_on", None)
         for key, value in data.items():
             if key in allowed:

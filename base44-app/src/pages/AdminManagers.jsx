@@ -31,6 +31,7 @@ function buildRows(users, members) {
     if (!isVisibleToAdmin(u)) continue;
     const member = byUserId.get(Number(u.id));
     const pending = Boolean(u.pending_manager) && u.role !== "manager";
+    const pendingDemotion = Boolean(u.pending_demotion) && u.role === "manager";
     rows.push({
       key: `user-${u.id}`,
       user_id: u.id,
@@ -41,6 +42,7 @@ function buildRows(users, members) {
       group_name: member?.group_name || null,
       role: u.role === "manager" ? "manager" : "user",
       pending_manager: pending,
+      pending_demotion: pendingDemotion,
       manager_effective_on: u.manager_effective_on || null,
       has_member: Boolean(member),
       subscription_status: u.subscription_status,
@@ -64,6 +66,7 @@ function buildRows(users, members) {
       group_name: m.group_name || null,
       role: "manager",
       pending_manager: false,
+      pending_demotion: false,
       manager_effective_on: null,
       has_member: true,
     });
@@ -109,10 +112,11 @@ export default function AdminManagers() {
   const rows = useMemo(() => buildRows(users, members), [users, members]);
   const managerCount = rows.filter((r) => r.role === "manager").length;
   const pendingCount = rows.filter((r) => r.pending_manager).length;
+  const steppingDownCount = rows.filter((r) => r.pending_demotion).length;
 
   const toggleRole = async (row) => {
-    const nominated = row.role === "manager" || row.pending_manager;
-    const newRole = nominated ? "user" : "manager";
+    const switchOn = (row.role === "manager" && !row.pending_demotion) || row.pending_manager;
+    const newRole = switchOn ? "user" : "manager";
     setBusyId(row.key);
     try {
       let updatedUser = null;
@@ -120,25 +124,26 @@ export default function AdminManagers() {
         updatedUser = await apiClient.entities.User.update(row.user_id, {
           role: newRole,
         });
-      }
-
-      // Live demote only: keep Member.role aligned. Do not promote Member
-      // until the backend actually sets User.role = manager (the 25th).
-      if (row.member_id && newRole === "user") {
-        await apiClient.entities.Member.update(row.member_id, { role: "user" });
+      } else if (row.member_id) {
+        await apiClient.entities.Member.update(row.member_id, { role: newRole });
       }
 
       await load();
       const pending = Boolean(updatedUser?.pending_manager);
+      const steppingDown = Boolean(updatedUser?.pending_demotion);
       toast({
-        title: nominated
-          ? "הורד/ה למשתמש/ת"
+        title: steppingDown
+          ? "תרד ב-25"
           : pending
             ? "סומן/ה למנהל/ת מה-25"
-            : "קודם/ה למנהל/ת! ⭐",
-        description: pending
-          ? `${row.name} נשאר/ת משתמש/ת בקבוצה עד ה-25`
-          : row.name,
+            : newRole === "manager"
+              ? "קודם/ה למנהל/ת! ⭐"
+              : "הורד/ה למשתמש/ת",
+        description: steppingDown
+          ? `${row.name} נשאר/ת מנהל/ת עד הסבב החדש`
+          : pending
+            ? `${row.name} נשאר/ת משתמש/ת בקבוצה עד ה-25`
+            : row.name,
       });
     } catch (err) {
       console.error("[AdminManagers] toggleRole failed:", err);
@@ -190,7 +195,7 @@ export default function AdminManagers() {
       <PageHeader
         badge="אזור אדמין"
         title="מנהלות"
-        subtitle={`${managerCount} מנהלות${pendingCount ? ` · ${pendingCount} מה-25` : ""} · ${rows.length} משלמים/פעילים`}
+        subtitle={`${managerCount} מנהלות${pendingCount ? ` · ${pendingCount} מה-25` : ""}${steppingDownCount ? ` · ${steppingDownCount} יורדות ב-25` : ""} · ${rows.length} משלמים/פעילים`}
       />
 
       <button
@@ -269,13 +274,21 @@ export default function AdminManagers() {
             <div className="flex flex-col items-center gap-1">
               <span
                 className={`text-[10px] font-bold ${
-                  m.role === "manager" || m.pending_manager ? "gold-text" : "text-muted-foreground"
+                  m.pending_manager || (m.role === "manager" && !m.pending_demotion)
+                    ? "gold-text"
+                    : "text-muted-foreground"
                 }`}
               >
-                {m.pending_manager ? "מנהל/ת מה-25" : m.role === "manager" ? "מנהל/ת" : "משתמש/ת"}
+                {m.pending_demotion
+                  ? "יורדת ב-25"
+                  : m.pending_manager
+                    ? "מנהל/ת מה-25"
+                    : m.role === "manager"
+                      ? "מנהל/ת"
+                      : "משתמש/ת"}
               </span>
               <Switch
-                checked={m.role === "manager" || m.pending_manager}
+                checked={(m.role === "manager" && !m.pending_demotion) || m.pending_manager}
                 disabled={busyId === m.key}
                 onCheckedChange={() => toggleRole(m)}
               />

@@ -46,6 +46,7 @@ _FORBIDDEN_ME_FIELDS = {
     "group_id",
     "is_active",
     "pending_manager",
+    "pending_demotion",
     "manager_effective_on",
 }
 

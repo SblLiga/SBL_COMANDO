@@ -39,6 +39,8 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(32), default="user")
     # Nominated by admin; stays a regular user until manager_effective_on (next 25th).
     pending_manager: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Live manager marked to step down; stays manager until manager_effective_on.
+    pending_demotion: Mapped[bool] = mapped_column(Boolean, default=False)
     manager_effective_on: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
