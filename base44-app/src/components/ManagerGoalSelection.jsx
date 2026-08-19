@@ -32,8 +32,14 @@ export default function ManagerGoalSelection() {
         setMember(me);
 
         if (me?.role !== "manager") return;
-        if (!isManagerTargetSelectionWindow()) return;
 
+        const hasTarget = Boolean(me.next_month_target || me.target);
+        if (!hasTarget) {
+          setShow(true);
+          return;
+        }
+
+        if (!isManagerTargetSelectionWindow()) return;
         if (me.next_month_selected_at && sameCalendarMonth(me.next_month_selected_at)) {
           return;
         }
@@ -50,10 +56,18 @@ export default function ManagerGoalSelection() {
     setSaving(true);
     try {
       await apiClient.entities.Member.update(member.id, {
+        target: selected,
         next_month_target: selected,
         next_month_selected_at: new Date().toISOString(),
       });
-      toast({ title: "היעד נשמר", description: `היעד לחודש הבא נקבע ל: ${selected}` });
+      if (member.user_id) {
+        try {
+          await apiClient.entities.User.update(member.user_id, { target: selected });
+        } catch {
+          /* role/target on User is optional */
+        }
+      }
+      toast({ title: "היעד נשמר", description: `היעד לניהול נקבע ל: ${selected}` });
       setShow(false);
     } finally {
       setSaving(false);
@@ -71,10 +85,10 @@ export default function ManagerGoalSelection() {
           </div>
           <div>
             <p className="text-xs text-muted-foreground">אזור מנהל</p>
-            <h2 className="font-display text-lg font-bold">בחירת יעד לחודש הבא</h2>
+            <h2 className="font-display text-lg font-bold">בחירת יעד לניהול</h2>
           </div>
         </div>
-        <p className="text-sm text-muted-foreground mb-4">יש לבחור את היעד שעליו תנהל/י בחודש הבא</p>
+        <p className="text-sm text-muted-foreground mb-4">יש לבחור את היעד שעליו תנהל/י</p>
 
         <div className="space-y-2 mb-4 max-h-[40vh] overflow-y-auto">
           {TARGETS.map((t) => (
