@@ -15,12 +15,38 @@ export default function ThankYou() {
   const [latestUser, setLatestUser] = useState(user);
   // Once payment success is confirmed, freeze UI — never re-enter loading/polling.
   const settledRef = useRef(user?.subscription_status === "active");
+  const redirectedRef = useRef(false);
+  const redirectTimerRef = useRef(null);
+
+  const goAfterPayment = (u, row) => {
+    if (redirectedRef.current) return;
+    redirectedRef.current = true;
+    const path = postAuthPath(u, row);
+    redirectTimerRef.current = window.setTimeout(() => navigate(path, { replace: true }), 1200);
+  };
 
   useEffect(() => {
+    const loadMember = async (u) => {
+      if (!u || u.role !== "user") return null;
+      try {
+        const rows = await apiClient.entities.Member.filter({ user_id: u.id });
+        return rows[0] || null;
+      } catch {
+        return null;
+      }
+    };
+
     if (settledRef.current) {
       setPolling(false);
       setStatus("active");
-      return;
+      (async () => {
+        const row = await loadMember(user);
+        if (row) setMember(row);
+        if (apiClient.auth.isAuthenticated()) goAfterPayment(user, row);
+      })();
+      return () => {
+        if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
+      };
     }
 
     // Guests / Grow: no session → no /auth/me polling (avoids repeated 401s).
@@ -35,7 +61,14 @@ export default function ThankYou() {
       settledRef.current = true;
       setStatus("active");
       setPolling(false);
-      return;
+      (async () => {
+        const row = await loadMember(user);
+        if (row) setMember(row);
+        goAfterPayment(user, row);
+      })();
+      return () => {
+        if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
+      };
     }
 
     let cancelled = false;
@@ -53,19 +86,13 @@ export default function ThankYou() {
         if (next === "active") {
           // Soft-patch AuthContext without flipping isLoadingAuth (avoids remount loop).
           applyUser?.(u);
-          if (u?.role === "user") {
-            try {
-              const rows = await apiClient.entities.Member.filter({ user_id: u.id });
-              if (!cancelled && !settledRef.current) {
-                const row = rows[0] || null;
-                setMember((prev) => (prev?.id === row?.id ? prev : row));
-              }
-            } catch {
-              /* optional */
-            }
+          const row = await loadMember(u);
+          if (!cancelled) {
+            if (row) setMember((prev) => (prev?.id === row?.id ? prev : row));
+            settledRef.current = true;
+            setPolling(false);
+            goAfterPayment(u, row);
           }
-          settledRef.current = true;
-          setPolling(false);
           return;
         }
       } catch {
@@ -84,6 +111,7 @@ export default function ThankYou() {
     return () => {
       cancelled = true;
       if (timerId != null) clearTimeout(timerId);
+      if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
     };
     // Mount-once only. Never depend on AuthContext function identities.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,8 +147,8 @@ export default function ThankYou() {
               <h1 className="font-display text-xl font-bold mb-2">התשלום התקבל!</h1>
               <p className="text-sm text-muted-foreground">
                 {waitEnrollment
-                  ? "המנוי פעיל. השיבוץ לקבוצות יפתח ב-25 בחודש — בינתיים נשלים את פרטי ההרשמה."
-                  : "המנוי פעיל. אפשר להמשיך לבחירת המשימות ולהתחיל את המסע."}
+                  ? "המנוי פעיל. מעבירים להשלמת ההרשמה…"
+                  : "המנוי פעיל. מעבירים לעמוד הראשי…"}
               </p>
             </div>
             <div className="flex items-center justify-center gap-2 text-sm text-primary font-medium">
