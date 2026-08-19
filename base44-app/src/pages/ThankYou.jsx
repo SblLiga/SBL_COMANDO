@@ -15,15 +15,6 @@ export default function ThankYou() {
   const [latestUser, setLatestUser] = useState(user);
   // Once payment success is confirmed, freeze UI — never re-enter loading/polling.
   const settledRef = useRef(user?.subscription_status === "active");
-  const redirectedRef = useRef(false);
-  const redirectTimerRef = useRef(null);
-
-  const goAfterPayment = (u, row) => {
-    if (redirectedRef.current) return;
-    redirectedRef.current = true;
-    const path = postAuthPath(u, row);
-    redirectTimerRef.current = window.setTimeout(() => navigate(path, { replace: true }), 1200);
-  };
 
   useEffect(() => {
     const loadMember = async (u) => {
@@ -42,11 +33,8 @@ export default function ThankYou() {
       (async () => {
         const row = await loadMember(user);
         if (row) setMember(row);
-        if (apiClient.auth.isAuthenticated()) goAfterPayment(user, row);
       })();
-      return () => {
-        if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
-      };
+      return;
     }
 
     // Guests / Grow: no session → no /auth/me polling (avoids repeated 401s).
@@ -64,11 +52,8 @@ export default function ThankYou() {
       (async () => {
         const row = await loadMember(user);
         if (row) setMember(row);
-        goAfterPayment(user, row);
       })();
-      return () => {
-        if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
-      };
+      return;
     }
 
     let cancelled = false;
@@ -84,14 +69,12 @@ export default function ThankYou() {
         setLatestUser((prev) => (prev?.id === u?.id && prev?.subscription_status === next ? prev : u));
         setStatus((prev) => (prev === next ? prev : next));
         if (next === "active") {
-          // Soft-patch AuthContext without flipping isLoadingAuth (avoids remount loop).
           applyUser?.(u);
           const row = await loadMember(u);
           if (!cancelled) {
             if (row) setMember((prev) => (prev?.id === row?.id ? prev : row));
             settledRef.current = true;
             setPolling(false);
-            goAfterPayment(u, row);
           }
           return;
         }
@@ -111,13 +94,10 @@ export default function ThankYou() {
     return () => {
       cancelled = true;
       if (timerId != null) clearTimeout(timerId);
-      if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
     };
-    // Mount-once only. Never depend on AuthContext function identities.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // After success is settled, never show the auth loading spinner again.
   if (isLoadingAuth && !user && !settledRef.current) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -129,7 +109,15 @@ export default function ThankYou() {
   const activeUser = latestUser || user;
   const isActive = settledRef.current || (Boolean(user || latestUser) && status === "active");
   const waitEnrollment = Boolean(activeUser) && isActive && !canAssignToGroup(activeUser);
-  const continuePath = isActive ? postAuthPath(activeUser, member) : "/payment";
+
+  const handleContinue = () => {
+    const u = latestUser || user;
+    if (!apiClient.auth.isAuthenticated() || !u) {
+      navigate("/login", { replace: true });
+      return;
+    }
+    navigate(postAuthPath(u, member), { replace: true });
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
@@ -147,8 +135,8 @@ export default function ThankYou() {
               <h1 className="font-display text-xl font-bold mb-2">התשלום התקבל!</h1>
               <p className="text-sm text-muted-foreground">
                 {waitEnrollment
-                  ? "המנוי פעיל. מעבירים להשלמת ההרשמה…"
-                  : "המנוי פעיל. מעבירים לעמוד הראשי…"}
+                  ? "המנוי פעיל. השיבוץ לקבוצות יפתח ב-25 בחודש — בינתיים אפשר להשלים את פרטי ההרשמה."
+                  : "המנוי פעיל. אפשר להמשיך לעמוד הראשי ולבחירת המשימות."}
               </p>
             </div>
             <div className="flex items-center justify-center gap-2 text-sm text-primary font-medium">
@@ -156,10 +144,10 @@ export default function ThankYou() {
             </div>
             <button
               type="button"
-              onClick={() => navigate(continuePath, { replace: true })}
+              onClick={handleContinue}
               className="w-full gold-gradient text-black font-bold rounded-xl py-3 text-sm"
             >
-              {waitEnrollment ? "המשך להשלמת ההרשמה" : "המשך לבחירת משימות"}
+              {waitEnrollment ? "המשך להשלמת ההרשמה" : "המשך"}
             </button>
           </>
         ) : (
