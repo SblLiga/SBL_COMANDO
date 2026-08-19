@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -59,32 +60,41 @@ ALLOWED_GROW_IPS = frozenset(
 
 
 def _client_ip(request: Request) -> str:
-    """Prefer peer IP; when XFF is present, use the rightmost hop (last trusted proxy)."""
+    """Outermost public IP: walk XFF from the right, skip private/LB hops."""
+    hops: list[str] = []
     forwarded = (request.headers.get("x-forwarded-for") or "").strip()
     if forwarded:
-        parts = [p.strip() for p in forwarded.split(",") if p.strip()]
-        if parts:
-            return parts[-1]
+        hops.extend(reversed([p.strip() for p in forwarded.split(",") if p.strip()]))
     if request.client and request.client.host:
-        return request.client.host
-    return ""
+        hops.append(request.client.host)
+    for ip in hops:
+        if ip in ALLOWED_GROW_IPS:
+            return ip
+        try:
+            parsed = ipaddress.ip_address(ip.split("%")[0])
+        except ValueError:
+            continue
+        if parsed.is_private or parsed.is_loopback or parsed.is_link_local:
+            continue
+        return ip
+    return hops[0] if hops else ""
 
 
-def _require_grow_ip(request: Request) -> None:
-    ip = _client_ip(request)
-    if ip in ALLOWED_GROW_IPS:
-        return
-    logger.warning("Rejected payment webhook from non-Grow IP: %s", ip)
-    raise HTTPException(status_code=403, detail="Forbidden")
+def _is_grow_request(request: Request) -> bool:
+    return _client_ip(request) in ALLOWED_GROW_IPS
 
 
 def _is_grow_recurring(payload: dict) -> bool:
-    """True when Grow marks a standing-order run (paymentSource + directDebitId)."""
+    """True when Grow marks a standing-order run (second+ charge)."""
     data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
     source = str(payload.get("paymentSource") or data.get("paymentSource") or "").strip()
     debit_id = payload.get("directDebitId") or data.get("directDebitId")
-    # Grow API value (Hebrew): standing-order run
-    return source == "ריצת הוראת קבע" and bool(debit_id)
+    payment_type = str(payload.get("paymentType") or data.get("paymentType") or "").strip()
+    if source == "ריצת הוראת קבע":
+        return True
+    if "ריצת" in source and "קבע" in source:
+        return True
+    return payment_type == "הוראת קבע" and bool(debit_id)
 
 
 def is_grow_failed_recurring(payload: dict) -> bool:
@@ -129,6 +139,20 @@ def verify_webhook_auth(
     return False
 
 
+def _webhook_key_matches(payload: dict) -> bool:
+    """Grow puts webhookKey in the JSON body (not a header)."""
+    secret = webhook_secret()
+    if not secret:
+        return False
+    provided = str(payload.get("webhookKey") or payload.get("webhook_key") or "").strip()
+    if not provided:
+        return False
+    try:
+        return hmac.compare_digest(provided, secret)
+    except Exception:
+        return False
+
+
 def _email_from_purchase_custom_fields(payload: dict, data: dict) -> str:
     """
     Fallback for Grow ₪1 / standing-order payloads that put registration email
@@ -142,6 +166,12 @@ def _email_from_purchase_custom_fields(payload: dict, data: dict) -> str:
         data.get("purchaseCustomFields"),
     )
     for bucket in buckets:
+        if isinstance(bucket, dict):
+            for value in bucket.values():
+                text = str(value or "").strip()
+                if text and "@" in text and "." in text.split("@")[-1]:
+                    return text.lower()
+            continue
         if not isinstance(bucket, list):
             continue
         for item in bucket:
@@ -177,6 +207,15 @@ def resolve_user(db: Session, payload: dict) -> User | None:
     custom_fields = (
         data.get("customFields") if isinstance(data.get("customFields"), dict) else {}
     )
+    purchase = payload.get("purchaseCustomField") or data.get("purchaseCustomField") or {}
+    purchase_id = None
+    if isinstance(purchase, dict):
+        purchase_id = (
+            purchase.get("custom1")
+            or purchase.get("cField1")
+            or purchase.get("userId")
+            or purchase.get("user_id")
+        )
     user_id = (
         payload.get("userId")
         or payload.get("user_id")
@@ -188,6 +227,7 @@ def resolve_user(db: Session, payload: dict) -> User | None:
         or custom_fields.get("cField1")
         or data.get("userId")
         or data.get("user_id")
+        or purchase_id
     )
     if user_id is not None and str(user_id).strip():
         try:
@@ -248,6 +288,8 @@ def _payment_approved(payload: dict) -> bool:
     event = str(payload.get("event") or payload.get("type") or data.get("event") or "").lower()
 
     fail_tokens = ("fail", "cancel", "refuse", "decline", "error", "void", "chargedback", "reject")
+    if is_grow_failed_recurring(payload):
+        return False
     if status_raw is not None:
         status_s = str(status_raw).strip().lower()
         if any(t in status_s for t in fail_tokens):
@@ -309,83 +351,49 @@ async def _read_verified_payload(
     x_webhook_secret: str | None,
     authorization: str | None,
 ) -> dict:
+    """Accept Grow (official IPs and/or webhookKey in JSON) or Make shared-secret headers."""
     import json
 
     raw = await request.body()
-    sig = x_make_signature or x_grow_signature
-    if not verify_webhook_auth(
-        raw,
-        signature=sig,
-        bearer=authorization,
-        plain_secret_header=x_webhook_secret,
-    ):
-        raise HTTPException(status_code=401, detail="Invalid webhook authentication")
     try:
         payload = json.loads(raw.decode("utf-8") or "{}")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON") from None
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Payload must be a JSON object")
-    return payload
 
-
-def _has_shared_secret_auth(
-    *,
-    x_make_signature: str | None,
-    x_webhook_secret: str | None,
-    authorization: str | None,
-) -> bool:
-    """Make.com (and similar) authenticate with shared secret — skip Grow IP allowlist."""
-    if x_webhook_secret and x_webhook_secret.strip():
-        return True
-    if x_make_signature and x_make_signature.strip():
-        return True
-    if authorization and authorization.strip():
-        return True
-    return False
-
-
-@router.post("/payment-success")
-async def payment_success(
-    request: Request,
-    db: Session = Depends(get_db),
-    x_make_signature: str | None = Header(default=None, alias="X-Make-Signature"),
-    x_grow_signature: str | None = Header(default=None, alias="X-Grow-Signature"),
-    x_webhook_secret: str | None = Header(default=None, alias="X-Webhook-Secret"),
-    authorization: str | None = Header(default=None),
-):
-    """Grow / Make → site: payment approved → ACTIVE for 30 days (first charge or recurring)."""
-    # Make.com is not on Grow egress IPs — skip IP allowlist when shared-secret auth is used.
-    if not _has_shared_secret_auth(
-        x_make_signature=x_make_signature,
-        x_webhook_secret=x_webhook_secret,
-        authorization=authorization,
-    ):
-        _require_grow_ip(request)
-
-    payload = await _read_verified_payload(
-        request,
-        x_make_signature=x_make_signature,
-        x_grow_signature=x_grow_signature,
-        x_webhook_secret=x_webhook_secret,
-        authorization=authorization,
+    sig = x_make_signature or x_grow_signature
+    header_ok = verify_webhook_auth(
+        raw,
+        signature=sig,
+        bearer=authorization,
+        plain_secret_header=x_webhook_secret,
     )
+    if header_ok or _webhook_key_matches(payload) or _is_grow_request(request):
+        return payload
 
-    if not _payment_approved(payload):
-        logger.warning("payment-success rejected: non-success payload keys=%s", list(payload.keys()))
-        raise HTTPException(status_code=400, detail="Payment not successful")
+    settings = get_settings()
+    if not webhook_secret() and not settings.is_production:
+        logger.warning("Webhook secret empty — allowing unauthenticated payload (non-prod only)")
+        return payload
 
-    user = resolve_user(db, payload)
-    if user is None:
-        return {"received": True, "updated": False, "reason": "user_not_found"}
+    logger.warning(
+        "Webhook auth failed ip=%s keys=%s",
+        _client_ip(request),
+        list(payload.keys()),
+    )
+    raise HTTPException(status_code=401, detail="Invalid webhook authentication")
 
-    recurring = _is_grow_recurring(payload)
+
+def apply_successful_payment(db: Session, payload: dict, user: User) -> dict:
+    """First charge → activate. Recurring / already-paid user → renew without a gap."""
+    recurring = _is_grow_recurring(payload) or bool(user.subscription_end_date)
     if recurring:
         renew_subscription(user)
         db.commit()
         db.refresh(user)
         logger.info(
-            "Grow recurring renew user_id=%s email=%s end=%s directDebitId=%s",
+            "Grow payment renew user_id=%s email=%s end=%s directDebitId=%s",
             user.id,
             user.email,
             user.subscription_end_date,
@@ -405,9 +413,38 @@ async def payment_success(
     else:
         result = apply_subscription_status(db, user, "active")
         result["renewal"] = False
-
     result["redirect"] = "/thank-you"
     return result
+
+
+@router.post("/payment-success")
+async def payment_success(
+    request: Request,
+    db: Session = Depends(get_db),
+    x_make_signature: str | None = Header(default=None, alias="X-Make-Signature"),
+    x_grow_signature: str | None = Header(default=None, alias="X-Grow-Signature"),
+    x_webhook_secret: str | None = Header(default=None, alias="X-Webhook-Secret"),
+    authorization: str | None = Header(default=None),
+):
+    """Grow / Make → site: payment approved → ACTIVE (first charge or recurring)."""
+    payload = await _read_verified_payload(
+        request,
+        x_make_signature=x_make_signature,
+        x_grow_signature=x_grow_signature,
+        x_webhook_secret=x_webhook_secret,
+        authorization=authorization,
+    )
+
+    if not _payment_approved(payload):
+        logger.warning("payment-success rejected: non-success payload keys=%s", list(payload.keys()))
+        raise HTTPException(status_code=400, detail="Payment not successful")
+
+    user = resolve_user(db, payload)
+    if user is None:
+        logger.warning("payment-success user_not_found keys=%s", list(payload.keys()))
+        return {"received": True, "updated": False, "reason": "user_not_found"}
+
+    return apply_successful_payment(db, payload, user)
 
 
 @router.post("/payment-failed")
@@ -421,13 +458,6 @@ async def payment_failed(
     authorization: str | None = Header(default=None),
 ):
     """Grow failed recurring / cancel → inactive + immediate group unassign."""
-    if not _has_shared_secret_auth(
-        x_make_signature=x_make_signature,
-        x_webhook_secret=x_webhook_secret,
-        authorization=authorization,
-    ):
-        _require_grow_ip(request)
-
     payload = await _read_verified_payload(
         request,
         x_make_signature=x_make_signature,

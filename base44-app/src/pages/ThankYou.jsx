@@ -73,7 +73,7 @@ export default function ThankYou() {
       }
       if (cancelled || settledRef.current) return;
       tries += 1;
-      if (tries >= 12) {
+      if (tries >= 24) {
         setPolling(false);
         return;
       }

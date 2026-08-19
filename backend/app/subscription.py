@@ -21,6 +21,8 @@ IMMEDIATE_ENROLLMENT_LAST_DAY = 26
 ASSIGNMENT_OPEN_DAY = 25
 CYCLE_PAID_THROUGH_DAY = 24
 IMMEDIATE_PAID_THROUGH_DAY = 26
+# Wait for Grow's next standing-order charge before locking the user out.
+RENEWAL_GRACE_DAYS = 4
 
 
 def _israel_tz():
@@ -121,30 +123,25 @@ def activate_subscription(user: User, *, period_days: int = SUBSCRIPTION_PERIOD_
 
 def renew_subscription(user: User, *, period_days: int = SUBSCRIPTION_PERIOD_DAYS) -> None:
     """
-    Successful renew/charge.
-    If the user is already inside an active paid window, extend paid-through without
-    moving start into the future (avoids locking live users to /pending mid-cycle).
-    Otherwise behave like a fresh activate (including deferred wait-window starts).
+    Successful Grow standing-order / renewal charge.
+
+    Never defer start into the future (that would bounce a paying member to /pending).
+    If they still have paid-through time, extend from the current end so months overlap
+    and there is no inactive gap while the next charge is in flight.
+    If they already lapsed, restore access immediately from now.
     """
     _ = period_days
     now = _utcnow()
-    start = user.subscription_start_date
-    end = user.subscription_end_date
-    if start is not None and end is not None:
-        start_utc = _as_utc(start)
-        end_utc = _as_utc(end)
-        if start_utc <= now <= end_utc:
-            user.subscription_status = "active"
-            if is_deferred_enrollment(now):
-                # Stretch end through the next wait-window cycle without deferring access.
-                cycle_start = next_assignment_open_at(now)
-                new_end = end_of_cycle_paid_through_after(cycle_start)
-            else:
-                new_end = end_of_immediate_paid_through_after(now)
-            if new_end > end_utc:
-                user.subscription_end_date = new_end
-            return
-    activate_subscription(user, period_days=period_days)
+    old_end = _as_utc(user.subscription_end_date) if user.subscription_end_date else None
+    old_start = _as_utc(user.subscription_start_date) if user.subscription_start_date else None
+
+    if old_start is None or old_start > now:
+        user.subscription_start_date = now
+    # else keep original start — they already had access this cycle
+
+    user.subscription_status = "active"
+    base = old_end if old_end is not None and old_end > now else now
+    user.subscription_end_date = end_of_immediate_paid_through_after(base)
 
 
 def deactivate_subscription(user: User, db: Session | None = None) -> None:
@@ -177,6 +174,10 @@ def sync_subscription_expiry(user: User, db: Session) -> bool:
         db.refresh(user)
         return True
     if now <= _as_utc(end):
+        return False
+    # Grace: Grow recurring webhooks often arrive on/after the 25th. Keep access
+    # briefly so a successful charge can renew before we flip them inactive.
+    if now <= _as_utc(end) + timedelta(days=RENEWAL_GRACE_DAYS):
         return False
 
     deactivate_subscription(user, db)
