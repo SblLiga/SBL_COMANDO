@@ -155,21 +155,75 @@ def _webhook_key_matches(payload: dict) -> bool:
 
 def _email_from_purchase_custom_fields(payload: dict, data: dict) -> str:
     """
-    Fallback for Grow ₪1 / standing-order payloads that put registration email
-    only in purchaseCustomField (e.g. label "המייל שאיתו נרשמתם").
-    Does not override payerEmail / custom1 — callers use this only when those are empty.
+    Registration email from Grow custom fields:
+    - Legacy: purchaseCustomField dict values
+    - PaymentLinks: data.dynamicFields[{label, field_value}]
+    Prefer labeled fields like "המייל שאיתו נרשמתם".
     """
     buckets = (
         payload.get("purchaseCustomField"),
         payload.get("purchaseCustomFields"),
+        payload.get("dynamicFields"),
         data.get("purchaseCustomField"),
         data.get("purchaseCustomFields"),
+        data.get("dynamicFields"),
     )
+
+    def _item_value(item: dict) -> str:
+        return str(
+            item.get("value")
+            or item.get("fieldValue")
+            or item.get("field_value")  # PaymentLinks
+            or item.get("option_label")
+            or ""
+        ).strip()
+
+    def _item_label(item: dict) -> str:
+        return str(
+            item.get("name")
+            or item.get("label")
+            or item.get("fieldName")
+            or item.get("key")
+            or ""
+        ).strip().lower()
+
+    def _looks_like_email(text: str) -> bool:
+        text = (text or "").strip()
+        return bool(text and "@" in text and "." in text.split("@")[-1])
+
+    def _is_registration_mail_label(label: str) -> bool:
+        return (
+            "מייל" in label
+            or "mail" in label
+            or "email" in label
+            or "נרשמ" in label
+        )
+
+    # Pass 1: prefer labeled registration-email fields
+    for bucket in buckets:
+        if isinstance(bucket, list):
+            for item in bucket:
+                if not isinstance(item, dict):
+                    continue
+                value = _item_value(item)
+                if not _looks_like_email(value):
+                    continue
+                if _is_registration_mail_label(_item_label(item)):
+                    return value.lower()
+        elif isinstance(bucket, dict):
+            for key, raw in bucket.items():
+                text = str(raw or "").strip()
+                if not _looks_like_email(text):
+                    continue
+                if _is_registration_mail_label(str(key or "").lower()):
+                    return text.lower()
+
+    # Pass 2: any email-shaped custom value
     for bucket in buckets:
         if isinstance(bucket, dict):
             for value in bucket.values():
                 text = str(value or "").strip()
-                if text and "@" in text and "." in text.split("@")[-1]:
+                if _looks_like_email(text):
                     return text.lower()
             continue
         if not isinstance(bucket, list):
@@ -177,32 +231,14 @@ def _email_from_purchase_custom_fields(payload: dict, data: dict) -> str:
         for item in bucket:
             if not isinstance(item, dict):
                 continue
-            label = str(
-                item.get("name")
-                or item.get("label")
-                or item.get("fieldName")
-                or item.get("key")
-                or ""
-            ).strip().lower()
-            value = str(item.get("value") or item.get("fieldValue") or "").strip()
-            if not value or "@" not in value:
-                continue
-            # Prefer the registration-email custom field; otherwise first email-looking value.
-            if "מייל" in label or "mail" in label or "email" in label:
-                return value.lower()
-        # Second pass: any email-shaped value if no labeled mail field matched.
-        for item in bucket:
-            if not isinstance(item, dict):
-                continue
-            value = str(item.get("value") or item.get("fieldValue") or "").strip()
-            if value and "@" in value and "." in value.split("@")[-1]:
+            value = _item_value(item)
+            if _looks_like_email(value):
                 return value.lower()
     return ""
 
 
 def resolve_user(db: Session, payload: dict) -> User | None:
-    # Meshulam/Grow puts our user id in custom1 (see payment_url_for_user / buildGrowPaymentUrl).
-    # Never fall back to payload["id"] — that is Grow's transaction id, not our users.id.
+    # Prefer custom1 / userId when present. Never use payload["id"] (Grow transaction id).
     data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
     custom_fields = (
         data.get("customFields") if isinstance(data.get("customFields"), dict) else {}
@@ -239,7 +275,9 @@ def resolve_user(db: Session, payload: dict) -> User | None:
             if user is not None:
                 return user
 
-    email = (
+    # Prefer Grow "המייל שאיתו נרשמתם" over payerEmail (receipt email may differ).
+    custom_email = _email_from_purchase_custom_fields(payload, data)
+    email = custom_email or str(
         payload.get("payerEmail")
         or payload.get("payer_email")
         or payload.get("email")
@@ -251,11 +289,7 @@ def resolve_user(db: Session, payload: dict) -> User | None:
         or data.get("customer_email")
         or data.get("userEmail")
         or ""
-    )
-    email = str(email).strip().lower()
-    # Non-breaking fallback: Grow custom checkout fields (only when flat email missing).
-    if not email:
-        email = _email_from_purchase_custom_fields(payload, data)
+    ).strip().lower()
     if not email:
         return None
     return db.scalar(select(User).where(User.email == email))
