@@ -22,6 +22,7 @@ export default function Goal() {
   const [editingTitle, setEditingTitle] = useState("");
   const [group, setGroup] = useState(null);
   const [uploadingReward, setUploadingReward] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     load();
@@ -42,6 +43,7 @@ export default function Goal() {
       }
       try {
         const user = await apiClient.auth.me();
+        setIsAdmin((user?.role || "").toLowerCase() === "admin");
         const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
         if (myMembers[0]?.group_id) {
           const groups = await apiClient.entities.Group.list();
@@ -294,7 +296,14 @@ export default function Goal() {
 
       {/* Smart Wheel — own view never blanks on hide; hide only affects peers */}
       <div className="flex justify-center py-2">
-        <SmartWheel tasks={tasks} onToggle={(t) => toggleTask(t)} onSwap={swapTasks} hidden={false} size={340} goalTitle={goal.title} />
+        <SmartWheel
+          tasks={tasks}
+          onToggle={(t) => toggleTask(t)}
+          onSwap={isAdmin ? undefined : swapTasks}
+          hidden={false}
+          size={340}
+          goalTitle={goal.title}
+        />
       </div>
 
       {/* Task list */}
