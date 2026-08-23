@@ -2,18 +2,21 @@ import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 
 export function homePathForRole(role) {
-  if (role === "admin") return "/admin";
-  if (role === "manager") return "/manager";
+  const r = String(role || "").toLowerCase();
+  if (r === "admin") return "/admin";
+  if (r === "manager") return "/manager";
   return "/";
 }
 
 /**
  * Restrict nested routes to one or more roles.
  * Wrong role → redirect to that user's home interface.
+ * Role compare is case-insensitive so stale mixed-case tokens still route correctly.
  */
 export default function RoleRoute({ allow }) {
   const { user, isLoadingAuth, authChecked } = useAuth();
-  const allowed = Array.isArray(allow) ? allow : [allow];
+  const allowed = (Array.isArray(allow) ? allow : [allow]).map((r) => String(r).toLowerCase());
+  const role = String(user?.role || "").toLowerCase();
 
   if (isLoadingAuth || !authChecked) {
     return (
@@ -27,8 +30,8 @@ export default function RoleRoute({ allow }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (!allowed.includes(user.role)) {
-    return <Navigate to={homePathForRole(user.role)} replace />;
+  if (!allowed.includes(role)) {
+    return <Navigate to={homePathForRole(role)} replace />;
   }
 
   return <Outlet />;

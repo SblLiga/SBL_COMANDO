@@ -50,8 +50,9 @@ export default function StepManager({
 
   const filteredManagers = managers.filter((m) => {
     if (m.role !== "manager") return false;
-    if (gender && m.gender && m.gender !== gender) return false;
-    // Prefer next-month target (set from day 23); fall back to current target.
+    // Fail closed: women → managers with female gender; men → male. Missing gender excluded.
+    if (!gender || !m.gender || m.gender !== gender) return false;
+    // Prefer day-23 next_month_target so users assign to the choice that survives day 25.
     const effectiveTarget = m.next_month_target || m.target;
     if (target && effectiveTarget && effectiveTarget !== target) return false;
     if (target && !effectiveTarget) return false;

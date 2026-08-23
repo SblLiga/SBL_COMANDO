@@ -7,7 +7,13 @@ from sqlalchemy import asc, desc, select
 from sqlalchemy.orm import Session
 
 from app.auth.deps import require_active_subscription
-from app.cycle_xp import current_cycle_month, ensure_goal_cycle, ensure_member_cycle
+from app.cycle_xp import (
+    MANAGER_CYCLE_ROLLOVER_DAY,
+    USER_CYCLE_ROLLOVER_DAY,
+    current_cycle_month,
+    ensure_goal_cycle,
+    ensure_member_cycle,
+)
 from app.database import get_db
 from app.media_urls import heal_member_avatar
 from app.models import Goal, Group, Member, User
@@ -355,7 +361,17 @@ def create_entity(
                     data["role"] = "admin"
 
     if entity_name == "Goal" and not data.get("cycle_month"):
-        data["cycle_month"] = current_cycle_month()
+        role = (current_user.role or "").lower()
+        if role == "admin":
+            # Stamp calendar month only — admins never enter date-based cycle rollover.
+            data["cycle_month"] = current_cycle_month(rollover_day=32)
+        else:
+            rollover = (
+                MANAGER_CYCLE_ROLLOVER_DAY
+                if role == "manager"
+                else USER_CYCLE_ROLLOVER_DAY
+            )
+            data["cycle_month"] = current_cycle_month(rollover_day=rollover)
 
     allowed = {c.name for c in model.__table__.columns} - {"id", "created_at"}
     row = model(**{k: v for k, v in data.items() if k in allowed})

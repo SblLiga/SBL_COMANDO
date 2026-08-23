@@ -6,13 +6,27 @@ import SmartWheel from "@/components/SmartWheel";
 import KpiCard from "@/components/KpiCard";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
-import { ensureMyGoal } from "@/lib/myGoal";
+import { ensureMyGoal, resetAdminWheelOnTargetSave } from "@/lib/myGoal";
 import { mediaUrl } from "@/lib/mediaUrl";
 import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUpload";
+
+const ADMIN_TARGETS = [
+  "שיווק",
+  "יעד אישי",
+  "מכירות",
+  "אוטומציות",
+  "ניהול זמן",
+  "מגנט לידים",
+  "שיפור מוצר קיים",
+  "בניית מוצר חדש",
+  "אחר",
+];
 
 export default function Goal() {
   const { toast } = useToast();
   const [goal, setGoal] = useState(null);
+  const [member, setMember] = useState(null);
+  const [user, setUser] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -22,6 +36,11 @@ export default function Goal() {
   const [editingTitle, setEditingTitle] = useState("");
   const [group, setGroup] = useState(null);
   const [uploadingReward, setUploadingReward] = useState(false);
+  const [showAdminTargetPick, setShowAdminTargetPick] = useState(false);
+  const [adminTargetDraft, setAdminTargetDraft] = useState("");
+  const [savingAdminTarget, setSavingAdminTarget] = useState(false);
+
+  const isAdmin = String(user?.role || member?.role || "").toLowerCase() === "admin";
 
   useEffect(() => {
     load();
@@ -30,9 +49,11 @@ export default function Goal() {
   const load = async () => {
     setLoading(true);
     try {
-      const { goal: g } = await ensureMyGoal(apiClient);
-      setGoal(g);
-      const t = await apiClient.entities.Task.filter({ goal_id: g.id });
+      const loaded = await ensureMyGoal(apiClient);
+      setGoal(loaded.goal);
+      setMember(loaded.member || null);
+      setUser(loaded.user || null);
+      const t = await apiClient.entities.Task.filter({ goal_id: loaded.goal.id });
       setTasks(t.sort((a, b) => (a.order_index || 0) - (b.order_index || 0)).slice(0, 9));
       try {
         const settings = await apiClient.entities.SystemSetting.list();
@@ -41,17 +62,45 @@ export default function Goal() {
         console.error("[Goal] Failed to load XP settings:", err);
       }
       try {
-        const user = await apiClient.auth.me();
-        const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
-        if (myMembers[0]?.group_id) {
+        const me = loaded.member;
+        if (me?.group_id) {
           const groups = await apiClient.entities.Group.list();
-          setGroup(groups.find((grp) => grp.id === myMembers[0].group_id) || null);
+          setGroup(groups.find((grp) => grp.id === me.group_id) || null);
+        } else {
+          setGroup(null);
         }
       } catch (err) {
         console.error("[Goal] Failed to load group:", err);
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveAdminTarget = async () => {
+    if (!isAdmin || !adminTargetDraft || !goal) return;
+    setSavingAdminTarget(true);
+    try {
+      const result = await resetAdminWheelOnTargetSave(apiClient, {
+        user,
+        member,
+        goal,
+        target: adminTargetDraft,
+      });
+      setGoal(result.goal);
+      setMember(result.member || null);
+      setShowAdminTargetPick(false);
+      const t = await apiClient.entities.Task.filter({ goal_id: result.goal.id });
+      setTasks(t.sort((a, b) => (a.order_index || 0) - (b.order_index || 0)).slice(0, 9));
+      toast({
+        title: "יעד חדש נשמר",
+        description: "הגלגל, ה-XP וההתקדמות אופסו. זה האיפוס היחיד לאדמין.",
+      });
+    } catch (err) {
+      console.error("[Goal] admin target save failed", err);
+      toast({ title: "שמירת היעד נכשלה", variant: "destructive" });
+    } finally {
+      setSavingAdminTarget(false);
     }
   };
 
@@ -233,7 +282,52 @@ export default function Goal() {
       <div className="card-gold-rim p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1">
-            <span className="text-[10px] text-primary font-bold tracking-wide">יעד חודשי · {goal.target}</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] text-primary font-bold tracking-wide">יעד חודשי · {goal.target}</span>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdminTargetDraft(goal.target || "");
+                    setShowAdminTargetPick((v) => !v);
+                  }}
+                  className="text-[10px] font-bold text-primary underline underline-offset-2"
+                >
+                  {showAdminTargetPick ? "ביטול" : "בחירת יעד חדש"}
+                </button>
+              )}
+            </div>
+            {isAdmin && showAdminTargetPick && (
+              <div className="mt-3 space-y-2 rounded-xl bg-muted/40 p-3">
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  שמירת יעד חדש תאפס את הגלגל, ה-XP וההתקדמות. אין איפוס אוטומטי לפי תאריך.
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {ADMIN_TARGETS.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setAdminTargetDraft(t)}
+                      className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                        adminTargetDraft === t
+                          ? "border-primary bg-primary/15 text-primary font-bold"
+                          : "border-border text-muted-foreground"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  disabled={!adminTargetDraft || savingAdminTarget}
+                  onClick={saveAdminTarget}
+                  className="w-full gold-bg text-black rounded-lg px-4 py-2 text-sm font-bold disabled:opacity-50"
+                >
+                  {savingAdminTarget ? "שומר..." : "שמור יעד ואפס גלגל"}
+                </button>
+              </div>
+            )}
             <h2 className="font-display text-xl font-bold leading-tight mt-0.5">{goal.title}</h2>
             {goal.reward_text && (
               <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">

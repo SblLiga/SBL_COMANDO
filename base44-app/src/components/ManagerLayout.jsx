@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Outlet } from "react-router-dom";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
@@ -16,14 +16,20 @@ const items = [
 ];
 
 export default function ManagerLayout() {
+  const [gate, setGate] = useState({ locked: true, ready: false });
+
   return (
     <div className="min-h-screen bg-background pb-24">
       <Header />
-      <main className="max-w-md lg:max-w-xl mx-auto min-h-screen">
-        <Outlet />
-      </main>
-      <BottomNav items={items} />
-      <ManagerGoalSelection />
+      {gate.ready && !gate.locked && (
+        <>
+          <main className="max-w-md lg:max-w-xl mx-auto min-h-screen">
+            <Outlet />
+          </main>
+          <BottomNav items={items} />
+        </>
+      )}
+      <ManagerGoalSelection onGateState={setGate} />
     </div>
   );
 }

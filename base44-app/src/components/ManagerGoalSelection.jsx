@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import apiClient from "@/api/apiClient";
 import { Target } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
-import { isManagerTargetSelectionWindow, sameCalendarMonth } from "@/lib/calendarRules";
+import { useAuth } from "@/lib/AuthContext";
+import { needsManagerNextMonthTarget } from "@/lib/calendarRules";
 
 const TARGETS = [
   "שיווק",
@@ -16,50 +17,72 @@ const TARGETS = [
   "אחר",
 ];
 
-export default function ManagerGoalSelection() {
+/**
+ * Hard gate from day ≥ 23 until next_month_target is chosen for this month.
+ * No skip / close — ManagerLayout hides the rest of the UI while locked.
+ */
+export default function ManagerGoalSelection({ onGateState } = {}) {
   const { toast } = useToast();
-  const [show, setShow] = useState(false);
+  const { checkUserAuth } = useAuth();
+  const [locked, setLocked] = useState(true);
+  const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState("");
   const [saving, setSaving] = useState(false);
   const [member, setMember] = useState(null);
 
+  const emit = (nextLocked, nextReady = true) => {
+    setLocked(nextLocked);
+    setReady(nextReady);
+    onGateState?.({ locked: nextLocked, ready: nextReady });
+  };
+
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         const user = await apiClient.auth.me();
+        // Fresh role from server — avoid stale JWT/session treating admin/manager as user.
+        if (String(user?.role || "").toLowerCase() === "admin") {
+          if (!cancelled) emit(false, true);
+          return;
+        }
         const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
-        const me = myMembers[0];
+        const me = myMembers[0] || null;
+        if (cancelled) return;
         setMember(me);
 
-        if (me?.role !== "manager") return;
-
-        const hasTarget = Boolean(me.next_month_target || me.target);
-        if (!hasTarget) {
-          setShow(true);
+        const role = String(user?.role || me?.role || "").toLowerCase();
+        if (role !== "manager") {
+          emit(false, true);
           return;
         }
 
-        if (!isManagerTargetSelectionWindow()) return;
-        if (me.next_month_selected_at && sameCalendarMonth(me.next_month_selected_at)) {
+        if (needsManagerNextMonthTarget(me || { role: "manager" })) {
+          emit(true, true);
           return;
         }
-
-        setShow(true);
+        emit(false, true);
       } catch (err) {
         console.error("[ManagerGoalSelection]", err);
+        if (!cancelled) emit(true, true);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const save = async () => {
     if (!selected || !member) return;
     setSaving(true);
     try {
-      await apiClient.entities.Member.update(member.id, {
+      const updated = await apiClient.entities.Member.update(member.id, {
+        // Keep current-cycle target for matching; next_month_* is the day-23 choice for 25–26.
         target: selected,
         next_month_target: selected,
         next_month_selected_at: new Date().toISOString(),
       });
+      setMember(updated);
       if (member.user_id) {
         try {
           await apiClient.entities.User.update(member.user_id, { target: selected });
@@ -67,14 +90,19 @@ export default function ManagerGoalSelection() {
           /* role/target on User is optional */
         }
       }
+      try {
+        await checkUserAuth?.();
+      } catch {
+        /* non-blocking refresh */
+      }
       toast({ title: "היעד נשמר", description: `היעד לניהול נקבע ל: ${selected}` });
-      setShow(false);
+      emit(false, true);
     } finally {
       setSaving(false);
     }
   };
 
-  if (!show) return null;
+  if (!ready || !locked) return null;
 
   return (
     <div className="fixed inset-0 z-[200] bg-black/95 flex items-center justify-center p-4">
@@ -84,11 +112,13 @@ export default function ManagerGoalSelection() {
             <Target className="w-6 h-6 text-black" />
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">אזור מנהל</p>
-            <h2 className="font-display text-lg font-bold">בחירת יעד לניהול</h2>
+            <p className="text-xs text-muted-foreground">אזור מנהל · חובה מיום 23</p>
+            <h2 className="font-display text-lg font-bold">בחירת יעד לחודש הבא</h2>
           </div>
         </div>
-        <p className="text-sm text-muted-foreground mb-4">יש לבחור את היעד שעליו תנהל/י</p>
+        <p className="text-sm text-muted-foreground mb-4">
+          יש לבחור יעד ניהול לחודש הבא ולאשר. לא ניתן לדלג — רק אחרי האישור ייפתח אזור המנהל.
+        </p>
 
         <div className="space-y-2 mb-4 max-h-[40vh] overflow-y-auto">
           {TARGETS.map((t) => (

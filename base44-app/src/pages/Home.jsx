@@ -25,7 +25,7 @@ export default function Home() {
   useEffect(() => {
     (async () => {
       try {
-        // ensureMyGoal also rolls monthly XP when cycle_month changes (day ≥ 25).
+        // ensureMyGoal rolls monthly XP for users (day ≥ 25) / managers (day ≥ 23); admins excluded.
         const ensured = await ensureMyGoal(apiClient);
         const user = ensured.user;
         setMeUser(user);

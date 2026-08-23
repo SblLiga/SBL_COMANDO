@@ -1,6 +1,6 @@
 import { canAssignToGroup, needsMonthlyOnboarding, needsWaitingListAssignment } from "@/lib/calendarRules";
 import { homePathForRole } from "@/components/RoleRoute";
-import { isAdmin, isPendingAccessLocked, shouldBypassOnboarding } from "@/lib/subscriptionUtils";
+import { isAdmin, isManager, isPendingAccessLocked, shouldBypassOnboarding } from "@/lib/subscriptionUtils";
 
 /**
  * "Registered" for product purposes = auth verified AND onboarding wizard finished
@@ -10,7 +10,7 @@ import { isAdmin, isPendingAccessLocked, shouldBypassOnboarding } from "@/lib/su
  */
 export function needsOnboardingWizard(user, member = null) {
   if (!user) return true;
-  if (isAdmin(user) || user.role === "manager") return false;
+  if (isAdmin(user) || isManager(user)) return false;
   if (shouldBypassOnboarding(user, member)) return false;
   if (isPendingAccessLocked(user, member) && user.onboarding_completed) return false;
   if (!user.onboarding_completed) return true;
@@ -21,13 +21,14 @@ export function needsOnboardingWizard(user, member = null) {
 
 export function needsPayment(user) {
   if (!user) return false;
-  if (isAdmin(user) || user.role === "manager") return false;
+  if (isAdmin(user) || isManager(user)) return false;
   return user.subscription_status === "inactive";
 }
 
 /** Where to send the user right after login / OTP. */
 export function postAuthPath(user, member = null) {
   if (isAdmin(user)) return homePathForRole("admin");
+  if (isManager(user)) return homePathForRole("manager");
   if (needsPayment(user)) return "/payment";
   if (isPendingAccessLocked(user, member)) {
     if (user?.role === "user" && !user.onboarding_completed) return "/onboarding";

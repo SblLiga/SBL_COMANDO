@@ -2,9 +2,68 @@
  * Shared goal loading — always scope to the current user.
  * Prefer Member.goal_id, then Goal.filter({ owner_user_id }), never raw Goal.list()[0].
  * Managers/admins: quietly ensure a Member card exists so XP/league can attach.
- * Monthly cycle (from day 25 → next YYYY-MM): reset Goal.xp_total / Member.xp for everyone.
+ * Users: XP cycle from day ≥ 25. Managers: day ≥ 23. Admins: never by calendar —
+ * only via resetAdminWheelOnTargetSave when they intentionally save a new target.
+ * Never clears next_month_target / group_id on cycle reset.
  */
 import { currentCycleMonth } from "@/lib/calendarRules";
+
+function cycleRolloverDayFor(user, member) {
+  const role = String(user?.role || member?.role || "user").toLowerCase();
+  if (role === "admin") return null; // no calendar auto-reset
+  return role === "manager" ? 23 : 25;
+}
+
+/**
+ * Admin-only: intentional new target → reset personal wheel XP/progress/tasks.
+ * This is the sole reset trigger for admins (never date-based).
+ */
+export async function resetAdminWheelOnTargetSave(apiClient, { user, member, goal, target }) {
+  if (!goal?.id || !target) return { user, member, goal };
+  const role = String(user?.role || member?.role || "").toLowerCase();
+  if (role !== "admin") return { user, member, goal };
+
+  let tasks = [];
+  try {
+    tasks = await apiClient.entities.Task.filter({ goal_id: goal.id });
+  } catch (err) {
+    console.warn("[resetAdminWheelOnTargetSave] task list failed", err);
+  }
+  await Promise.all(
+    (tasks || [])
+      .filter((t) => t.is_completed)
+      .map((t) => apiClient.entities.Task.update(t.id, { is_completed: false }))
+  );
+
+  const stamp = new Date().toISOString().slice(0, 7); // YYYY-MM label only (not a calendar gate)
+  const resetGoal = await apiClient.entities.Goal.update(goal.id, {
+    target,
+    title: `יעד חודשי - ${target}`,
+    progress: 0,
+    xp_total: 0,
+    streak: 0,
+    cycle_month: stamp,
+  });
+
+  let nextMember = member;
+  if (member?.id) {
+    nextMember = await apiClient.entities.Member.update(member.id, {
+      target,
+      xp: 0,
+      progress: 0,
+      streak: 0,
+      goal_id: resetGoal.id,
+      goal_title: resetGoal.title,
+    });
+  }
+  try {
+    await apiClient.entities.User.update(user.id, { target });
+  } catch {
+    /* optional */
+  }
+
+  return { user, member: nextMember, goal: resetGoal };
+}
 
 export async function loadMyGoal(apiClient) {
   const user = await apiClient.auth.me();
@@ -48,11 +107,18 @@ async function ensureStaffMember(apiClient, user, defaults = {}) {
 /**
  * Open a clean XP cycle when Goal.cycle_month lags behind currentCycleMonth().
  * Missing cycle_month is stamped once (no wipe) so legacy rows migrate safely mid-cycle.
+ * Only updates xp/progress/streak — never next_month_target / group fields.
  */
 async function ensureGoalCycle(apiClient, { user, member, goal }) {
   if (!goal) return { user, member, goal };
 
-  const cycle = currentCycleMonth();
+  const rolloverDay = cycleRolloverDayFor(user, member);
+  // Admins: never auto-reset by calendar.
+  if (rolloverDay == null) {
+    return { user, member, goal };
+  }
+
+  const cycle = currentCycleMonth(new Date(), rolloverDay);
   if (!goal.cycle_month) {
     const stamped = await apiClient.entities.Goal.update(goal.id, { cycle_month: cycle });
     return { user, member, goal: stamped };
@@ -90,6 +156,7 @@ async function ensureGoalCycle(apiClient, { user, member, goal }) {
       streak: 0,
       goal_id: resetGoal.id,
       goal_title: resetGoal.title,
+      // Do NOT touch next_month_target / next_month_selected_at / group_id / target.
     });
   }
 
@@ -116,7 +183,12 @@ export async function ensureMyGoal(apiClient, defaults = {}) {
     return ensureGoalCycle(apiClient, loaded);
   }
 
-  const cycle = currentCycleMonth();
+  const rolloverDay = cycleRolloverDayFor(loaded.user, loaded.member);
+  // Admin: plain calendar YYYY-MM stamp (no day-25 advance). Others: role rollover.
+  const cycle =
+    rolloverDay == null
+      ? currentCycleMonth(new Date(), 32)
+      : currentCycleMonth(new Date(), rolloverDay);
   const target = defaults.target || loaded.user?.target || loaded.member?.target || "מכירות";
   const goal = await apiClient.entities.Goal.create({
     title: defaults.title || `יעד חודשי - ${target}`,

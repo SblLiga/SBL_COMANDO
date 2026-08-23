@@ -70,20 +70,43 @@ export function isMonthlyOnboardingResetDay(date = new Date()) {
   return calendarDay(date) === 25;
 }
 
+/** Managers open / reset their personal cycle from day 23 (users stay on 25). */
+export function isManagerCycleRolloverDay(date = new Date()) {
+  return calendarDay(date) === 23;
+}
+
 export function sameCalendarMonth(a, b = new Date()) {
   const d = a instanceof Date ? a : new Date(a);
   return d.getMonth() === b.getMonth() && d.getFullYear() === b.getFullYear();
 }
 
-/** Active league cycle label (YYYY-MM). From day 25 → next month. */
-export function currentCycleMonth(date = new Date()) {
+/**
+ * Active league cycle label (YYYY-MM).
+ * Users: day ≥ 25 → next month.
+ * Managers: day ≥ 23 → next month (personal wheel only).
+ * Admins: never auto-rolled by calendar (pass rolloverDay ≥ 32 to stamp plain month).
+ */
+export function currentCycleMonth(date = new Date(), rolloverDay = 25) {
   const d = new Date(date.getFullYear(), date.getMonth(), 1);
-  if (calendarDay(date) >= 25) {
+  if (calendarDay(date) >= rolloverDay) {
     d.setMonth(d.getMonth() + 1);
   }
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   return `${y}-${m}`;
+}
+
+/**
+ * From day ≥ 23 a manager must pick next_month_target for this calendar month.
+ * After they save (next_month_selected_at this month), they are free until next 23.
+ */
+export function needsManagerNextMonthTarget(member, date = new Date()) {
+  if (!member || String(member.role || "").toLowerCase() !== "manager") return false;
+  if (!isManagerTargetSelectionWindow(date)) return false;
+  if (member.next_month_target && member.next_month_selected_at && sameCalendarMonth(member.next_month_selected_at, date)) {
+    return false;
+  }
+  return true;
 }
 
 /**

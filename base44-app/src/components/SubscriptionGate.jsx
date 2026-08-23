@@ -6,6 +6,7 @@ import { needsOnboardingWizard, needsPayment } from "@/lib/postAuth";
 import { canAssignToGroup, isSubscriptionStartPending } from "@/lib/calendarRules";
 import {
   isAdmin,
+  isManager as userIsManager,
   isPendingAccessLocked,
   shouldBypassOnboarding,
 } from "@/lib/subscriptionUtils";
@@ -99,7 +100,7 @@ export default function SubscriptionGate() {
 
   if (isAdmin(user)) return <Outlet />;
 
-  const isManager = user.role === "manager";
+  const isManager = userIsManager(user);
   const bypass = shouldBypassOnboarding(user, member);
 
   if (!isManager && needsPayment(user)) {

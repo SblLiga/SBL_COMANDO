@@ -1,7 +1,15 @@
-import { isSubscriptionStartPending } from "@/lib/calendarRules";
+import {
+  calendarDay,
+  canAssignToGroup,
+  isSubscriptionStartPending,
+} from "@/lib/calendarRules";
 
 export function isAdmin(user) {
-  return user?.role === "admin";
+  return String(user?.role || "").toLowerCase() === "admin";
+}
+
+export function isManager(user) {
+  return String(user?.role || "").toLowerCase() === "manager";
 }
 
 /**
@@ -31,13 +39,30 @@ export function shouldBypassOnboarding(user, member = null, date = new Date()) {
 }
 
 /**
- * Lock to /pending for manager + user when start is still in the future and they are not active today.
- * Admin is never locked. Users who already have a group (User or Member) stay unlocked.
+ * Hard lock to /pending:
+ * - Admin: never.
+ * - Manager: never (must reach /manager from day 23 to pick next_month_target).
+ * - User: deferred subscription start, or unassigned outside the 25–26 window.
  */
 export function isPendingAccessLocked(user, member = null, date = new Date()) {
   if (!user || isAdmin(user)) return false;
-  if (isUserActiveToday(user, date)) return false;
-  if (!isSubscriptionStartPending(user, date)) return false;
-  if (user.role === "user" && (user.group_id || member?.group_id)) return false;
-  return user.role === "user" || user.role === "manager";
+  if (isManager(user)) return false;
+
+  const hasGroup = Boolean(user.group_id || member?.group_id);
+  // Enrolled users mid-cycle keep access on days 1–24.
+  if (user.role === "user" && hasGroup) return false;
+
+  if (isSubscriptionStartPending(user, date)) return true;
+
+  // Unassigned users stay frozen until assignment opens (25–26).
+  if (user.role === "user" && !hasGroup && !canAssignToGroup(user, date)) {
+    return true;
+  }
+
+  // Extra calendar freeze: before the 25th, unassigned / waiting users stay locked.
+  if (user.role === "user" && !hasGroup && calendarDay(date) < 25) {
+    return true;
+  }
+
+  return false;
 }
