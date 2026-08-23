@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/lib/AuthContext";
@@ -19,8 +20,9 @@ import { ensureMyGoal } from "@/lib/myGoal";
  * No skip / close — ManagerLayout hides the rest of the UI while locked.
  */
 export default function ManagerGoalSelection({ onGateState } = {}) {
+  const navigate = useNavigate();
   const { toast } = useToast();
-  const { checkUserAuth } = useAuth();
+  const { applyUser } = useAuth();
   const [locked, setLocked] = useState(true);
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -210,11 +212,14 @@ export default function ManagerGoalSelection({ onGateState } = {}) {
             gender: zone,
           });
         } catch {
-          /* optional */
+          /* optional — managers may lack User.update privilege */
         }
       }
+      // Soft session refresh only — checkUserAuth sets isLoadingAuth and unmounts
+      // AuthenticatedApp (see ThankYou), which drops emit(false) and re-locks the gate.
       try {
-        await checkUserAuth?.();
+        const me = await apiClient.auth.me();
+        applyUser?.(me);
       } catch {
         /* non-blocking */
       }
@@ -223,6 +228,7 @@ export default function ManagerGoalSelection({ onGateState } = {}) {
         description: `${target} · ${zone === "female" ? "אזור נשים" : "אזור גברים"} · ${tasks.length} משימות`,
       });
       emit(false, true);
+      navigate("/manager", { replace: true });
     } catch (err) {
       console.error("[ManagerGoalSelection] save failed", err);
       toast({
