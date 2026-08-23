@@ -1,7 +1,12 @@
-"""Deferred manager promotion/demotion: changes take effect from the next 25th.
+"""Manager promotion/demotion scheduling.
 
-Existing live managers stay managers this cycle unless Shuli demotes them
-during days 25–26 (the new-cycle assignment window).
+Promotion (user → manager):
+- Immediate on calendar days 23–24 (Asia/Jerusalem) so they can pick a target
+  before regular users open on the 25th.
+- Otherwise queued until the next 23rd (manager_effective_on).
+
+Demotion (manager → user) and regular-user enrollment still use the 25th window
+via is_deferred_enrollment / next_assignment_open_at — unchanged.
 """
 
 from __future__ import annotations
@@ -15,7 +20,9 @@ from app.models import Member, User
 from app.subscription import (
     _utcnow,
     is_deferred_enrollment,
+    is_immediate_manager_promotion,
     next_assignment_open_at,
+    next_manager_role_effective_at,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,11 +61,11 @@ def demote_manager_now(db: Session, user: User) -> None:
 
 
 def schedule_manager_for_next_cycle(user: User) -> None:
-    """Keep current user role + group; become selectable manager from next 25th."""
+    """Keep current user role + group; become live manager from the next 23rd."""
     user.role = "user"
     user.pending_manager = True
     user.pending_demotion = False
-    user.manager_effective_on = next_assignment_open_at()
+    user.manager_effective_on = next_manager_role_effective_at()
     logger.info(
         "Scheduled manager promotion user_id=%s effective_on=%s",
         user.id,
@@ -80,9 +87,10 @@ def schedule_demotion_for_next_cycle(user: User) -> None:
 
 
 def apply_admin_user_role(db: Session, user: User, new_role: str) -> None:
-    """Admin toggle. Live role stays until the next 25th except during 25–26."""
+    """Admin role toggle. Promotion uses 23–24; demotion still uses 25–26."""
     role = (new_role or "").strip().lower()
-    deferred = is_deferred_enrollment()
+    # Demotion / cancel: regular-user assignment window (25–26).
+    deferred_user_window = is_deferred_enrollment()
 
     if role == "user":
         # Nominated but not live yet — cancel immediately.
@@ -91,7 +99,7 @@ def apply_admin_user_role(db: Session, user: User, new_role: str) -> None:
             return
         # Already a live manager: delay until next cycle unless we are in 25–26.
         if user.role == "manager":
-            if deferred:
+            if deferred_user_window:
                 schedule_demotion_for_next_cycle(user)
                 db.add(user)
                 return
@@ -115,7 +123,8 @@ def apply_admin_user_role(db: Session, user: User, new_role: str) -> None:
     if user.role == "manager" and not user.pending_manager:
         return
 
-    if not deferred:
+    # Promotion: immediate on 23–24; otherwise queue for next 23rd.
+    if is_immediate_manager_promotion():
         activate_manager_now(db, user)
         return
 
