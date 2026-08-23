@@ -5,7 +5,7 @@ CLIENT_HANDOFF_ACCOUNTS = (
         "email": "sbl.school1@gmail.com",
         "password_env": "HANDOFF_PASSWORD_MICHAL",
         "full_name": "מיכל מזכירה",
-        "role": "admin",
+        "role": "manager",
     },
     {
         "email": "shuliyazdi2000@gmail.com",
@@ -224,3 +224,74 @@ CLIENT_HANDOFF_ACCOUNTS = (
         "paid_commitment": True,
     },
 )
+
+# Extra paid-commitment emails from the league import list (create-only if missing).
+# Duplicate of an email already in CLIENT_HANDOFF_ACCOUNTS is skipped.
+ADDITIONAL_COMMITMENT_EMAILS = (
+    "yehoda87@gmail.com",
+    "almogimcenter@gmail.com",
+    "efrat@eseffect.com",
+    "0549965393m@gmail.com",
+    "hodaya2097@gmail.com",
+    "betty.coachtherapy@gmail.com",
+    "dr7615232@gmail.com",
+    "u0527148848@gmail.com",
+    "itayp18@gmail.com",
+    "feinshifra@gmail.com",
+    "asulin6596@gmail.com",
+    "itey_pp@hotmail.com",
+    "tnk.artstudio@gmail.com",
+    "adi8483991@gmail.com",
+    "neomy6621@gmail.com",
+    "chani240@gmail.com",
+    "esti.e1641@gmail.com",
+    "sarazilberman@gmail.com",
+    "ktarim.art@gmail.com",
+    "genesisgold928@gmail.com",
+    "batzion22@gmail.com",
+    "a73451@gmail.com",
+    "c527668902@gmail.com",
+    "yoni3939@gmail.com",
+    "izun2f@gmail.com",
+    "ry314661265@gmail.com",
+    "yshfein@gmail.com",
+    "u058714@gmail.com",
+    "m.habanim@gmail.com",
+    "mommysd4@gmail.com",
+    "a097921080@gmail.com",
+    "etitoledo@gmail.com",
+    "ruti176@gmail.com",
+    "hodayacash@gmail.com",
+    "zehavasulin.photolife@gmail.com",
+    "rivkyr770@gmail.com",
+    "ch.0587701986@gmail.com",
+    "ld0527121568@gmail.com",
+    "liorakva1961@gmail.com",
+    "r2269540@gmail.com",
+    "mirilerner1@gmail.com",
+    "yehoda3007@gmail.com",
+)
+
+
+def iter_handoff_accounts():
+    seen: set[str] = set()
+    for account in CLIENT_HANDOFF_ACCOUNTS:
+        email = account["email"].strip().lower()
+        if email in seen:
+            continue
+        seen.add(email)
+        yield account
+    for raw in ADDITIONAL_COMMITMENT_EMAILS:
+        email = raw.strip().lower()
+        if not email or email in seen:
+            continue
+        seen.add(email)
+        local = email.split("@")[0]
+        yield {
+            "email": email,
+            "password_env": "HANDOFF_PASSWORD_COMMITMENT",
+            "full_name": local.replace(".", " ").replace("_", " "),
+            "role": "user",
+            "paid_commitment": True,
+            "skip_if_exists": True,
+        }

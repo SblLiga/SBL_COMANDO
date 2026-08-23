@@ -26,10 +26,9 @@ export default function League({ zoneBadge = "אזור משתמש", readOnly = t
           apiClient.entities.Member.list(),
           apiClient.auth.me().catch(() => null),
         ]);
-        // League: users + managers; admins stay out of the board.
         setMembers(m.filter((row) => {
           const role = (row.role || "user").toLowerCase();
-          return role === "user" || role === "manager";
+          return role === "user" || role === "manager" || role === "admin";
         }));
         if (u) setCurrentUserId(u.id);
       } finally {
@@ -59,11 +58,24 @@ export default function League({ zoneBadge = "אזור משתמש", readOnly = t
   const rest = isSearching ? filtered : filtered.slice(3);
   const podiumOrder = [1, 0, 2]; // silver, gold, bronze → left, center, right (RTL)
   const isManager = (m) => (m.role || "").toLowerCase() === "manager";
-  const ManagerBadge = () => (
-    <span className="inline-block text-[9px] font-medium text-muted-foreground/80 border border-border/60 rounded px-1 py-px align-middle mr-1">
-      מנהל
-    </span>
-  );
+  const isAdminMember = (m) => (m.role || "").toLowerCase() === "admin";
+  const RoleBadge = ({ member }) => {
+    if (isAdminMember(member)) {
+      return (
+        <span className="inline-block text-[9px] font-medium text-muted-foreground/80 border border-border/60 rounded px-1 py-px align-middle mr-1">
+          אדמין
+        </span>
+      );
+    }
+    if (isManager(member)) {
+      return (
+        <span className="inline-block text-[9px] font-medium text-muted-foreground/80 border border-border/60 rounded px-1 py-px align-middle mr-1">
+          מנהל
+        </span>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="p-4 space-y-5 pb-4">
@@ -128,7 +140,7 @@ export default function League({ zoneBadge = "אזור משתמש", readOnly = t
                 <div className="text-center w-full px-1">
                   <p className="text-xs font-bold truncate">
                     {m.name}
-                    {isManager(m) && <ManagerBadge />}
+                    <RoleBadge member={m} />
                   </p>
                   <p className="text-[11px] gold-text font-bold">{m.xp || 0} XP</p>
                 </div>
@@ -154,7 +166,7 @@ export default function League({ zoneBadge = "אזור משתמש", readOnly = t
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">
                 {m.name}
-                {isManager(m) && <ManagerBadge />}
+                <RoleBadge member={m} />
                 {isMe(m) && <span className="text-primary text-[10px]"> (את/ה)</span>}
               </p>
               <p className="text-[10px] text-muted-foreground truncate">{m.group_name}</p>

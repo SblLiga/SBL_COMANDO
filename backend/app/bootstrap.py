@@ -161,7 +161,7 @@ PROD_HANDOFF_JUNK_EMAILS = frozenset(
     }
 )
 
-from app.handoff_accounts import CLIENT_HANDOFF_ACCOUNTS
+from app.handoff_accounts import iter_handoff_accounts
 
 _DEMO_TASKS = (
     "שיחת מכירה יומית",
@@ -671,7 +671,7 @@ def ensure_client_handoff_accounts(session: Session, settings: Settings | None =
     (avoids wiping Profile password changes on every deploy).
     """
     changed = 0
-    for account in CLIENT_HANDOFF_ACCOUNTS:
+    for account in iter_handoff_accounts():
         email = account["email"].strip().lower()
         user = session.scalar(select(User).where(User.email == email))
         is_admin = account["role"] == "admin"
@@ -712,12 +712,20 @@ def ensure_client_handoff_accounts(session: Session, settings: Settings | None =
                 account["role"],
             )
         else:
+            if account.get("skip_if_exists"):
+                continue
             # Soft repair only — never reset password, extend subscription, or force-activate.
             touched = False
             if account["full_name"] and user.full_name != account["full_name"]:
                 user.full_name = account["full_name"]
                 touched = True
-            if user.role != account["role"] and is_admin:
+            if email == "sbl.school1@gmail.com" and user.role != "manager":
+                user.role = "manager"
+                touched = True
+                member = session.scalar(select(Member).where(Member.user_id == user.id).limit(1))
+                if member is not None and member.role != "manager":
+                    member.role = "manager"
+            elif user.role != account["role"] and is_admin:
                 user.role = account["role"]
                 touched = True
             if not user.email_verified:
