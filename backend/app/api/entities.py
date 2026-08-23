@@ -59,8 +59,7 @@ def _strip_privileged(entity_name: str, data: dict[str, Any], actor: User) -> di
         return {k: v for k, v in cleaned.items() if k not in _PRIVILEGED_USER_FIELDS}
     if entity_name == "Member":
         cleaned.pop("role", None)
-    if entity_name == "Task" and actor.role not in {"admin", "manager"}:
-        cleaned.pop("priority", None)
+    # Task.priority is owner-editable (Goal page + manager participant modal).
     return cleaned
 
 

@@ -11,6 +11,14 @@ import { ensureMyGoal, resetAdminWheelOnTargetSave } from "@/lib/myGoal";
 import { mediaUrl } from "@/lib/mediaUrl";
 import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUpload";
 
+const TASK_PRIORITIES = ["דחוף", "בינוני", "נמוך"];
+
+function priorityClass(priority) {
+  if (priority === "דחוף") return "bg-destructive/20 text-destructive";
+  if (priority === "בינוני") return "bg-primary/15 text-primary";
+  return "bg-muted text-muted-foreground";
+}
+
 const ADMIN_TARGETS = [
   "שיווק",
   "יעד אישי",
@@ -34,6 +42,7 @@ export default function Goal() {
   const [loading, setLoading] = useState(true);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [newTaskPriority, setNewTaskPriority] = useState("בינוני");
   const [xpPerTask, setXpPerTask] = useState(100);
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -170,11 +179,12 @@ export default function Goal() {
       title: newTaskTitle,
       order_index: tasks.length,
       is_completed: false,
-      priority: "בינוני",
+      priority: newTaskPriority,
       xp_value: xpPerTask,
     });
     setTasks([...tasks, t]);
     setNewTaskTitle("");
+    setNewTaskPriority("בינוני");
     setShowAdd(false);
   };
 
@@ -216,6 +226,12 @@ export default function Goal() {
   const startEditTask = (task) => {
     setEditingTaskId(task.id);
     setEditingTitle(task.title);
+  };
+
+  const changePriority = async (task, priority) => {
+    if (!priority || priority === (task.priority || "בינוני")) return;
+    const updated = await apiClient.entities.Task.update(task.id, { priority });
+    setTasks(tasks.map((t) => (t.id === task.id ? updated : t)));
   };
 
   const saveEditTask = async (task) => {
@@ -423,6 +439,20 @@ export default function Goal() {
               onKeyDown={(e) => e.key === "Enter" && addTask()}
               autoFocus
             />
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground shrink-0">דחיפות</span>
+              <select
+                value={newTaskPriority}
+                onChange={(e) => setNewTaskPriority(e.target.value)}
+                className={`flex-1 rounded-lg px-2 py-2 text-xs font-semibold bg-input ${priorityClass(newTaskPriority)}`}
+              >
+                {TASK_PRIORITIES.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
             <button onClick={addTask} className="w-full gold-bg text-black rounded-lg px-5 py-2 text-sm font-bold">
               הוסף
             </button>
@@ -439,12 +469,7 @@ export default function Goal() {
             {(provided) => (
               <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-2">
                 {tasks.map((task, i) => {
-                  const priorityColor =
-                    task.priority === "דחוף"
-                      ? "bg-destructive/20 text-destructive"
-                      : task.priority === "בינוני"
-                      ? "bg-primary/15 text-primary"
-                      : "bg-muted text-muted-foreground";
+                  const currentPriority = task.priority || "בינוני";
                   return (
                     <Draggable key={task.id} draggableId={task.id} index={i}>
                       {(prov) => (
@@ -491,12 +516,19 @@ export default function Goal() {
                           <button type="button" onClick={() => deleteTask(task)} className="p-1.5 text-muted-foreground hover:text-destructive">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                          <span
-                            className={`text-[10px] px-2.5 py-1 rounded-full font-semibold ${priorityColor}`}
-                            title="דחיפות נקבעת ע״י מנהל/ת"
+                          <select
+                            value={TASK_PRIORITIES.includes(currentPriority) ? currentPriority : "בינוני"}
+                            onChange={(e) => changePriority(task, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label="דחיפות המשימה"
+                            className={`text-[10px] px-2 py-1 rounded-full font-semibold border-0 cursor-pointer appearance-auto max-w-[5.5rem] ${priorityClass(currentPriority)}`}
                           >
-                            {task.priority || "בינוני"}
-                          </span>
+                            {TASK_PRIORITIES.map((p) => (
+                              <option key={p} value={p}>
+                                {p}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       )}
                     </Draggable>
