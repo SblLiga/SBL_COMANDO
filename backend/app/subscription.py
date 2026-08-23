@@ -21,6 +21,11 @@ IMMEDIATE_ENROLLMENT_LAST_DAY = 26
 ASSIGNMENT_OPEN_DAY = 25
 CYCLE_PAID_THROUGH_DAY = 24
 IMMEDIATE_PAID_THROUGH_DAY = 26
+# Manager promotion only (not regular-user enrollment): live from the 23rd so
+# they can pick next_month_target before users open on the 25th.
+MANAGER_ROLE_EFFECTIVE_DAY = 23
+# Inclusive last day of the immediate-promotion window (still before ASSIGNMENT_OPEN_DAY).
+MANAGER_IMMEDIATE_PROMOTION_LAST_DAY = 24
 # Wait for Grow's next standing-order charge before locking the user out.
 RENEWAL_GRACE_DAYS = 4
 
@@ -50,11 +55,19 @@ def _israel_now(now: datetime | None = None) -> datetime:
 
 
 def is_deferred_enrollment(now: datetime | None = None) -> bool:
+    """Regular users: deferred outside the 25–26 assignment window."""
     day = _israel_now(now).day
     return day != ASSIGNMENT_OPEN_DAY and day != IMMEDIATE_ENROLLMENT_LAST_DAY
 
 
+def is_immediate_manager_promotion(now: datetime | None = None) -> bool:
+    """Manager role grant: immediate on the 23rd–24th (before users open on the 25th)."""
+    day = _israel_now(now).day
+    return MANAGER_ROLE_EFFECTIVE_DAY <= day <= MANAGER_IMMEDIATE_PROMOTION_LAST_DAY
+
+
 def next_assignment_open_at(now: datetime | None = None) -> datetime:
+    """Next user-assignment open (25th 00:00 Israel). Used for subscriptions / demotions."""
     local = _israel_now(now)
     year, month = local.year, local.month
     if local.day >= ASSIGNMENT_OPEN_DAY:
@@ -64,6 +77,20 @@ def next_assignment_open_at(now: datetime | None = None) -> datetime:
         else:
             month += 1
     start_local = datetime(year, month, ASSIGNMENT_OPEN_DAY, 0, 0, 0, tzinfo=_ISRAEL)
+    return start_local.astimezone(timezone.utc)
+
+
+def next_manager_role_effective_at(now: datetime | None = None) -> datetime:
+    """Next manager-promotion effective instant (23rd 00:00 Israel)."""
+    local = _israel_now(now)
+    year, month = local.year, local.month
+    if local.day >= MANAGER_ROLE_EFFECTIVE_DAY:
+        if month == 12:
+            year += 1
+            month = 1
+        else:
+            month += 1
+    start_local = datetime(year, month, MANAGER_ROLE_EFFECTIVE_DAY, 0, 0, 0, tzinfo=_ISRAEL)
     return start_local.astimezone(timezone.utc)
 
 

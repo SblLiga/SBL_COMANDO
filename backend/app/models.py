@@ -37,7 +37,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(32), default="user")
-    # Nominated by admin; stays a regular user until manager_effective_on (next 25th).
+    # Nominated by admin; stays a regular user until manager_effective_on (next 23rd).
     pending_manager: Mapped[bool] = mapped_column(Boolean, default=False)
     # Live manager marked to step down; stays manager until manager_effective_on.
     pending_demotion: Mapped[bool] = mapped_column(Boolean, default=False)
