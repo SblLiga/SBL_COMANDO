@@ -139,7 +139,7 @@ export default function PrivacyPolicy() {
           <p>אנו רשאים לעדכן את מדיניות הפרטיות מעת לעת. שינויים מהותיים יובאו לידיעתך באופן ברור.</p>
         </Section>
 
-        <p className="text-sm text-muted-foreground">מדיניות הפרטיות עודכנה בתאריך: 2026</p>
+        <p className="text-sm text-muted-foreground">מדיניות הפרטיות עודכנה בתאריך: ‎03/09/2025</p>
       </article>
     </div>
   );
