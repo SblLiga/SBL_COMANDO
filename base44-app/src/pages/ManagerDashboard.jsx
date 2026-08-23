@@ -9,6 +9,7 @@ import NudgeModal from "@/components/NudgeModal";
 import UserAvatar from "@/components/UserAvatar";
 import MotivationalQuote from "@/components/MotivationalQuote";
 import { loadManagerGroupMembers, resolveManagerOwnedGroup } from "@/lib/managerGroup";
+import { ensureMyGoal } from "@/lib/myGoal";
 
 const statusColor = {
   "בעקבות": "bg-green-500",
@@ -31,6 +32,7 @@ export default function ManagerDashboard() {
       try {
         const user = await apiClient.auth.me();
         setCurrentUserId(user.id);
+        await ensureMyGoal(apiClient);
         const { group: owned, member } = await resolveManagerOwnedGroup(user);
         setCurrentMember(member);
         setGroup(owned);

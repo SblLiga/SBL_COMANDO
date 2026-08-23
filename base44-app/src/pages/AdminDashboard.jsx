@@ -5,6 +5,7 @@ import PageHeader from "@/components/PageHeader";
 import KpiCard from "@/components/KpiCard";
 import ProgressRing from "@/components/ProgressRing";
 import { useToast } from "@/components/ui/use-toast";
+import { ensureMyGoal } from "@/lib/myGoal";
 import { AreaChart, Area, BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 const TARGETS = ["שיווק", "אוטומציות", "מכירות", "ניהול זמן", "מגנט לידים", "שיפור מוצר קיים", "בניית מוצר חדש", "כלכלי", "אחר"];
@@ -67,7 +68,10 @@ export default function AdminDashboard() {
     (async () => {
       try {
         const [m, g, r, s, n, users] = await Promise.all([
-          apiClient.entities.Member.list(),
+          (async () => {
+            await ensureMyGoal(apiClient).catch(() => null);
+            return apiClient.entities.Member.list();
+          })(),
           apiClient.entities.Group.list(),
           apiClient.entities.Report.list(),
           apiClient.entities.SystemSetting.list(),
