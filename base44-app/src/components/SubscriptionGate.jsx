@@ -24,9 +24,9 @@ export default function SubscriptionGate() {
       return;
     }
 
-    // Admin / enrolled-or-active via User fields: no extra fetches.
+    // Admin / manager (incl. due promotion): no extra fetches.
     // Member.group_id heal is handled after fetch / backend sync on /me.
-    if (user.role !== "user" || shouldBypassOnboarding(user)) {
+    if (isAdmin(user) || userIsManager(user) || shouldBypassOnboarding(user)) {
       setMember(null);
       setHasWheel(true);
       setLoadingExtras(false);

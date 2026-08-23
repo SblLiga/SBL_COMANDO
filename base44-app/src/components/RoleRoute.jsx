@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
+import { isAdmin, isManager } from "@/lib/subscriptionUtils";
 
 export function homePathForRole(role) {
   const r = String(role || "").toLowerCase();
@@ -8,15 +9,21 @@ export function homePathForRole(role) {
   return "/";
 }
 
+/** Prefer live flags (incl. due pending_manager) over a raw role string. */
+export function homePathForUser(user) {
+  if (isAdmin(user)) return "/admin";
+  if (isManager(user)) return "/manager";
+  return "/";
+}
+
 /**
  * Restrict nested routes to one or more roles.
  * Wrong role → redirect to that user's home interface.
- * Role compare is case-insensitive so stale mixed-case tokens still route correctly.
+ * Uses isManager so due promotions are not bounced to /pending or user home.
  */
 export default function RoleRoute({ allow }) {
   const { user, isLoadingAuth, authChecked } = useAuth();
   const allowed = (Array.isArray(allow) ? allow : [allow]).map((r) => String(r).toLowerCase());
-  const role = String(user?.role || "").toLowerCase();
 
   if (isLoadingAuth || !authChecked) {
     return (
@@ -30,8 +37,15 @@ export default function RoleRoute({ allow }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (!allowed.includes(role)) {
-    return <Navigate to={homePathForRole(role)} replace />;
+  const matches = allowed.some((a) => {
+    if (a === "admin") return isAdmin(user);
+    if (a === "manager") return isManager(user);
+    if (a === "user") return !isAdmin(user) && !isManager(user);
+    return String(user?.role || "").toLowerCase() === a;
+  });
+
+  if (!matches) {
+    return <Navigate to={homePathForUser(user)} replace />;
   }
 
   return <Outlet />;

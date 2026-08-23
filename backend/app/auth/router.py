@@ -30,6 +30,7 @@ from app.security import hash_password, verify_password
 from app.media_urls import sync_avatar_to_members
 from app.serializers import user_to_dict
 from app.subscription import sync_subscription_expiry
+from app.pending_manager import ensure_live_manager_if_due
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -181,6 +182,8 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
     if not user.email_verified:
         raise HTTPException(status_code=403, detail="Email not verified")
 
+    # Apply due manager promotions before the client reads /me and routes gates.
+    user = ensure_live_manager_if_due(db, user)
     sync_subscription_expiry(user, db)
     access_token = create_access_token(str(user.id))
     return TokenResponse(access_token=access_token)

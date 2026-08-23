@@ -8,8 +8,22 @@ export function isAdmin(user) {
   return String(user?.role || "").toLowerCase() === "admin";
 }
 
-export function isManager(user) {
-  return String(user?.role || "").toLowerCase() === "manager";
+/**
+ * Live manager, or a nominated manager whose promotion is already due.
+ * JWT never embeds role — callers must use /me; this also covers a missed DB flip
+ * so gates never bounce due managers to /pending.
+ */
+export function isManager(user, date = new Date()) {
+  const role = String(user?.role || "").toLowerCase();
+  if (role === "manager") return true;
+  if (role === "admin" || !user?.pending_manager) return false;
+  if (user.manager_effective_on) {
+    const effective = new Date(user.manager_effective_on);
+    if (Number.isNaN(effective.getTime())) return calendarDay(date) >= 23;
+    return effective.getTime() <= date.getTime();
+  }
+  // Missing schedule: unlock on/after the 23rd (manager promotion day).
+  return calendarDay(date) >= 23;
 }
 
 /**
@@ -34,6 +48,7 @@ export function isUserActiveToday(user, date = new Date()) {
  */
 export function shouldBypassOnboarding(user, member = null, date = new Date()) {
   if (isAdmin(user)) return true;
+  if (isManager(user, date)) return true;
   const hasGroup = Boolean(user?.group_id || member?.group_id);
   return hasGroup || isUserActiveToday(user, date);
 }
@@ -41,12 +56,12 @@ export function shouldBypassOnboarding(user, member = null, date = new Date()) {
 /**
  * Hard lock to /pending:
  * - Admin: never.
- * - Manager: never (must reach /manager from day 23 to pick next_month_target).
+ * - Manager (live or due promotion): never (day-23 target gate lives in ManagerLayout).
  * - User: deferred subscription start, or unassigned outside the 25–26 window.
  */
 export function isPendingAccessLocked(user, member = null, date = new Date()) {
   if (!user || isAdmin(user)) return false;
-  if (isManager(user)) return false;
+  if (isManager(user, date)) return false;
 
   const hasGroup = Boolean(user.group_id || member?.group_id);
   // Enrolled users mid-cycle keep access on days 1–24.

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Member, User
 from app.subscription import (
+    _as_utc,
     _utcnow,
     is_deferred_enrollment,
     is_immediate_manager_promotion,
@@ -41,6 +42,11 @@ def activate_manager_now(db: Session, user: User) -> None:
     user.onboarding_completed = True
     if (user.subscription_status or "").lower() != "active":
         user.subscription_status = "active"
+    # Clear deferred wait-window start so gates never re-freeze a live manager.
+    now = _utcnow()
+    start = user.subscription_start_date
+    if start is not None and _as_utc(start) > now:
+        user.subscription_start_date = now
 
     member = db.scalar(select(Member).where(Member.user_id == user.id).limit(1))
     if member is not None:
@@ -135,13 +141,30 @@ def apply_admin_user_role(db: Session, user: User, new_role: str) -> None:
 def apply_scheduled_manager_promotions(db: Session) -> int:
     """Apply due promotions and demotions. Safe no-op for everyone else."""
     now = _utcnow()
-    due = db.scalars(
-        select(User).where(
-            User.manager_effective_on.is_not(None),
-            User.manager_effective_on <= now,
-            or_(User.pending_manager.is_(True), User.pending_demotion.is_(True)),
-        )
-    ).all()
+    due = list(
+        db.scalars(
+            select(User).where(
+                User.manager_effective_on.is_not(None),
+                User.manager_effective_on <= now,
+                or_(User.pending_manager.is_(True), User.pending_demotion.is_(True)),
+            )
+        ).all()
+    )
+    # Repair: nominated managers with a missing schedule still unlock on 23–24.
+    if is_immediate_manager_promotion(now):
+        orphans = db.scalars(
+            select(User).where(
+                User.pending_manager.is_(True),
+                User.manager_effective_on.is_(None),
+                User.role != "manager",
+                User.role != "admin",
+            )
+        ).all()
+        seen = {u.id for u in due}
+        for user in orphans:
+            if user.id not in seen:
+                due.append(user)
+
     count = 0
     changed = False
     for user in due:
@@ -160,6 +183,28 @@ def apply_scheduled_manager_promotions(db: Session) -> int:
     if changed:
         db.commit()
     return count
+
+
+def ensure_live_manager_if_due(db: Session, user: User) -> User:
+    """Run schedule ticks, then ensure *this* user is flipped if their promotion is due."""
+    apply_scheduled_manager_promotions(db)
+    db.refresh(user)
+    if user.role == "admin":
+        return user
+    if user.role == "manager" and not user.pending_manager:
+        return user
+    if not user.pending_manager:
+        return user
+    now = _utcnow()
+    effective = user.manager_effective_on
+    due = effective is None and is_immediate_manager_promotion(now)
+    if effective is not None and _as_utc(effective) <= now:
+        due = True
+    if due:
+        activate_manager_now(db, user)
+        db.commit()
+        db.refresh(user)
+    return user
 
 
 def clamp_member_role_to_user_status(db: Session, member: Member) -> None:

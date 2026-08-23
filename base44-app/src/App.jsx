@@ -9,7 +9,7 @@ import ScrollToTop from './components/ScrollToTop';
 // Add page imports here
 import { Navigate } from "react-router-dom";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import RoleRoute, { homePathForRole } from "@/components/RoleRoute";
+import RoleRoute, { homePathForUser } from "@/components/RoleRoute";
 import Layout from "@/components/Layout";
 import ManagerLayout from "@/components/ManagerLayout";
 import AdminLayout from "@/components/AdminLayout";
@@ -45,7 +45,7 @@ import AccessibilityWidget from "@/components/AccessibilityWidget";
 
 function RoleHomeRedirect() {
   const { user } = useAuth();
-  return <Navigate to={homePathForRole(user?.role)} replace />;
+  return <Navigate to={homePathForUser(user)} replace />;
 }
 
 const AuthenticatedApp = () => {

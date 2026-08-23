@@ -7,30 +7,29 @@ import { Label } from "@/components/ui/label";
 import { Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import { postAuthPath } from "@/lib/postAuth";
-import { isPendingAccessLocked, shouldBypassOnboarding } from "@/lib/subscriptionUtils";
+import { isAdmin, isManager, isPendingAccessLocked, shouldBypassOnboarding } from "@/lib/subscriptionUtils";
 
 function resolveReturnPath(searchParams, user, member = null) {
-  const role = (user?.role || "user").toLowerCase();
-  if (role === "admin") {
+  if (isAdmin(user)) {
     return postAuthPath(user, member);
   }
   if (isPendingAccessLocked(user, member)) {
-    if (role === "user" && !user?.onboarding_completed) return "/onboarding";
+    if (!isManager(user) && user?.role === "user" && !user?.onboarding_completed) return "/onboarding";
     return "/pending";
   }
-  if (role === "user" && shouldBypassOnboarding(user, member)) {
+  if (!isManager(user) && user?.role === "user" && shouldBypassOnboarding(user, member)) {
     return postAuthPath(user, member);
   }
-  if (role === "user" && !user?.onboarding_completed) {
+  if (!isManager(user) && user?.role === "user" && !user?.onboarding_completed) {
     return "/onboarding";
   }
   const raw = searchParams.get("return");
   if (!raw || !raw.startsWith("/") || raw.startsWith("//")) {
     return postAuthPath(user, member);
   }
-  if (role === "admin" && raw.startsWith("/admin")) return raw;
-  if (role === "manager" && raw.startsWith("/manager")) return raw;
-  if (role === "user" && !raw.startsWith("/admin") && !raw.startsWith("/manager")) {
+  if (isAdmin(user) && raw.startsWith("/admin")) return raw;
+  if (isManager(user) && raw.startsWith("/manager")) return raw;
+  if (!isAdmin(user) && !isManager(user) && !raw.startsWith("/admin") && !raw.startsWith("/manager")) {
     return raw === "/" || raw === "/goal" ? postAuthPath(user, member) : raw;
   }
   return postAuthPath(user, member);
