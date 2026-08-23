@@ -745,11 +745,9 @@ def ensure_client_handoff_accounts(session: Session, settings: Settings | None =
         else:
             if account.get("skip_if_exists"):
                 continue
-            # Soft repair only — never reset password, extend subscription, or force-activate.
+            # Soft repair only — never reset password, name, avatar, or subscription.
+            # Overwriting full_name on every boot made Profile "Save name" look broken on PROD.
             touched = False
-            if account["full_name"] and user.full_name != account["full_name"]:
-                user.full_name = account["full_name"]
-                touched = True
             if email == "sbl.school1@gmail.com" and user.role != "manager":
                 user.role = "manager"
                 touched = True

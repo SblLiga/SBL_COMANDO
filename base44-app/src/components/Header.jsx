@@ -30,7 +30,7 @@ export default function Header({ hideUser = false }) {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, user?.avatar_url, hideUser]);
+  }, [user?.id, user?.avatar_url, user?.full_name, hideUser]);
 
   const name = member?.name || user?.full_name || "משתמש";
   const avatarSrc = preferDurableAvatar(user?.avatar_url, member?.avatar_url);

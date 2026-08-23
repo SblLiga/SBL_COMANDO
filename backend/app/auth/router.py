@@ -25,7 +25,7 @@ from app.auth.schemas import (
 from app.config import get_settings
 from app.database import get_db
 from app.mailer import send_otp_email, send_password_reset_email
-from app.models import EmailVerificationToken, PasswordResetToken, User
+from app.models import EmailVerificationToken, Member, PasswordResetToken, User
 from app.security import hash_password, verify_password
 from app.media_urls import sync_avatar_to_members
 from app.serializers import user_to_dict
@@ -213,6 +213,11 @@ def update_me(
         data["onboarding_completed_at"] = datetime.now(timezone.utc)
     for key, value in data.items():
         setattr(current_user, key, value)
+    if "full_name" in data and (data["full_name"] or "").strip():
+        new_name = data["full_name"].strip()
+        current_user.full_name = new_name
+        for member in db.scalars(select(Member).where(Member.user_id == current_user.id)).all():
+            member.name = new_name
     if "avatar_url" in data and data["avatar_url"]:
         sync_avatar_to_members(db, current_user, data["avatar_url"])
     db.commit()

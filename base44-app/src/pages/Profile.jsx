@@ -40,6 +40,7 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const loadSeq = useRef(0);
   const uploadingRef = useRef(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     uploadingRef.current = uploading;
@@ -139,13 +140,29 @@ export default function Profile() {
   };
 
   const handleSaveName = async () => {
-    if (!name.trim()) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
     setSavingName(true);
     try {
-      if (member) {
-        await api.entities.Member.update(member.id, { name: name.trim() });
+      // PATCH /me is the source of truth (also syncs Member.name on the server).
+      const me = await apiClient.auth.updateMe({ full_name: trimmed });
+      setName(me?.full_name || trimmed);
+      try {
+        if (member) {
+          const updated = await api.entities.Member.update(member.id, { name: trimmed });
+          setMember(updated);
+        } else {
+          const created = await api.entities.Member.create({
+            name: trimmed,
+            user_id: user.id,
+            role: user.role || "user",
+            status: "בעקבות",
+          });
+          setMember(created);
+        }
+      } catch (syncErr) {
+        console.error("[Profile] member name sync failed", syncErr);
       }
-      await apiClient.auth.updateMe({ full_name: name.trim() });
       await checkUserAuth?.();
       toast({ title: "השם עודכן", description: "השם נשמר בהצלחה." });
     } catch (err) {
@@ -210,26 +227,42 @@ export default function Profile() {
         <div className="card-lux p-5 flex flex-col items-center gap-4">
           <div className="relative">
             <UserAvatar src={avatarUrl} name={name} className="w-24 h-24 ring-2 ring-primary/30" />
-            <label className="absolute bottom-0 left-0 w-8 h-8 rounded-full gold-bg flex items-center justify-center cursor-pointer shadow-lg">
+            <button
+              type="button"
+              className="absolute bottom-0 left-0 w-8 h-8 rounded-full gold-bg flex items-center justify-center cursor-pointer shadow-lg"
+              disabled={uploading}
+              aria-label="העלאת תמונת פרופיל"
+              onClick={() => fileInputRef.current?.click()}
+            >
               {uploading ? (
                 <Loader2 className="w-4 h-4 animate-spin text-black" />
               ) : (
                 <Camera className="w-4 h-4 text-black" />
               )}
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  e.target.value = "";
-                  if (f) handleUploadAvatar(f);
-                }}
-                disabled={uploading}
-              />
-            </label>
+            </button>
           </div>
-          <p className="text-xs text-muted-foreground text-center">לחצ/י על המצלמה כדי להעלות תמונת פרופיל</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) handleUploadAvatar(f);
+            }}
+            disabled={uploading}
+          />
+          <p className="text-xs text-muted-foreground text-center">לחצ/י על המצלמה או על הכפתור כדי להעלות תמונת פרופיל</p>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : "העלי תמונת פרופיל"}
+          </Button>
         </div>
 
         <div className="card-lux p-5 space-y-4">
