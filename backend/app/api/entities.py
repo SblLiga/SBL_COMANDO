@@ -25,6 +25,12 @@ from app.serializers import MODEL_MAP, SERIALIZERS
 
 router = APIRouter(prefix="/api/entities", tags=["entities"])
 
+# API serializers expose created_date / updated_date; ORM columns are *_at.
+_SORT_FIELD_ALIASES = {
+    "created_date": "created_at",
+    "updated_date": "updated_at",
+}
+
 INT_FIELDS = {
     "group_id",
     "user_id",
@@ -276,6 +282,7 @@ def list_entities(
     if sort:
         descending = sort.startswith("-")
         field = sort[1:] if descending else sort
+        field = _SORT_FIELD_ALIASES.get(field, field)
         if hasattr(model, field):
             column = getattr(model, field)
             query = query.order_by(desc(column) if descending else asc(column))

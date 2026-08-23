@@ -6,6 +6,7 @@ import KpiCard from "@/components/KpiCard";
 import ProgressRing from "@/components/ProgressRing";
 import { useToast } from "@/components/ui/use-toast";
 import { ensureMyGoal } from "@/lib/myGoal";
+import { sortNewestFirst } from "@/lib/utils";
 import { AreaChart, Area, BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 const TARGETS = ["שיווק", "אוטומציות", "מכירות", "ניהול זמן", "מגנט לידים", "שיפור מוצר קיים", "בניית מוצר חדש", "כלכלי", "אחר"];
@@ -73,7 +74,7 @@ export default function AdminDashboard() {
             return apiClient.entities.Member.list();
           })(),
           apiClient.entities.Group.list(),
-          apiClient.entities.Report.list(),
+          apiClient.entities.Report.list("-created_date", 80),
           apiClient.entities.SystemSetting.list(),
           apiClient.entities.Notification.list("-created_date", 10),
           apiClient.entities.User.list(),
@@ -92,8 +93,8 @@ export default function AdminDashboard() {
           (m || []).filter((row) => row.user_id == null || paidOrStaff.has(Number(row.user_id)))
         );
         setGroups(g);
-        setReports(r);
-        setAlerts(n);
+        setReports(sortNewestFirst(r));
+        setAlerts(sortNewestFirst(n));
         let cfg = s[0];
         if (!cfg) {
           cfg = await apiClient.entities.SystemSetting.create({ xp_task: 100, xp_meeting: 150, xp_goal: 500 });

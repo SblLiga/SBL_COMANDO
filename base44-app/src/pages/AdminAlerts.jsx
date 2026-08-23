@@ -3,6 +3,7 @@ import apiClient from "@/api/apiClient";
 import { Megaphone, Send, Users, UserCog, Check, Zap, Bell, AlertTriangle, TrendingUp, Award } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { useToast } from "@/components/ui/use-toast";
+import { sortNewestFirst } from "@/lib/utils";
 
 const alertTypeMeta = {
   danger: { icon: AlertTriangle, color: "text-red-500", bg: "bg-red-500/10", label: "חוסר פעילות" },
@@ -41,7 +42,7 @@ export default function AdminAlerts() {
             )
             .map((u) => Number(u.id))
         );
-        setNotifications(n);
+        setNotifications(sortNewestFirst(n));
         setMembers(
           (m || []).filter((row) => row.user_id == null || paidOrStaff.has(Number(row.user_id)))
         );
@@ -94,7 +95,7 @@ export default function AdminAlerts() {
     setSpecificUserId("");
     setSpecificManagerId("");
     const n = await apiClient.entities.Notification.list("-created_date", 30);
-    setNotifications(n);
+    setNotifications(sortNewestFirst(n));
   };
 
   const markHandled = async (n) => {

@@ -3,6 +3,7 @@ import apiClient from "@/api/apiClient";
 import { FileText, Search, Check } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { useToast } from "@/components/ui/use-toast";
+import { sortNewestFirst } from "@/lib/utils";
 
 const typeLabel = {
   weekly: "סיכום שבועי",
@@ -27,7 +28,7 @@ export default function AdminReports() {
 
   const load = async () => {
     const r = await apiClient.entities.Report.list("-created_date", 80);
-    setReports(Array.isArray(r) ? r : []);
+    setReports(sortNewestFirst(Array.isArray(r) ? r : []));
   };
 
   useEffect(() => {
