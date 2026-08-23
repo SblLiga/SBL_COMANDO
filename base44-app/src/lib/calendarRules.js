@@ -1,18 +1,24 @@
 /**
  * Calendar rules from product specs (Israel calendar day).
- * - Managers: next-month target selection from day 23 until chosen.
+ * - Managers: next-month plan hard-gate on days 23–24 (inclusive).
  * - Users: registration from day 23; monthly onboarding from day 25.
  * - From day 25 the active cycle is the *next* calendar month (new wheel + group).
  * - Group assignment window: ONLY days 25–26, and only if subscription is active
  *   and not waiting on subscription_start_date (deferred payment in window 27→24).
  */
 
+/** Inclusive manager promotion / plan-selection window (before users open on 25). */
+export const MANAGER_WINDOW_START_DAY = 23;
+export const MANAGER_WINDOW_END_DAY = 24;
+
 export function calendarDay(date = new Date()) {
   return date.getDate();
 }
 
+/** Days 23–24: managers must set next-month target / zone / tasks / reward. */
 export function isManagerTargetSelectionWindow(date = new Date()) {
-  return calendarDay(date) >= 23;
+  const d = calendarDay(date);
+  return d >= MANAGER_WINDOW_START_DAY && d <= MANAGER_WINDOW_END_DAY;
 }
 
 export function isUserRegistrationWindow(date = new Date()) {
@@ -70,9 +76,9 @@ export function isMonthlyOnboardingResetDay(date = new Date()) {
   return calendarDay(date) === 25;
 }
 
-/** Managers open / reset their personal cycle from day 23 (users stay on 25). */
+/** Managers open / reset their personal cycle during the 23–24 window (users stay on 25). */
 export function isManagerCycleRolloverDay(date = new Date()) {
-  return calendarDay(date) === 23;
+  return isManagerTargetSelectionWindow(date);
 }
 
 export function sameCalendarMonth(a, b = new Date()) {
@@ -97,7 +103,7 @@ export function currentCycleMonth(date = new Date(), rolloverDay = 25) {
 }
 
 /**
- * From day ≥ 23 a manager must complete the next-month plan for this calendar month:
+ * On days 23–24 a manager must complete the next-month plan for this calendar month:
  * target, zone (gender), tasks (≥4), reward — stamped via next_month_selected_at.
  */
 export function hasManagerNextMonthPlan(member) {

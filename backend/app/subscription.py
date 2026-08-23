@@ -24,7 +24,7 @@ IMMEDIATE_PAID_THROUGH_DAY = 26
 # Manager promotion only (not regular-user enrollment): live from the 23rd so
 # they can pick next_month_target before users open on the 25th.
 MANAGER_ROLE_EFFECTIVE_DAY = 23
-# Inclusive last day of the immediate-promotion window (still before ASSIGNMENT_OPEN_DAY).
+# Inclusive last day of the immediate-promotion + plan-selection window (23 and 24).
 MANAGER_IMMEDIATE_PROMOTION_LAST_DAY = 24
 # Wait for Grow's next standing-order charge before locking the user out.
 RENEWAL_GRACE_DAYS = 4

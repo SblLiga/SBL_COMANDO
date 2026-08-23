@@ -1,6 +1,7 @@
 import {
   calendarDay,
   canAssignToGroup,
+  isManagerTargetSelectionWindow,
   isSubscriptionStartPending,
 } from "@/lib/calendarRules";
 
@@ -19,11 +20,11 @@ export function isManager(user, date = new Date()) {
   if (role === "admin" || !user?.pending_manager) return false;
   if (user.manager_effective_on) {
     const effective = new Date(user.manager_effective_on);
-    if (Number.isNaN(effective.getTime())) return calendarDay(date) >= 23;
+    if (Number.isNaN(effective.getTime())) return isManagerTargetSelectionWindow(date);
     return effective.getTime() <= date.getTime();
   }
-  // Missing schedule: unlock on/after the 23rd (manager promotion day).
-  return calendarDay(date) >= 23;
+  // Missing schedule: unlock only during the 23–24 promotion window.
+  return isManagerTargetSelectionWindow(date);
 }
 
 /**
@@ -56,7 +57,7 @@ export function shouldBypassOnboarding(user, member = null, date = new Date()) {
 /**
  * Hard lock to /pending:
  * - Admin: never.
- * - Manager (live or due promotion): never (day-23 target gate lives in ManagerLayout).
+ * - Manager (live or due promotion): never (day 23–24 target gate lives in ManagerLayout).
  * - User: deferred subscription start, or unassigned outside the 25–26 window.
  */
 export function isPendingAccessLocked(user, member = null, date = new Date()) {

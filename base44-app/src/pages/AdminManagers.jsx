@@ -135,14 +135,14 @@ export default function AdminManagers() {
         title: steppingDown
           ? "תרד ב-25"
           : pending
-            ? "סומן/ה למנהל/ת מה-23"
+            ? "סומן/ה למנהל/ת מה-23/24"
             : newRole === "manager"
               ? "קודם/ה למנהל/ת! ⭐"
               : "הורד/ה למשתמש/ת",
         description: steppingDown
           ? `${row.name} נשאר/ת מנהל/ת עד הסבב החדש`
           : pending
-            ? `${row.name} נשאר/ת משתמש/ת בקבוצה עד ה-23`
+            ? `${row.name} נשאר/ת משתמש/ת בקבוצה עד חלון ה-23/24`
             : row.name,
       });
     } catch (err) {
@@ -195,7 +195,7 @@ export default function AdminManagers() {
       <PageHeader
         badge="אזור אדמין"
         title="מנהלות"
-        subtitle={`${managerCount} מנהלות${pendingCount ? ` · ${pendingCount} מה-23` : ""}${steppingDownCount ? ` · ${steppingDownCount} יורדות ב-25` : ""} · ${rows.length} משלמים/פעילים`}
+        subtitle={`${managerCount} מנהלות${pendingCount ? ` · ${pendingCount} מה-23/24` : ""}${steppingDownCount ? ` · ${steppingDownCount} יורדות ב-25` : ""} · ${rows.length} משלמים/פעילים`}
       />
 
       <button
@@ -282,7 +282,7 @@ export default function AdminManagers() {
                 {m.pending_demotion
                   ? "יורדת ב-25"
                   : m.pending_manager
-                    ? "מנהל/ת מה-23"
+                    ? "מנהל/ת מה-23/24"
                     : m.role === "manager"
                       ? "מנהל/ת"
                       : "משתמש/ת"}

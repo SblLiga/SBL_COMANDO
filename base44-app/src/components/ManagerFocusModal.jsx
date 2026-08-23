@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import apiClient from "@/api/apiClient";
 import { Target, X } from "lucide-react";
+import { isManagerTargetSelectionWindow } from "@/lib/calendarRules";
 
 const TARGETS = [
   { name: "שיווק", sub: "מסרים שמוכרים בלי להתנצל" },
@@ -19,8 +20,6 @@ const currentMonthKey = () => {
   return `${d.getFullYear()}-${d.getMonth() + 1}`;
 };
 
-const todayDay = () => new Date().getDate();
-
 export default function ManagerFocusModal() {
   const [user, setUser] = useState(null);
   const [show, setShow] = useState(false);
@@ -33,7 +32,7 @@ export default function ManagerFocusModal() {
       .then((u) => {
         setUser(u);
         if (u?.role !== "manager" && u?.role !== "admin") return;
-        const due = todayDay() >= 23;
+        const due = isManagerTargetSelectionWindow();
         const alreadySet = u?.focus_month === currentMonthKey() && u?.focus_target;
         if (due && !alreadySet) {
           setShow(true);
