@@ -172,6 +172,8 @@ class Meeting(Base):
     section_reports: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_minutes: Mapped[int] = mapped_column(Integer, default=90)
     is_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # draft → editable last summary; pending → sent to admin (locked); approved → previous list
+    report_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -186,6 +188,7 @@ class Report(Base):
     submitted_by: Mapped[str] = mapped_column(String(255))
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     group_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    meeting_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

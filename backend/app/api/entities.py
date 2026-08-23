@@ -33,6 +33,7 @@ INT_FIELDS = {
     "target_user_id",
     "source_user_id",
     "manager_id",
+    "meeting_id",
 }
 
 _PRIVILEGED_USER_FIELDS = {

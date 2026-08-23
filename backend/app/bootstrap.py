@@ -870,8 +870,31 @@ def ensure_manager_operational_alerts(session: Session) -> int:
                 when = when.replace(tzinfo=timezone.utc)
             if now - when < timedelta(days=3):
                 continue
-            title = "דוח חסר"
-            body = f"לא שלחת דוח לאדמין לאחר הפגישה · {when.strftime('%d/%m')}"
+            # Auto-submit draft reports that lingered without "שלח לאדמין".
+            content = (meeting.summary or "").strip() or f"דוח פגישה שבועית - {meeting.group_name}"
+            existing_report = session.scalar(
+                select(Report).where(
+                    Report.meeting_id == meeting.id,
+                    Report.type == "weekly",
+                )
+            )
+            if existing_report is None:
+                session.add(
+                    Report(
+                        type="weekly",
+                        status="pending",
+                        submitted_by=meeting.group_name,
+                        content=content,
+                        group_id=meeting.group_id,
+                        meeting_id=meeting.id,
+                    )
+                )
+            meeting.is_locked = True
+            meeting.report_status = "pending"
+            session.add(meeting)
+
+            title = "דוח נשלח אוטומטית"
+            body = f"הדוח נשלח לאדמין אוטומטית לאחר הפגישה · {when.strftime('%d/%m')}"
             exists = session.scalar(
                 select(Notification).where(
                     Notification.target_user_id == mgr.user_id,

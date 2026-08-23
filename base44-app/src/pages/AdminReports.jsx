@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import apiClient from "@/api/apiClient";
-import { FileText, Search } from "lucide-react";
+import { FileText, Search, Check } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
+import { useToast } from "@/components/ui/use-toast";
 
 const typeLabel = {
   weekly: "סיכום שבועי",
@@ -10,22 +11,55 @@ const typeLabel = {
   anomaly: "דוח חריגות",
 };
 
+const statusLabel = {
+  pending: "ממתין לאישור",
+  approved: "אושר",
+  draft: "טיוטה",
+};
+
 export default function AdminReports() {
+  const { toast } = useToast();
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
   const [typeFilter, setTypeFilter] = useState("all");
   const [query, setQuery] = useState("");
+
+  const load = async () => {
+    const r = await apiClient.entities.Report.list("-created_date", 80);
+    setReports(Array.isArray(r) ? r : []);
+  };
 
   useEffect(() => {
     (async () => {
       try {
-        const r = await apiClient.entities.Report.list("-created_date", 50);
-        setReports(r);
+        await load();
       } finally {
         setLoading(false);
       }
     })();
   }, []);
+
+  const approve = async (report) => {
+    if (!report?.id || report.status === "approved") return;
+    setBusyId(report.id);
+    try {
+      await apiClient.entities.Report.update(report.id, { status: "approved" });
+      if (report.meeting_id) {
+        await apiClient.entities.Meeting.update(report.meeting_id, {
+          report_status: "approved",
+          is_locked: true,
+        });
+      }
+      await load();
+      toast({ title: "הדוח אושר", description: "עבר לסיכום הישיבות הקודמות אצל המנהל/ת" });
+    } catch (err) {
+      console.error("[AdminReports] approve failed", err);
+      toast({ title: "אישור נכשל", variant: "destructive" });
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   if (loading)
     return (
@@ -38,7 +72,7 @@ export default function AdminReports() {
     if (typeFilter !== "all" && r.type !== typeFilter) return false;
     if (query) {
       const q = query.toLowerCase();
-      const hay = `${r.submitted_by || ""} ${r.content || ""} ${r.type || ""}`.toLowerCase();
+      const hay = `${r.submitted_by || ""} ${r.content || ""} ${r.type || ""} ${r.status || ""}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -93,12 +127,22 @@ export default function AdminReports() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium">{r.submitted_by || "—"}</p>
                 <p className="text-[10px] text-muted-foreground">
-                  {typeLabel[r.type] || r.type} ·{" "}
+                  {typeLabel[r.type] || r.type} · {statusLabel[r.status] || r.status} ·{" "}
                   {new Date(r.created_date || r.created_at).toLocaleDateString("he-IL")}
                 </p>
               </div>
             </div>
-            {r.content && <p className="text-xs text-muted-foreground leading-snug line-clamp-3">{r.content}</p>}
+            {r.content && <p className="text-xs text-muted-foreground leading-snug line-clamp-3 whitespace-pre-line">{r.content}</p>}
+            {r.status === "pending" && (
+              <button
+                type="button"
+                disabled={busyId === r.id}
+                onClick={() => approve(r)}
+                className="w-full flex items-center justify-center gap-1.5 text-xs px-3 py-2 rounded-lg gold-bg text-black font-bold disabled:opacity-40"
+              >
+                <Check className="w-3.5 h-3.5" /> {busyId === r.id ? "מאשר..." : "אשר דוח"}
+              </button>
+            )}
           </div>
         ))}
       </div>

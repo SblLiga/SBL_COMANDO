@@ -176,6 +176,7 @@ def meeting_to_dict(item: Meeting) -> dict[str, Any]:
             "section_reports": item.section_reports,
             "duration_minutes": item.duration_minutes,
             "is_locked": item.is_locked,
+            "report_status": getattr(item, "report_status", None),
         },
         item.created_at,
     )
@@ -190,6 +191,7 @@ def report_to_dict(item: Report) -> dict[str, Any]:
             "submitted_by": item.submitted_by,
             "content": item.content,
             "group_id": _sid(item.group_id),
+            "meeting_id": _sid(getattr(item, "meeting_id", None)),
         },
         item.created_at,
     )
