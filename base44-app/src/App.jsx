@@ -39,6 +39,9 @@ import AdminWheel from "@/pages/AdminWheel";
 import AdminManagers from "@/pages/AdminManagers";
 import AdminReports from "@/pages/AdminReports";
 import AdminAlerts from "@/pages/AdminAlerts";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import CookieBanner from "@/components/CookieBanner";
+import AccessibilityWidget from "@/components/AccessibilityWidget";
 
 function RoleHomeRedirect() {
   const { user } = useAuth();
@@ -71,6 +74,7 @@ const AuthenticatedApp = () => {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/thank-you" element={<ThankYou />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route path="/payment" element={<Payment />} />
 
@@ -137,6 +141,8 @@ function App() {
         <Router>
           <ScrollToTop />
           <AuthenticatedApp />
+          <CookieBanner />
+          <AccessibilityWidget />
         </Router>
         <Toaster />
       </QueryClientProvider>
