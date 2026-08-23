@@ -5,7 +5,8 @@ Managers: from calendar day ≥ 23 (personal wheel only).
 Admins: never auto-reset by calendar — only on intentional target change in the app.
 
 When a Goal's cycle_month lags, XP and progress are zeroed for that Goal and
-linked Member rows. Never clears next_month_target, target, or group_id —
+linked Member rows. Never clears next_month_target / next_month_zone /
+next_month_tasks / next_month_reward / next_month_selected_at, target, or group_id —
 manager day-23 choices must survive the user day-25 enrollment reset.
 """
 

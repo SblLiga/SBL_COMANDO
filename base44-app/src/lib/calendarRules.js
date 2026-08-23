@@ -97,13 +97,22 @@ export function currentCycleMonth(date = new Date(), rolloverDay = 25) {
 }
 
 /**
- * From day ≥ 23 a manager must pick next_month_target for this calendar month.
- * After they save (next_month_selected_at this month), they are free until next 23.
+ * From day ≥ 23 a manager must complete the next-month plan for this calendar month:
+ * target, zone (gender), tasks (≥4), reward — stamped via next_month_selected_at.
  */
+export function hasManagerNextMonthPlan(member) {
+  if (!member?.next_month_target || !member?.next_month_zone || !member?.next_month_reward) {
+    return false;
+  }
+  if (!member.next_month_selected_at) return false;
+  const tasks = Array.isArray(member.next_month_tasks) ? member.next_month_tasks : [];
+  return tasks.length >= 4;
+}
+
 export function needsManagerNextMonthTarget(member, date = new Date()) {
   if (!member || String(member.role || "").toLowerCase() !== "manager") return false;
   if (!isManagerTargetSelectionWindow(date)) return false;
-  if (member.next_month_target && member.next_month_selected_at && sameCalendarMonth(member.next_month_selected_at, date)) {
+  if (hasManagerNextMonthPlan(member) && sameCalendarMonth(member.next_month_selected_at, date)) {
     return false;
   }
   return true;

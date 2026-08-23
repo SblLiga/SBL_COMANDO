@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -92,6 +92,11 @@ class Member(Base):
     goal_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     next_month_target: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Day-23 manager plan for the upcoming cycle (zone = female|male like user onboarding).
+    next_month_zone: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    next_month_tasks: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    next_month_reward: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    next_month_reward_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
     next_month_selected_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

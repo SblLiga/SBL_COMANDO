@@ -23,3 +23,6 @@ export const TASK_BANK = {
 };
 
 export const STEPS = ["יעד", "אזור", "מנהל", "משימות", "תגמול"];
+
+/** Manager day-23 gate — no "מנהל" step (they are the manager). */
+export const MANAGER_CYCLE_STEPS = ["יעד", "אזור", "משימות", "תגמול"];

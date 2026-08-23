@@ -326,6 +326,14 @@ def _upsert_member(
     if member is None:
         if role == "manager":
             payload["next_month_target"] = user.target or "מכירות"
+            payload["next_month_zone"] = user.gender or "female"
+            payload["next_month_tasks"] = [
+                "תכנון יומי בבוקר",
+                "חסימת זמן מיקוד",
+                "סינון משימות לפי עדיפות",
+                "סיכום יומי",
+            ]
+            payload["next_month_reward"] = "תגמול למחזור הבא"
             payload["next_month_selected_at"] = datetime.now(timezone.utc)
         session.add(Member(**payload))
     else:
@@ -333,7 +341,30 @@ def _upsert_member(
             setattr(member, key, value)
         if role == "manager" and not member.next_month_selected_at:
             member.next_month_target = member.target or user.target or "מכירות"
+            member.next_month_zone = member.gender or user.gender or "female"
+            if not member.next_month_tasks:
+                member.next_month_tasks = [
+                    "תכנון יומי בבוקר",
+                    "חסימת זמן מיקוד",
+                    "סינון משימות לפי עדיפות",
+                    "סיכום יומי",
+                ]
+            if not member.next_month_reward:
+                member.next_month_reward = "תגמול למחזור הבא"
             member.next_month_selected_at = datetime.now(timezone.utc)
+        elif role == "manager":
+            # Backfill plan fields so day-23 gate stays unlocked for seeded managers.
+            if not member.next_month_zone:
+                member.next_month_zone = member.gender or user.gender or "female"
+            if not member.next_month_tasks:
+                member.next_month_tasks = [
+                    "תכנון יומי בבוקר",
+                    "חסימת זמן מיקוד",
+                    "סינון משימות לפי עדיפות",
+                    "סיכום יומי",
+                ]
+            if not member.next_month_reward:
+                member.next_month_reward = "תגמול למחזור הבא"
 
 
 def _upsert_seed_accounts(
