@@ -5,6 +5,7 @@ import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import SmartWheel from "@/components/SmartWheel";
 import KpiCard from "@/components/KpiCard";
 import { Switch } from "@/components/ui/switch";
+import { useLocation } from "react-router-dom";
 import { useToast } from "@/components/ui/use-toast";
 import { ensureMyGoal, resetAdminWheelOnTargetSave } from "@/lib/myGoal";
 import { mediaUrl } from "@/lib/mediaUrl";
@@ -23,6 +24,8 @@ const ADMIN_TARGETS = [
 ];
 
 export default function Goal() {
+  const { pathname } = useLocation();
+  const hideDomainSwap = pathname.startsWith("/admin");
   const { toast } = useToast();
   const [goal, setGoal] = useState(null);
   const [member, setMember] = useState(null);
@@ -391,7 +394,7 @@ export default function Goal() {
         <SmartWheel
           tasks={tasks}
           onToggle={(t) => toggleTask(t)}
-          onSwap={isAdmin ? undefined : swapTasks}
+          onSwap={hideDomainSwap || isAdmin ? undefined : swapTasks}
           hidden={false}
           size={340}
           goalTitle={goal.title}
