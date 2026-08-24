@@ -1,18 +1,33 @@
 import React, { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import api from "@/api/dataLayer";
 import { Zap, Bell } from "lucide-react";
 import UserAvatar from "@/components/UserAvatar";
 import { preferDurableAvatar } from "@/lib/mediaUrl";
+import { isAdmin, isManager } from "@/lib/subscriptionUtils";
+import { homePathForUser } from "@/components/RoleRoute";
 
 const LOGO_URL = "/logo.png";
 
+/** Managers: open until "טופל" / X-delete. Users: unread (X-delete removes the row). */
+function countActiveNotifications(list, forManager) {
+  return (list || []).filter((n) => {
+    if (n.is_handled) return false;
+    if (forManager) return true;
+    return !n.is_read;
+  }).length;
+}
+
 export default function Header({ hideUser = false }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const [member, setMember] = useState(null);
   const [unread, setUnread] = useState(0);
+  const showBell = !hideUser && !!user && !isAdmin(user);
+  const managerBell = isManager(user);
+  const alertsPath = managerBell ? "/manager/alerts" : "/messages";
 
   useEffect(() => {
     if (hideUser || !user?.id) return;
@@ -22,15 +37,34 @@ export default function Header({ hideUser = false }) {
         if (!cancelled) setMember(res[0] || null);
       })
       .catch((err) => console.error("[Header] Member fetch failed:", err));
-    api.entities.Notification.filter({ target_user_id: user.id })
-      .then((res) => {
-        if (!cancelled) setUnread(res.filter((n) => !n.is_read).length);
-      })
-      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, [user?.id, user?.avatar_url, user?.full_name, hideUser]);
+
+  useEffect(() => {
+    if (!showBell || !user?.id) {
+      setUnread(0);
+      return;
+    }
+    let cancelled = false;
+    const load = () => {
+      api.entities.Notification.filter({ target_user_id: user.id })
+        .then((res) => {
+          if (!cancelled) setUnread(countActiveNotifications(res, managerBell));
+        })
+        .catch(() => {
+          if (!cancelled) setUnread(0);
+        });
+    };
+    load();
+    window.addEventListener("sbl:notifications-changed", load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("sbl:notifications-changed", load);
+    };
+    // Refetch on route change and when alerts mark handled/dismissed.
+  }, [showBell, managerBell, user?.id, location.pathname]);
 
   const name = member?.name || user?.full_name || "משתמש";
   const avatarSrc = preferDurableAvatar(user?.avatar_url, member?.avatar_url);
@@ -41,9 +75,7 @@ export default function Header({ hideUser = false }) {
       <div className="flex items-center justify-between px-4 h-14 max-w-md md:max-w-lg lg:max-w-2xl xl:max-w-3xl mx-auto">
         <button
           type="button"
-          onClick={() =>
-            navigate(user?.role === "admin" ? "/admin" : user?.role === "manager" ? "/manager" : "/")
-          }
+          onClick={() => navigate(homePathForUser(user))}
           className="flex items-center gap-2 min-w-0 active:opacity-80"
           aria-label="שולי בן לולו — דף הבית"
         >
@@ -66,14 +98,16 @@ export default function Header({ hideUser = false }) {
                 {xp}
               </span>
             )}
-            <Link to="/messages" className="relative p-1" aria-label="הודעות">
-              <Bell className="w-5 h-5 text-muted-foreground hover:text-primary transition-colors" />
-              {unread > 0 && (
-                <span className="absolute -top-1 -left-1 bg-destructive text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-                  {unread > 9 ? "9+" : unread}
-                </span>
-              )}
-            </Link>
+            {showBell && (
+              <Link to={alertsPath} className="relative p-1" aria-label="הודעות והתראות">
+                <Bell className="w-5 h-5 text-muted-foreground hover:text-primary transition-colors" />
+                {unread > 0 && (
+                  <span className="absolute -top-1 -left-1 bg-destructive text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                    {unread > 9 ? "9+" : unread}
+                  </span>
+                )}
+              </Link>
+            )}
             <button
               type="button"
               onClick={() => navigate("/profile")}

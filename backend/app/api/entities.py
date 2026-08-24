@@ -205,7 +205,11 @@ def _can_mutate_row(entity_name: str, row: Any, actor: User, db: Session) -> boo
             and int(goal.owner_user_id) == int(actor.id)
         )
     if entity_name == "Notification":
-        return False
+        # Recipients may mark read/handled or dismiss their own alerts.
+        return (
+            getattr(row, "target_user_id", None) is not None
+            and int(row.target_user_id) == int(actor.id)
+        )
     if entity_name == "Group":
         mid = getattr(row, "manager_id", None)
         if actor.role == "manager" and mid is not None and int(mid) == int(actor.id):
