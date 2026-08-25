@@ -126,6 +126,8 @@ export default function ParticipantModal({
 
   const hidden = member?.goal_hidden;
   const canSendNudge = tab === "templates" ? Boolean(selectedTemplate) : Boolean(customMsg.trim());
+  // Push is always available when there is a recipient — independent of readOnly / goal_hidden.
+  const showNudge = Boolean(member?.user_id);
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center" onClick={onClose}>
@@ -268,7 +270,7 @@ export default function ParticipantModal({
               </div>
             )}
 
-            {!readOnly && (
+            {showNudge && (
               <div className="card-gold-rim p-3 space-y-2">
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setTab("templates")} className={`flex-1 text-xs py-1.5 rounded-lg ${tab === "templates" ? "gold-bg text-black font-bold" : "bg-muted"}`}>תבניות מוכנות</button>

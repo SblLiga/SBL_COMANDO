@@ -14,7 +14,7 @@ import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUplo
 import { ensureMyGoal } from "@/lib/myGoal";
 
 /**
- * Hard gate on days 23–24 until the full next-month plan is saved:
+ * Hard gate on days 23–26 until the full next-month plan is saved:
  * target, zone (gender), tasks (≥4), reward.
  * No manager-pick step — the actor is already the manager.
  * No skip / close — ManagerLayout hides the rest of the UI while locked.

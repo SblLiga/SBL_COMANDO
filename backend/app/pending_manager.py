@@ -1,8 +1,8 @@
 """Manager promotion/demotion scheduling.
 
 Promotion (user → manager):
-- Immediate on calendar days 23–24 (Asia/Jerusalem) so they can pick a target
-  before regular users open on the 25th.
+- Immediate on calendar days 23–26 (Asia/Jerusalem) so they can pick a target
+  and be open for user assignment on 25–26.
 - Otherwise queued until the next 23rd (manager_effective_on).
 
 Demotion (manager → user) and regular-user enrollment still use the 25th window
@@ -93,7 +93,7 @@ def schedule_demotion_for_next_cycle(user: User) -> None:
 
 
 def apply_admin_user_role(db: Session, user: User, new_role: str) -> None:
-    """Admin role toggle. Promotion uses 23–24; demotion still uses 25–26."""
+    """Admin role toggle. Promotion uses 23–26; demotion still uses 25–26."""
     role = (new_role or "").strip().lower()
     # Demotion / cancel: regular-user assignment window (25–26).
     deferred_user_window = is_deferred_enrollment()
@@ -129,7 +129,7 @@ def apply_admin_user_role(db: Session, user: User, new_role: str) -> None:
     if user.role == "manager" and not user.pending_manager:
         return
 
-    # Promotion: immediate on 23–24; otherwise queue for next 23rd.
+    # Promotion: immediate on 23–26; otherwise queue for next 23rd.
     if is_immediate_manager_promotion():
         activate_manager_now(db, user)
         return
@@ -150,7 +150,7 @@ def apply_scheduled_manager_promotions(db: Session) -> int:
             )
         ).all()
     )
-    # Repair: nominated managers with a missing schedule still unlock on 23–24.
+    # Repair: nominated managers with a missing schedule still unlock on 23–26.
     if is_immediate_manager_promotion(now):
         orphans = db.scalars(
             select(User).where(

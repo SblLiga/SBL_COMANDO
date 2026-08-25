@@ -125,6 +125,59 @@ def _manager_group_ids(db: Session, actor: User) -> set[int]:
     return ids
 
 
+def _actor_group_ids(db: Session, actor: User) -> set[int]:
+    """Group ids for the logged-in user (User.group_id + Member.group_id rows)."""
+    ids: set[int] = set()
+    if actor.group_id is not None:
+        ids.add(int(actor.group_id))
+    for m in db.scalars(select(Member).where(Member.user_id == actor.id)).all():
+        if m.group_id is not None:
+            ids.add(int(m.group_id))
+    return ids
+
+
+def _goal_owner_in_actor_groups(db: Session, goal: Goal, actor: User) -> bool:
+    """True when goal owner shares at least one group with actor (peer read)."""
+    if goal.owner_user_id is None:
+        return False
+    actor_gids = _actor_group_ids(db, actor)
+    if not actor_gids:
+        return False
+    for m in db.scalars(select(Member).where(Member.user_id == int(goal.owner_user_id))).all():
+        if m.group_id is not None and int(m.group_id) in actor_gids:
+            return True
+    return False
+
+
+def _readable_goal_ids_for_user(db: Session, actor: User) -> list[int]:
+    """Own goals + goals owned by members in the same group(s)."""
+    own = [
+        int(g.id)
+        for g in db.scalars(select(Goal).where(Goal.owner_user_id == actor.id)).all()
+    ]
+    actor_gids = _actor_group_ids(db, actor)
+    if not actor_gids:
+        return own
+    peer_user_ids = {
+        int(m.user_id)
+        for m in db.scalars(
+            select(Member).where(
+                Member.group_id.in_(actor_gids),
+                Member.user_id.is_not(None),
+            )
+        ).all()
+        if m.user_id is not None
+    }
+    peer_user_ids.discard(int(actor.id))
+    if not peer_user_ids:
+        return own
+    peer_goals = [
+        int(g.id)
+        for g in db.scalars(select(Goal).where(Goal.owner_user_id.in_(peer_user_ids))).all()
+    ]
+    return list({*own, *peer_goals})
+
+
 def _can_access_row(entity_name: str, row: Any, actor: User, db: Session) -> bool:
     if actor.role == "admin":
         return True
@@ -142,15 +195,21 @@ def _can_access_row(entity_name: str, row: Any, actor: User, db: Session) -> boo
     if entity_name == "Goal":
         if getattr(row, "owner_user_id", None) is not None and int(row.owner_user_id) == int(actor.id):
             return True
-        return actor.role == "manager"
+        if actor.role == "manager":
+            return True
+        return _goal_owner_in_actor_groups(db, row, actor)
     if entity_name == "Task":
         goal_id = getattr(row, "goal_id", None)
         if goal_id is None:
             return actor.role == "manager"
         goal = db.get(Goal, int(goal_id))
-        if goal and goal.owner_user_id is not None and int(goal.owner_user_id) == int(actor.id):
+        if goal is None:
+            return False
+        if goal.owner_user_id is not None and int(goal.owner_user_id) == int(actor.id):
             return True
-        return actor.role == "manager"
+        if actor.role == "manager":
+            return True
+        return _goal_owner_in_actor_groups(db, goal, actor)
     if entity_name == "Group":
         if actor.role == "manager":
             mid = getattr(row, "manager_id", None)
@@ -229,15 +288,26 @@ def _scope_list_query(entity_name: str, query, model, actor: User, db: Session):
     if entity_name == "Notification":
         return query.where(model.target_user_id == actor.id)
     if entity_name == "Goal" and actor.role == "user":
-        return query.where(model.owner_user_id == actor.id)
+        actor_gids = _actor_group_ids(db, actor)
+        if not actor_gids:
+            return query.where(model.owner_user_id == actor.id)
+        peer_user_ids = {
+            int(m.user_id)
+            for m in db.scalars(
+                select(Member).where(
+                    Member.group_id.in_(actor_gids),
+                    Member.user_id.is_not(None),
+                )
+            ).all()
+            if m.user_id is not None
+        }
+        peer_user_ids.add(int(actor.id))
+        return query.where(model.owner_user_id.in_(peer_user_ids))
     if entity_name == "Task" and actor.role == "user":
-        own_goal_ids = [
-            int(g.id)
-            for g in db.scalars(select(Goal).where(Goal.owner_user_id == actor.id)).all()
-        ]
-        if not own_goal_ids:
+        allowed_goal_ids = _readable_goal_ids_for_user(db, actor)
+        if not allowed_goal_ids:
             return query.where(model.id == -1)
-        return query.where(model.goal_id.in_(own_goal_ids))
+        return query.where(model.goal_id.in_(allowed_goal_ids))
     if entity_name == "Meeting" and actor.role == "manager":
         gids = _manager_group_ids(db, actor)
         if not gids:

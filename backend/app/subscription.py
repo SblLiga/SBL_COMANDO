@@ -24,8 +24,8 @@ IMMEDIATE_PAID_THROUGH_DAY = 26
 # Manager promotion only (not regular-user enrollment): live from the 23rd so
 # they can pick next_month_target before users open on the 25th.
 MANAGER_ROLE_EFFECTIVE_DAY = 23
-# Inclusive last day of the immediate-promotion + plan-selection window (23 and 24).
-MANAGER_IMMEDIATE_PROMOTION_LAST_DAY = 24
+# Inclusive last day of the immediate-promotion + plan-selection window (23–26).
+MANAGER_IMMEDIATE_PROMOTION_LAST_DAY = 26
 # Wait for Grow's next standing-order charge before locking the user out.
 RENEWAL_GRACE_DAYS = 4
 
@@ -61,7 +61,7 @@ def is_deferred_enrollment(now: datetime | None = None) -> bool:
 
 
 def is_immediate_manager_promotion(now: datetime | None = None) -> bool:
-    """Manager role grant: immediate on the 23rd–24th (before users open on the 25th)."""
+    """Manager role grant: immediate on the 23rd–26th (plan + user-assignment window)."""
     day = _israel_now(now).day
     return MANAGER_ROLE_EFFECTIVE_DAY <= day <= MANAGER_IMMEDIATE_PROMOTION_LAST_DAY
 

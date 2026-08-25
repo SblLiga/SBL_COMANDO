@@ -18,7 +18,7 @@ import { useAuth } from "@/lib/AuthContext";
 
 export default function Onboarding() {
   const navigate = useNavigate();
-  const { applyUser } = useAuth();
+  const { applyUser, logout } = useAuth();
   const [step, setStep] = useState(0);
   const [user, setUser] = useState(null);
   const [target, setTarget] = useState("");
@@ -28,6 +28,7 @@ export default function Onboarding() {
   const [groups, setGroups] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [customTask, setCustomTask] = useState("");
+  const [managerStepBlocked, setManagerStepBlocked] = useState(false);
   const [goalTitle, setGoalTitle] = useState("");
   const [rewardText, setRewardText] = useState("");
   const [rewardImage, setRewardImage] = useState("");
@@ -226,11 +227,16 @@ export default function Onboarding() {
         return;
       }
 
+      const managerUserId = manager?.user_id;
+      if (!managerUserId) {
+        throw new Error("לא נבחר מנהל תקין — נסו לבחור שוב");
+      }
+
       let group = groups.find(
         (g) =>
           g.target === target &&
           g.gender === gender &&
-          g.manager_name === manager.name &&
+          String(g.manager_id) === String(managerUserId) &&
           (g.participant_count || 0) < 5
       );
       if (!group) {
@@ -239,7 +245,7 @@ export default function Onboarding() {
           target,
           gender,
           manager_name: manager.name,
-          manager_id: manager.user_id || manager.id,
+          manager_id: managerUserId,
           participant_count: 1,
           max_participants: 5,
           status: "on_track",
@@ -330,14 +336,6 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen bg-background p-4" dir="rtl">
       <div className="max-w-md lg:max-w-xl mx-auto">
-        {isNewCycle && (
-          <div className="mb-3 rounded-xl border border-primary/40 bg-primary/10 px-4 py-3 text-center">
-            <p className="text-sm font-bold text-primary">סבב חדש נפתח</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              בחרו יעד, מנהל/ת, גלגל משימות חדש ותגמול — ותשובצו לקבוצה לסבב {currentCycleMonth()}
-            </p>
-          </div>
-        )}
         <StepProgress step={step} />
 
         <div className="card-gold-rim p-5 space-y-4">
@@ -352,6 +350,13 @@ export default function Onboarding() {
               target={target}
               manager={manager}
               setManager={setManager}
+              onBlockedChange={setManagerStepBlocked}
+              onBackToTarget={() => {
+                setManager(null);
+                setManagerStepBlocked(false);
+                setStep(0);
+              }}
+              onLogout={() => logout(true)}
             />
           )}
           {step === 3 && (
@@ -378,6 +383,7 @@ export default function Onboarding() {
             />
           )}
 
+          {!(step === 2 && managerStepBlocked) && (
           <div className="flex flex-col gap-2 pt-2">
             <div className="flex gap-2">
               {step > 0 && (
@@ -418,8 +424,6 @@ export default function Onboarding() {
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : waitEnrollment ? (
                     "סיום והבנתי"
-                  ) : isNewCycle ? (
-                    "סיום והתחלת סבב חדש 🚀"
                   ) : (
                     "סיום והתחלה! 🚀"
                   )}
@@ -427,6 +431,7 @@ export default function Onboarding() {
               )}
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>

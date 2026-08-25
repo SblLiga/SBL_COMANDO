@@ -3,6 +3,7 @@ import {
   canAssignToGroup,
   isManagerTargetSelectionWindow,
   isSubscriptionStartPending,
+  needsMonthlyOnboarding,
 } from "@/lib/calendarRules";
 
 export function isAdmin(user) {
@@ -23,7 +24,7 @@ export function isManager(user, date = new Date()) {
     if (Number.isNaN(effective.getTime())) return isManagerTargetSelectionWindow(date);
     return effective.getTime() <= date.getTime();
   }
-  // Missing schedule: unlock only during the 23–24 promotion window.
+  // Missing schedule: unlock only during the 23–26 promotion window.
   return isManagerTargetSelectionWindow(date);
 }
 
@@ -45,19 +46,23 @@ export function isUserActiveToday(user, date = new Date()) {
 
 /**
  * Skip onboarding / target re-selection.
- * Admin: always. Manager/user: only via group_id or active date range — never by role alone.
+ * Admin: always. Manager: always (manager target gate lives in ManagerLayout).
+ * User: only when already in a group AND not due for this-window monthly onboarding.
+ * Active subscription alone must never bypass (returning frozen users on day 25+).
  */
 export function shouldBypassOnboarding(user, member = null, date = new Date()) {
   if (isAdmin(user)) return true;
   if (isManager(user, date)) return true;
   const hasGroup = Boolean(user?.group_id || member?.group_id);
-  return hasGroup || isUserActiveToday(user, date);
+  if (!hasGroup) return false;
+  if (needsMonthlyOnboarding(user, date)) return false;
+  return true;
 }
 
 /**
  * Hard lock to /pending:
  * - Admin: never.
- * - Manager (live or due promotion): never (day 23–24 target gate lives in ManagerLayout).
+ * - Manager (live or due promotion): never (day 23–26 target gate lives in ManagerLayout).
  * - User: deferred subscription start, or unassigned outside the 25–26 window.
  */
 export function isPendingAccessLocked(user, member = null, date = new Date()) {
