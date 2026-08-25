@@ -181,8 +181,7 @@ export default function ParticipantModal({
                   <div className="text-center bg-background/80 backdrop-blur-sm px-4 py-3 rounded-xl">
                     <Lock className="w-7 h-7 text-primary/60 mx-auto mb-1" />
                     <p className="text-sm font-bold">יעד חסוי</p>
-                    <p className="text-[11px] text-muted-foreground">אין גישה למנהל</p>
-                    <p className="text-[10px] text-muted-foreground mt-1">החברה בחרה להסתיר את יעדה האישי</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">היעד האישי מוסתר</p>
                   </div>
                 </div>
               </div>
