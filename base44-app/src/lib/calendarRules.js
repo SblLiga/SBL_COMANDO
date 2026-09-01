@@ -31,9 +31,19 @@ export function isUserAssignmentWindow(date = new Date()) {
 }
 
 /** Strict group-assignment open days: 25 and 26 only. */
+/**
+ * TEMPORARY MANUAL OVERRIDE — Sept 2026 onboarding push.
+ * Extends the exact 25–26 group-assignment day-gate earlier in the month.
+ * Does NOT affect subscription checks in canAssignToGroup (active/pending) —
+ * those stay fully enforced. Does NOT affect isUserAssignmentWindow or
+ * needsMonthlyOnboarding, which are unrelated to this gate.
+ * TODO: delete once Step 2 (server-side cycle logic) ships.
+ */
+const TEMP_ASSIGNMENT_OVERRIDE_UNTIL = new Date("2026-09-30T23:59:59+03:00");
+
 export function isGroupAssignmentOpenDay(date = new Date()) {
   const d = calendarDay(date);
-  return d === 25 || d === 26;
+  return d === 25 || d === 26 || date <= TEMP_ASSIGNMENT_OVERRIDE_UNTIL;
 }
 
 /**

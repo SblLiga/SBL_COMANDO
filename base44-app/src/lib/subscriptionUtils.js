@@ -1,5 +1,4 @@
 import {
-  calendarDay,
   canAssignToGroup,
   isManagerTargetSelectionWindow,
   isSubscriptionStartPending,
@@ -77,11 +76,6 @@ export function isPendingAccessLocked(user, member = null, date = new Date()) {
 
   // Unassigned users stay frozen until assignment opens (25–26).
   if (user.role === "user" && !hasGroup && !canAssignToGroup(user, date)) {
-    return true;
-  }
-
-  // Extra calendar freeze: before the 25th, unassigned / waiting users stay locked.
-  if (user.role === "user" && !hasGroup && calendarDay(date) < 25) {
     return true;
   }
 
