@@ -21,6 +21,21 @@ export function isUserAssignmentWindow(date = new Date()) {
   return calendarDay(date) >= 25;
 }
 
+/**
+ * TEMPORARY MANUAL OVERRIDE — Sept 2026 onboarding push.
+ * Opens user/waiting-list group assignment early (before day 25) WITHOUT
+ * touching isUserAssignmentWindow itself — needsMonthlyOnboarding still
+ * relies on that function unchanged. Overriding it directly would wrongly
+ * flag every already-onboarded user as needing to redo onboarding this
+ * month, since their onboarding_completed_at isn't dated >= 25.
+ * TODO: delete this block once Step 2 (server-side cycle logic) ships.
+ */
+const TEMP_ASSIGNMENT_OVERRIDE_UNTIL = new Date("2026-09-30T23:59:59+03:00");
+
+export function isAssignmentOpenForNewUsers(date = new Date()) {
+  return isUserAssignmentWindow(date) || date <= TEMP_ASSIGNMENT_OVERRIDE_UNTIL;
+}
+
 export function isMonthlyOnboardingResetDay(date = new Date()) {
   return calendarDay(date) === 25;
 }
@@ -61,7 +76,7 @@ export function needsMonthlyOnboarding(user, date = new Date()) {
 /** Waiting-list users must complete manager/group assignment once day ≥ 25. */
 export function needsWaitingListAssignment(user, member, date = new Date()) {
   if (!user || user.role !== "user") return false;
-  if (!isUserAssignmentWindow(date)) return false;
+  if (!isAssignmentOpenForNewUsers(date)) return false;
   if (!user.onboarding_completed) return false;
   return !member?.group_id;
 }

@@ -1,10 +1,10 @@
 import React, { useEffect } from "react";
 import { Users, Check, MessageCircle, Clock } from "lucide-react";
-import { isUserAssignmentWindow } from "@/lib/calendarRules";
+import { isAssignmentOpenForNewUsers } from "@/lib/calendarRules";
 import UserAvatar from "@/components/UserAvatar";
 
 export default function StepManager({ managers, groups, gender, target, manager, setManager }) {
-  const assignmentOpen = isUserAssignmentWindow();
+  const assignmentOpen = isAssignmentOpenForNewUsers();
 
   useEffect(() => {
     if (!assignmentOpen) {
