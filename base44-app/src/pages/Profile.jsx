@@ -8,8 +8,9 @@ import UserAvatar from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowRight, Camera, Loader2, Lock, User as UserIcon, Mail } from "lucide-react";
+import { ArrowRight, Camera, Loader2, Lock, LogOut, User as UserIcon, Mail, CreditCard } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUpload";
 
 /** Prefer durable /api/media URLs over legacy ephemeral /uploads paths. */
 function pickAvatarUrl(...candidates) {
@@ -25,7 +26,7 @@ function pickAvatarUrl(...candidates) {
 }
 
 export default function Profile() {
-  const { user, checkUserAuth } = useAuth();
+  const { user, checkUserAuth, logout } = useAuth();
   const { toast } = useToast();
   const [member, setMember] = useState(null);
   const [name, setName] = useState("");
@@ -39,6 +40,7 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const loadSeq = useRef(0);
   const uploadingRef = useRef(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     uploadingRef.current = uploading;
@@ -75,77 +77,92 @@ export default function Profile() {
   const persistAvatar = async (url) => {
     setAvatarUrl(url);
     let m = member;
-    if (!m) {
-      m = await api.entities.Member.create({
-        name: name || user?.full_name || user?.email || "משתמש",
-        user_id: user.id,
-        role: user.role || "user",
-        avatar_url: url,
-        status: "בעקבות",
-      });
-    } else {
-      m = await api.entities.Member.update(m.id, { avatar_url: url });
+    try {
+      if (!m) {
+        m = await api.entities.Member.create({
+          name: name || user?.full_name || user?.email || "משתמש",
+          user_id: user.id,
+          role: user.role || "user",
+          avatar_url: url,
+          status: "בעקבות",
+        });
+      } else {
+        m = await api.entities.Member.update(m.id, { avatar_url: url });
+      }
+      setMember(m);
+    } catch (err) {
+      console.error("[Profile] member avatar sync failed", err);
+      // Upload already saved user avatar via purpose=avatar — keep going
     }
-    setMember(m);
-    const me = await apiClient.auth.updateMe({ avatar_url: url });
-    // Keep URL from server responses (avoid stale Member filter races)
-    setAvatarUrl(pickAvatarUrl(url, me?.avatar_url, m?.avatar_url));
-    await checkUserAuth?.();
+    try {
+      const me = await apiClient.auth.updateMe({ avatar_url: url });
+      setAvatarUrl(pickAvatarUrl(url, me?.avatar_url, m?.avatar_url));
+    } catch (err) {
+      console.error("[Profile] updateMe avatar failed", err);
+      setAvatarUrl(url);
+    }
+    try {
+      await checkUserAuth?.();
+    } catch {
+      /* ignore */
+    }
   };
 
   const handleUploadAvatar = async (file) => {
     if (!file) return;
-    const ext = (file.name || "").split(".").pop()?.toLowerCase() || "";
-    const looksLikeImage =
-      !file.type ||
-      file.type.startsWith("image/") ||
-      ["png", "jpg", "jpeg", "webp", "gif", "heic", "heif"].includes(ext);
-    if (!looksLikeImage) {
-      toast({ title: "שגיאה", description: "יש לבחור קובץ תמונה בלבד", variant: "destructive" });
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast({ title: "שגיאה", description: "גודל מקסימלי 5MB", variant: "destructive" });
-      return;
-    }
-    if (["heic", "heif"].includes(ext) || (file.type || "").includes("heic") || (file.type || "").includes("heif")) {
-      toast({
-        title: "פורמט לא נתמך בדפדפן",
-        description: "שמרי/העלי כ-JPG או PNG (לא HEIC)",
-        variant: "destructive",
-      });
-      return;
-    }
-    const localPreview = URL.createObjectURL(file);
     setUploading(true);
-    setAvatarUrl(localPreview);
     let savedUrl = "";
     try {
-      const res = await apiClient.integrations.Core.UploadFile({ file });
+      const prepared = await prepareImageForUpload(file);
+      const res = await apiClient.integrations.Core.UploadFile({
+        file: prepared,
+        purpose: "avatar",
+      });
       const url = res.file_url || res.url;
       if (!url) throw new Error("השרת לא החזיר קישור לתמונה");
       savedUrl = url;
+      // Set durable URL only (avoid blob preview revoke "jump")
+      setAvatarUrl(url);
       await persistAvatar(url);
-      toast({ title: "התמונה עודכנה", description: "תמונת הפרופיל נשמרה ומוצגת לכל המשתמשים." });
+      toast({ title: "התמונה עודכנה", description: "תמונת הפרופיל נשמרה." });
     } catch (err) {
       console.error("[Profile] avatar upload failed", err);
-      setAvatarUrl(pickAvatarUrl(savedUrl, member?.avatar_url, user?.avatar_url));
-      toast({ title: "שגיאה", description: err.message || "העלאת התמונה נכשלה", variant: "destructive" });
+      if (savedUrl) setAvatarUrl(savedUrl);
+      else setAvatarUrl(pickAvatarUrl(member?.avatar_url, user?.avatar_url));
+      toast({
+        title: "העלאה נכשלה",
+        description: formatUploadError(err),
+        variant: "destructive",
+      });
     } finally {
       setUploading(false);
-      // Revoke only after React has switched img src off the blob
-      window.setTimeout(() => URL.revokeObjectURL(localPreview), 1500);
     }
   };
 
   const handleSaveName = async () => {
-    if (!name.trim()) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
     setSavingName(true);
     try {
-      if (member) {
-        await api.entities.Member.update(member.id, { name: name.trim() });
+      // PATCH /me is the source of truth (also syncs Member.name on the server).
+      const me = await apiClient.auth.updateMe({ full_name: trimmed });
+      setName(me?.full_name || trimmed);
+      try {
+        if (member) {
+          const updated = await api.entities.Member.update(member.id, { name: trimmed });
+          setMember(updated);
+        } else {
+          const created = await api.entities.Member.create({
+            name: trimmed,
+            user_id: user.id,
+            role: user.role || "user",
+            status: "בעקבות",
+          });
+          setMember(created);
+        }
+      } catch (syncErr) {
+        console.error("[Profile] member name sync failed", syncErr);
       }
-      await apiClient.auth.updateMe({ full_name: name.trim() });
       await checkUserAuth?.();
       toast({ title: "השם עודכן", description: "השם נשמר בהצלחה." });
     } catch (err) {
@@ -210,26 +227,42 @@ export default function Profile() {
         <div className="card-lux p-5 flex flex-col items-center gap-4">
           <div className="relative">
             <UserAvatar src={avatarUrl} name={name} className="w-24 h-24 ring-2 ring-primary/30" />
-            <label className="absolute bottom-0 left-0 w-8 h-8 rounded-full gold-bg flex items-center justify-center cursor-pointer shadow-lg">
+            <button
+              type="button"
+              className="absolute bottom-0 left-0 w-8 h-8 rounded-full gold-bg flex items-center justify-center cursor-pointer shadow-lg"
+              disabled={uploading}
+              aria-label="העלאת תמונת פרופיל"
+              onClick={() => fileInputRef.current?.click()}
+            >
               {uploading ? (
                 <Loader2 className="w-4 h-4 animate-spin text-black" />
               ) : (
                 <Camera className="w-4 h-4 text-black" />
               )}
-              <input
-                type="file"
-                accept="image/*,.heic,.heif,.png,.jpg,.jpeg,.webp,.gif"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  e.target.value = "";
-                  if (f) handleUploadAvatar(f);
-                }}
-                disabled={uploading}
-              />
-            </label>
+            </button>
           </div>
-          <p className="text-xs text-muted-foreground text-center">לחצ/י על המצלמה כדי להעלות תמונת פרופיל</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) handleUploadAvatar(f);
+            }}
+            disabled={uploading}
+          />
+          <p className="text-xs text-muted-foreground text-center">לחצ/י על המצלמה או על הכפתור כדי להעלות תמונת פרופיל</p>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : "העלי תמונת פרופיל"}
+          </Button>
         </div>
 
         <div className="card-lux p-5 space-y-4">
@@ -274,6 +307,30 @@ export default function Profile() {
             {changingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : "שנה סיסמה"}
           </Button>
         </form>
+
+        <div className="card-lux p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-primary" />
+            <h2 className="font-bold text-sm">ניהול מנוי</h2>
+          </div>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            מעוניינים לבטל את המנוי החודשי? ניתן לשלוח הודעה למזכירות בוואצאפ למספר{" "}
+            <span className="font-bold text-foreground" dir="ltr">
+              0504170707
+            </span>{" "}
+            בכל עת עם השם המלא ופרטים מזהים
+          </p>
+        </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full h-11 border-destructive/40 text-destructive hover:bg-destructive/10"
+          onClick={() => logout(true)}
+        >
+          <LogOut className="w-4 h-4 ml-2" />
+          התנתקות
+        </Button>
       </main>
     </div>
   );

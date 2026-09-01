@@ -10,11 +10,15 @@ import StepManager from "@/components/onboarding/StepManager";
 import StepTasks from "@/components/onboarding/StepTasks";
 import StepReward from "@/components/onboarding/StepReward";
 import { toast } from "@/components/ui/use-toast";
-import { currentCycleMonth, needsMonthlyOnboarding } from "@/lib/calendarRules";
+import { currentCycleMonth, needsMonthlyOnboarding, canAssignToGroup } from "@/lib/calendarRules";
 import { needsOnboardingWizard, needsPayment } from "@/lib/postAuth";
+import { isPendingAccessLocked, shouldBypassOnboarding } from "@/lib/subscriptionUtils";
+import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUpload";
+import { useAuth } from "@/lib/AuthContext";
 
 export default function Onboarding() {
   const navigate = useNavigate();
+  const { applyUser, logout } = useAuth();
   const [step, setStep] = useState(0);
   const [user, setUser] = useState(null);
   const [target, setTarget] = useState("");
@@ -24,6 +28,7 @@ export default function Onboarding() {
   const [groups, setGroups] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [customTask, setCustomTask] = useState("");
+  const [managerStepBlocked, setManagerStepBlocked] = useState(false);
   const [goalTitle, setGoalTitle] = useState("");
   const [rewardText, setRewardText] = useState("");
   const [rewardImage, setRewardImage] = useState("");
@@ -31,6 +36,10 @@ export default function Onboarding() {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isNewCycle, setIsNewCycle] = useState(false);
+
+  const assignmentOpen = canAssignToGroup(user);
+  const waitEnrollment = Boolean(user) && !assignmentOpen;
+  const hardPendingLock = isPendingAccessLocked(user);
 
   useEffect(() => {
     (async () => {
@@ -41,9 +50,16 @@ export default function Onboarding() {
           navigate("/payment", { replace: true });
           return;
         }
+        if (u?.role === "user" && u?.onboarding_completed && isPendingAccessLocked(u)) {
+          navigate("/pending", { replace: true });
+          return;
+        }
+        if (u?.role === "user" && shouldBypassOnboarding(u)) {
+          navigate("/", { replace: true });
+          return;
+        }
         const monthly = needsMonthlyOnboarding(u);
         setIsNewCycle(Boolean(u?.onboarding_completed && monthly));
-        // Already fully registered for this cycle → app home
         if (u?.role === "user" && !needsOnboardingWizard(u)) {
           navigate("/", { replace: true });
           return;
@@ -79,17 +95,10 @@ export default function Onboarding() {
 
   const uploadReward = async (file) => {
     if (!file) return;
-    if (!file.type?.startsWith("image/")) {
-      toast({ title: "שגיאה", description: "יש לבחור קובץ תמונה בלבד", variant: "destructive" });
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast({ title: "שגיאה", description: "גודל מקסימלי 5MB", variant: "destructive" });
-      return;
-    }
     setUploading(true);
     try {
-      const res = await apiClient.integrations.Core.UploadFile({ file });
+      const prepared = await prepareImageForUpload(file);
+      const res = await apiClient.integrations.Core.UploadFile({ file: prepared, purpose: "reward" });
       const url = res?.file_url || res?.url;
       if (!url) throw new Error("השרת לא החזיר קישור לתמונה");
       setRewardImage(url);
@@ -98,7 +107,7 @@ export default function Onboarding() {
       console.error("[Onboarding] reward upload failed", err);
       toast({
         title: "העלאה נכשלה",
-        description: err.message || "לא הצלחנו להעלות את התמונה. נסו שוב.",
+        description: formatUploadError(err),
         variant: "destructive",
       });
     } finally {
@@ -150,10 +159,23 @@ export default function Onboarding() {
   const finish = async () => {
     setSubmitting(true);
     try {
-      // Spec: each monthly cycle gets a fresh goal + task wheel (+ new group pick).
-      const goal = await createCycleGoalWithTasks();
       const existingRows = await apiClient.entities.Member.filter({ user_id: user.id });
       const existing = existingRows[0] || null;
+      // Returning from waiting list (already has a wheel for this cycle): assign only.
+      const assignmentOnly =
+        Boolean(user?.onboarding_completed) &&
+        Boolean(existing?.goal_id) &&
+        !needsMonthlyOnboarding(user);
+
+      let goal;
+      if (assignmentOnly) {
+        goal = {
+          id: existing.goal_id,
+          title: existing.goal_title || `יעד חודשי - ${target}`,
+        };
+      } else {
+        goal = await createCycleGoalWithTasks();
+      }
 
       if (manager?.id === "waiting_list") {
         const payload = {
@@ -167,9 +189,9 @@ export default function Onboarding() {
           group_id: null,
           role: "user",
           status: "דרושה התייחסות",
-          progress: 0,
-          xp: 0,
-          streak: 0,
+          progress: assignmentOnly ? existing?.progress || 0 : 0,
+          xp: assignmentOnly ? existing?.xp || 0 : 0,
+          streak: assignmentOnly ? existing?.streak || 0 : 0,
         };
         if (existing) {
           await leaveOldGroupIfNeeded(existing, null);
@@ -178,29 +200,43 @@ export default function Onboarding() {
           await apiClient.entities.Member.create({ ...payload, user_id: user.id });
         }
 
-        await apiClient.auth.updateMe({
+        const me = await apiClient.auth.updateMe({
           gender,
           target,
           group_id: null,
           onboarding_completed: true,
           onboarding_completed_at: new Date().toISOString(),
         });
+        if (me) {
+          applyUser?.(me);
+          setUser(me);
+        }
 
         toast({
-          title: isNewCycle ? "סבב חדש נשמר" : "נרשמת לרשימת המתנה",
-          description: isNewCycle
-            ? "הגלגל החדש מוכן. השיבוץ לקבוצה ייפתח לפי לוח השנה."
-            : "נשבץ אותך לקבוצה מה־25 לחודש.",
+          title: isNewCycle ? "סבב חדש נשמר" : "הרשמה הושלמה",
+          description: hardPendingLock
+            ? "חשבונך מוקפא עד פתיחת השיבוצים ב-25 בחודש."
+            : waitEnrollment
+              ? "המנוי פעיל. השיבוץ לקבוצות יפתח ב-25 בחודש — נתראה אז!"
+              : isNewCycle
+                ? "הגלגל החדש מוכן. השיבוץ לקבוצה ייפתח לפי לוח השנה."
+                : "נשבץ אותך לקבוצה מה־25 לחודש.",
         });
-        navigate("/");
+        // No group after waiting_list finish — always land on /pending (not dashboard).
+        navigate("/pending", { replace: true });
         return;
+      }
+
+      const managerUserId = manager?.user_id;
+      if (!managerUserId) {
+        throw new Error("לא נבחר מנהל תקין — נסו לבחור שוב");
       }
 
       let group = groups.find(
         (g) =>
           g.target === target &&
           g.gender === gender &&
-          g.manager_name === manager.name &&
+          String(g.manager_id) === String(managerUserId) &&
           (g.participant_count || 0) < 5
       );
       if (!group) {
@@ -209,7 +245,7 @@ export default function Onboarding() {
           target,
           gender,
           manager_name: manager.name,
-          manager_id: manager.user_id || manager.id,
+          manager_id: managerUserId,
           participant_count: 1,
           max_participants: 5,
           status: "on_track",
@@ -236,9 +272,10 @@ export default function Onboarding() {
         group_id: group.id,
         role: "user",
         status: "בעקבות",
-        progress: 0,
-        xp: existing?.xp || 0,
-        streak: 0,
+        // New monthly cycle always opens clean XP (league + wheel); assignment-only keeps scores.
+        progress: assignmentOnly ? existing?.progress || 0 : 0,
+        xp: assignmentOnly ? existing?.xp || 0 : 0,
+        streak: assignmentOnly ? existing?.streak || 0 : 0,
       };
       if (existing) {
         await apiClient.entities.Member.update(existing.id, memberPayload);
@@ -249,13 +286,17 @@ export default function Onboarding() {
         });
       }
 
-      await apiClient.auth.updateMe({
+      const me = await apiClient.auth.updateMe({
         gender,
         target,
         group_id: group.id,
         onboarding_completed: true,
         onboarding_completed_at: new Date().toISOString(),
       });
+      if (me) {
+        applyUser?.(me);
+        setUser(me);
+      }
 
       toast({
         title: isNewCycle ? "סבב חדש התחיל!" : "ההרשמה הושלמה",
@@ -263,7 +304,7 @@ export default function Onboarding() {
           ? `גלגל משימות חדש + שיבוץ לקבוצת ${group.name}`
           : `שובצת לקבוצת ${group.name}`,
       });
-      navigate("/");
+      navigate("/", { replace: true });
     } catch (err) {
       console.error("[Onboarding] finish failed", err);
       toast({
@@ -284,20 +325,17 @@ export default function Onboarding() {
     );
   }
 
-  // Reward text is required; image is optional
-  const canNext = [!!target, !!gender, !!manager, tasks.length >= 4, !!rewardText.trim()][step];
+  // Reward text is required; image is optional.
+  // Wait enrollment may finish from the assignment step (no tasks/reward yet).
+  const canNext = waitEnrollment && step === 2
+    ? Boolean(target && gender && manager)
+    : [!!target, !!gender, !!manager, tasks.length >= 4, !!rewardText.trim()][step];
+
+  const finishFromWaitStep = waitEnrollment && step === 2;
 
   return (
     <div className="min-h-screen bg-background p-4" dir="rtl">
       <div className="max-w-md lg:max-w-xl mx-auto">
-        {isNewCycle && (
-          <div className="mb-3 rounded-xl border border-primary/40 bg-primary/10 px-4 py-3 text-center">
-            <p className="text-sm font-bold text-primary">סבב חדש נפתח</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              בחרו יעד, מנהל/ת, גלגל משימות חדש ותגמול — ותשובצו לקבוצה לסבב {currentCycleMonth()}
-            </p>
-          </div>
-        )}
         <StepProgress step={step} />
 
         <div className="card-gold-rim p-5 space-y-4">
@@ -305,12 +343,20 @@ export default function Onboarding() {
           {step === 1 && <StepGender gender={gender} setGender={(g) => { setGender(g); setManager(null); }} />}
           {step === 2 && (
             <StepManager
+              user={user}
               managers={managers}
               groups={groups}
               gender={gender}
               target={target}
               manager={manager}
               setManager={setManager}
+              onBlockedChange={setManagerStepBlocked}
+              onBackToTarget={() => {
+                setManager(null);
+                setManagerStepBlocked(false);
+                setStep(0);
+              }}
+              onLogout={() => logout(true)}
             />
           )}
           {step === 3 && (
@@ -337,42 +383,55 @@ export default function Onboarding() {
             />
           )}
 
-          <div className="flex gap-2 pt-2">
-            {step > 0 && (
-              <button
-                type="button"
-                onClick={() => setStep(step - 1)}
-                className="flex-1 bg-muted rounded-xl py-2.5 text-sm font-bold"
-              >
-                חזרה
-              </button>
-            )}
-            {step < STEPS.length - 1 ? (
-              <button
-                type="button"
-                onClick={() => canNext && setStep(step + 1)}
-                disabled={!canNext}
-                className="flex-1 gold-bg text-black rounded-xl py-2.5 text-sm font-bold disabled:opacity-40"
-              >
-                המשך ←
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={finish}
-                disabled={!canNext || submitting || uploading}
-                className="flex-1 gold-gradient text-black rounded-xl py-2.5 text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2"
-              >
-                {submitting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : isNewCycle ? (
-                  "סיום והתחלת סבב חדש 🚀"
-                ) : (
-                  "סיום והתחלה! 🚀"
-                )}
-              </button>
-            )}
+          {!(step === 2 && managerStepBlocked) && (
+          <div className="flex flex-col gap-2 pt-2">
+            <div className="flex gap-2">
+              {step > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setStep(step - 1)}
+                  className="flex-1 bg-muted rounded-xl py-2.5 text-sm font-bold"
+                >
+                  חזרה
+                </button>
+              )}
+              {finishFromWaitStep ? (
+                <button
+                  type="button"
+                  onClick={finish}
+                  disabled={!canNext || submitting}
+                  className="flex-1 gold-gradient text-black rounded-xl py-2.5 text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "סיום והבנתי"}
+                </button>
+              ) : step < STEPS.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={() => canNext && setStep(step + 1)}
+                  disabled={!canNext}
+                  className="flex-1 gold-bg text-black rounded-xl py-2.5 text-sm font-bold disabled:opacity-40"
+                >
+                  {waitEnrollment ? "המשך להשלמת ההרשמה ←" : "המשך ←"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={finish}
+                  disabled={!canNext || submitting || uploading}
+                  className="flex-1 gold-gradient text-black rounded-xl py-2.5 text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  {submitting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : waitEnrollment ? (
+                    "סיום והבנתי"
+                  ) : (
+                    "סיום והתחלה! 🚀"
+                  )}
+                </button>
+              )}
+            </div>
           </div>
+          )}
         </div>
       </div>
     </div>

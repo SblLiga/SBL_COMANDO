@@ -1,28 +1,58 @@
 import React, { useState, useEffect } from "react";
 import apiClient from "@/api/apiClient";
-import { Zap, Flame, Plus, Check, EyeOff, Eye, GripVertical, Pencil, Trash2, Gift, Users } from "lucide-react";
+import { Zap, Flame, Plus, Check, EyeOff, Eye, GripVertical, Pencil, Trash2, Gift, Users, Upload, Loader2 } from "lucide-react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import SmartWheel from "@/components/SmartWheel";
 import KpiCard from "@/components/KpiCard";
 import { Switch } from "@/components/ui/switch";
+import { useLocation } from "react-router-dom";
 import { useToast } from "@/components/ui/use-toast";
-import { ensureMyGoal } from "@/lib/myGoal";
+import { ensureMyGoal, resetAdminWheelOnTargetSave } from "@/lib/myGoal";
 import { mediaUrl } from "@/lib/mediaUrl";
+import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUpload";
 
-const PRIORITIES = ["דחוף", "בינוני", "נמוך"];
+const TASK_PRIORITIES = ["דחוף", "בינוני", "נמוך"];
+
+function priorityClass(priority) {
+  if (priority === "דחוף") return "bg-destructive/20 text-destructive";
+  if (priority === "בינוני") return "bg-primary/15 text-primary";
+  return "bg-muted text-muted-foreground";
+}
+
+const ADMIN_TARGETS = [
+  "שיווק",
+  "יעד אישי",
+  "מכירות",
+  "אוטומציות",
+  "ניהול זמן",
+  "מגנט לידים",
+  "שיפור מוצר קיים",
+  "בניית מוצר חדש",
+  "אחר",
+];
 
 export default function Goal() {
+  const { pathname } = useLocation();
+  const hideDomainSwap = pathname.startsWith("/admin");
   const { toast } = useToast();
   const [goal, setGoal] = useState(null);
+  const [member, setMember] = useState(null);
+  const [user, setUser] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [newTaskPriority, setNewTaskPriority] = useState("בינוני");
   const [showAdd, setShowAdd] = useState(false);
+  const [newTaskPriority, setNewTaskPriority] = useState("בינוני");
   const [xpPerTask, setXpPerTask] = useState(100);
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [group, setGroup] = useState(null);
+  const [uploadingReward, setUploadingReward] = useState(false);
+  const [showAdminTargetPick, setShowAdminTargetPick] = useState(false);
+  const [adminTargetDraft, setAdminTargetDraft] = useState("");
+  const [savingAdminTarget, setSavingAdminTarget] = useState(false);
+
+  const isAdmin = String(user?.role || member?.role || "").toLowerCase() === "admin";
 
   useEffect(() => {
     load();
@@ -31,9 +61,11 @@ export default function Goal() {
   const load = async () => {
     setLoading(true);
     try {
-      const { goal: g } = await ensureMyGoal(apiClient);
-      setGoal(g);
-      const t = await apiClient.entities.Task.filter({ goal_id: g.id });
+      const loaded = await ensureMyGoal(apiClient);
+      setGoal(loaded.goal);
+      setMember(loaded.member || null);
+      setUser(loaded.user || null);
+      const t = await apiClient.entities.Task.filter({ goal_id: loaded.goal.id });
       setTasks(t.sort((a, b) => (a.order_index || 0) - (b.order_index || 0)).slice(0, 9));
       try {
         const settings = await apiClient.entities.SystemSetting.list();
@@ -42,17 +74,67 @@ export default function Goal() {
         console.error("[Goal] Failed to load XP settings:", err);
       }
       try {
-        const user = await apiClient.auth.me();
-        const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
-        if (myMembers[0]?.group_id) {
+        const me = loaded.member;
+        if (me?.group_id) {
           const groups = await apiClient.entities.Group.list();
-          setGroup(groups.find((grp) => grp.id === myMembers[0].group_id) || null);
+          setGroup(groups.find((grp) => grp.id === me.group_id) || null);
+        } else {
+          setGroup(null);
         }
       } catch (err) {
         console.error("[Goal] Failed to load group:", err);
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveAdminTarget = async () => {
+    if (!isAdmin || !adminTargetDraft || !goal) return;
+    setSavingAdminTarget(true);
+    try {
+      const result = await resetAdminWheelOnTargetSave(apiClient, {
+        user,
+        member,
+        goal,
+        target: adminTargetDraft,
+      });
+      setGoal(result.goal);
+      setMember(result.member || null);
+      setShowAdminTargetPick(false);
+      const t = await apiClient.entities.Task.filter({ goal_id: result.goal.id });
+      setTasks(t.sort((a, b) => (a.order_index || 0) - (b.order_index || 0)).slice(0, 9));
+      toast({
+        title: "יעד חדש נשמר",
+        description: "הגלגל, ה-XP וההתקדמות אופסו. זה האיפוס היחיד לאדמין.",
+      });
+    } catch (err) {
+      console.error("[Goal] admin target save failed", err);
+      toast({ title: "שמירת היעד נכשלה", variant: "destructive" });
+    } finally {
+      setSavingAdminTarget(false);
+    }
+  };
+
+  const uploadRewardImage = async (file) => {
+    if (!file || !goal?.id) return;
+    setUploadingReward(true);
+    try {
+      const prepared = await prepareImageForUpload(file);
+      const res = await apiClient.integrations.Core.UploadFile({ file: prepared, purpose: "reward" });
+      const url = res?.file_url || res?.url;
+      if (!url) throw new Error("השרת לא החזיר קישור");
+      const g = await apiClient.entities.Goal.update(goal.id, { reward_image: url });
+      setGoal(g);
+      toast({ title: "תמונת התמריץ עודכנה", description: "התמונה תוצג גם למנהל/ת." });
+    } catch (err) {
+      toast({
+        title: "העלאה נכשלה",
+        description: formatUploadError(err),
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingReward(false);
     }
   };
 
@@ -102,6 +184,7 @@ export default function Goal() {
     });
     setTasks([...tasks, t]);
     setNewTaskTitle("");
+    setNewTaskPriority("בינוני");
     setShowAdd(false);
   };
 
@@ -140,15 +223,15 @@ export default function Goal() {
     await apiClient.entities.Task.bulkUpdate(reordered.map((t) => ({ id: t.id, order_index: t.order_index })));
   };
 
-  const cyclePriority = async (task) => {
-    const next = PRIORITIES[(PRIORITIES.indexOf(task.priority) + 1) % PRIORITIES.length];
-    const updated = await apiClient.entities.Task.update(task.id, { priority: next });
-    setTasks(tasks.map((t) => (t.id === task.id ? updated : t)));
-  };
-
   const startEditTask = (task) => {
     setEditingTaskId(task.id);
     setEditingTitle(task.title);
+  };
+
+  const changePriority = async (task, priority) => {
+    if (!priority || priority === (task.priority || "בינוני")) return;
+    const updated = await apiClient.entities.Task.update(task.id, { priority });
+    setTasks(tasks.map((t) => (t.id === task.id ? updated : t)));
   };
 
   const saveEditTask = async (task) => {
@@ -218,7 +301,52 @@ export default function Goal() {
       <div className="card-gold-rim p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1">
-            <span className="text-[10px] text-primary font-bold tracking-wide">יעד חודשי · {goal.target}</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] text-primary font-bold tracking-wide">יעד חודשי · {goal.target}</span>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdminTargetDraft(goal.target || "");
+                    setShowAdminTargetPick((v) => !v);
+                  }}
+                  className="text-[10px] font-bold text-primary underline underline-offset-2"
+                >
+                  {showAdminTargetPick ? "ביטול" : "בחירת יעד חדש"}
+                </button>
+              )}
+            </div>
+            {isAdmin && showAdminTargetPick && (
+              <div className="mt-3 space-y-2 rounded-xl bg-muted/40 p-3">
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  שמירת יעד חדש תאפס את הגלגל, ה-XP וההתקדמות. אין איפוס אוטומטי לפי תאריך.
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {ADMIN_TARGETS.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setAdminTargetDraft(t)}
+                      className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                        adminTargetDraft === t
+                          ? "border-primary bg-primary/15 text-primary font-bold"
+                          : "border-border text-muted-foreground"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  disabled={!adminTargetDraft || savingAdminTarget}
+                  onClick={saveAdminTarget}
+                  className="w-full gold-bg text-black rounded-lg px-4 py-2 text-sm font-bold disabled:opacity-50"
+                >
+                  {savingAdminTarget ? "שומר..." : "שמור יעד ואפס גלגל"}
+                </button>
+              </div>
+            )}
             <h2 className="font-display text-xl font-bold leading-tight mt-0.5">{goal.title}</h2>
             {goal.reward_text && (
               <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
@@ -232,6 +360,25 @@ export default function Goal() {
                 className="mt-3 w-full max-h-40 object-cover rounded-xl ring-1 ring-primary/30"
               />
             )}
+            <label className="mt-3 inline-flex items-center gap-2 text-xs text-primary font-medium cursor-pointer">
+              {uploadingReward ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Upload className="w-3.5 h-3.5" />
+              )}
+              {goal.reward_image ? "החלפת תמונת תמריץ" : "העלאת תמונת תמריץ"}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif,image/*"
+                className="hidden"
+                disabled={uploadingReward}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) uploadRewardImage(f);
+                }}
+              />
+            </label>
             {!goal.reward_text && !goal.reward_image && (
               <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
                 <Gift className="w-3.5 h-3.5 text-primary" /> אין תגמול מוגדר עדיין
@@ -260,7 +407,14 @@ export default function Goal() {
 
       {/* Smart Wheel — own view never blanks on hide; hide only affects peers */}
       <div className="flex justify-center py-2">
-        <SmartWheel tasks={tasks} onToggle={(t) => toggleTask(t)} onSwap={swapTasks} hidden={false} size={340} goalTitle={goal.title} />
+        <SmartWheel
+          tasks={tasks}
+          onToggle={(t) => toggleTask(t)}
+          onSwap={hideDomainSwap || isAdmin ? undefined : swapTasks}
+          hidden={false}
+          size={340}
+          goalTitle={goal.title}
+        />
       </div>
 
       {/* Task list */}
@@ -285,22 +439,23 @@ export default function Goal() {
               onKeyDown={(e) => e.key === "Enter" && addTask()}
               autoFocus
             />
-            <div className="flex gap-2 items-center">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground shrink-0">דחיפות</span>
               <select
                 value={newTaskPriority}
                 onChange={(e) => setNewTaskPriority(e.target.value)}
-                className="bg-input rounded-lg px-2 py-2 text-sm flex-1"
+                className={`flex-1 rounded-lg px-2 py-2 text-xs font-semibold bg-input ${priorityClass(newTaskPriority)}`}
               >
-                {PRIORITIES.map((p) => (
+                {TASK_PRIORITIES.map((p) => (
                   <option key={p} value={p}>
                     {p}
                   </option>
                 ))}
               </select>
-              <button onClick={addTask} className="gold-bg text-black rounded-lg px-5 py-2 text-sm font-bold">
-                הוסף
-              </button>
             </div>
+            <button onClick={addTask} className="w-full gold-bg text-black rounded-lg px-5 py-2 text-sm font-bold">
+              הוסף
+            </button>
           </div>
         )}
 
@@ -314,12 +469,7 @@ export default function Goal() {
             {(provided) => (
               <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-2">
                 {tasks.map((task, i) => {
-                  const priorityColor =
-                    task.priority === "דחוף"
-                      ? "bg-destructive/20 text-destructive"
-                      : task.priority === "בינוני"
-                      ? "bg-primary/15 text-primary"
-                      : "bg-muted text-muted-foreground";
+                  const currentPriority = task.priority || "בינוני";
                   return (
                     <Draggable key={task.id} draggableId={task.id} index={i}>
                       {(prov) => (
@@ -366,14 +516,19 @@ export default function Goal() {
                           <button type="button" onClick={() => deleteTask(task)} className="p-1.5 text-muted-foreground hover:text-destructive">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => cyclePriority(task)}
-                            title="לחץ לשינוי עדיפות"
-                            className={`text-[10px] px-2.5 py-1 rounded-full font-semibold cursor-pointer transition-all hover:scale-110 hover:ring-2 hover:ring-primary/40 active:scale-95 ${priorityColor}`}
+                          <select
+                            value={TASK_PRIORITIES.includes(currentPriority) ? currentPriority : "בינוני"}
+                            onChange={(e) => changePriority(task, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label="דחיפות המשימה"
+                            className={`text-[10px] px-2 py-1 rounded-full font-semibold border-0 cursor-pointer appearance-auto max-w-[5.5rem] ${priorityClass(currentPriority)}`}
                           >
-                            {task.priority}
-                          </button>
+                            {TASK_PRIORITIES.map((p) => (
+                              <option key={p} value={p}>
+                                {p}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       )}
                     </Draggable>

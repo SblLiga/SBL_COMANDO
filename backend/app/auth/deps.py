@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from app.auth.jwt import decode_access_token
 from app.database import get_db
 from app.models import User
+from app.pending_manager import ensure_live_manager_if_due
+from app.subscription import sync_subscription_expiry, sync_user_group_from_member
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -25,6 +27,10 @@ def get_current_user(
     user = db.get(User, user_id)
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    # JWT carries only sub — always re-read role/flags from DB (and apply due promotions).
+    user = ensure_live_manager_if_due(db, user)
+    sync_subscription_expiry(user, db)
+    sync_user_group_from_member(user, db)
     return user
 
 
@@ -38,3 +44,17 @@ def get_optional_user(
         return get_current_user(credentials, db)
     except HTTPException:
         return None
+
+
+def require_active_subscription(
+    user: User = Depends(get_current_user),
+) -> User:
+    """Staff always pass; regular users need an active subscription for app APIs."""
+    if user.role in {"admin", "manager"}:
+        return user
+    if (user.subscription_status or "").lower() == "active":
+        return user
+    raise HTTPException(
+        status_code=status.HTTP_402_PAYMENT_REQUIRED,
+        detail="Active subscription required",
+    )

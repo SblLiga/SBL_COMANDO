@@ -37,6 +37,11 @@ export default function AuthLayout({ title, subtitle, footerLink, footer, childr
             )}
           </p>
         )}
+        <p className="text-center mt-4 relative z-20">
+          <Link to="/privacy" className="text-xs text-muted-foreground underline underline-offset-2 hover:text-primary">
+            מדיניות פרטיות
+          </Link>
+        </p>
       </div>
     </div>
   );

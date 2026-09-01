@@ -1,45 +1,62 @@
 import React, { useState, useEffect } from "react";
 import apiClient from "@/api/apiClient";
-import { FileText, CheckCircle2, Clock, XCircle, Search } from "lucide-react";
+import { FileText, Search, Check } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { useToast } from "@/components/ui/use-toast";
+import { sortNewestFirst } from "@/lib/utils";
 
-const statusMeta = {
-  approved: { icon: CheckCircle2, color: "text-green-500", bg: "bg-green-500/15", label: "אושר" },
-  pending: { icon: Clock, color: "text-orange-400", bg: "bg-orange-400/15", label: "ממתין" },
-  rejected: { icon: XCircle, color: "text-red-500", bg: "bg-red-500/15", label: "נדחה" },
+const typeLabel = {
+  weekly: "סיכום שבועי",
+  monthly: "סיכום חודשי",
+  progress: "דוח התקדמות",
+  anomaly: "דוח חריגות",
 };
 
-const typeLabel = { weekly: "סיכום שבועי", monthly: "סיכום חודשי", progress: "דוח התקדמות", anomaly: "דוח חריגות" };
+const statusLabel = {
+  pending: "ממתין לאישור",
+  approved: "אושר",
+  draft: "טיוטה",
+};
 
 export default function AdminReports() {
   const { toast } = useToast();
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("all");
+  const [busyId, setBusyId] = useState(null);
   const [typeFilter, setTypeFilter] = useState("all");
   const [query, setQuery] = useState("");
-  const [busyId, setBusyId] = useState(null);
+
+  const load = async () => {
+    const r = await apiClient.entities.Report.list("-created_date", 80);
+    setReports(sortNewestFirst(Array.isArray(r) ? r : []));
+  };
 
   useEffect(() => {
     (async () => {
       try {
-        const r = await apiClient.entities.Report.list("-created_date", 50);
-        setReports(r);
+        await load();
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  const setStatus = async (report, status) => {
+  const approve = async (report) => {
+    if (!report?.id || report.status === "approved") return;
     setBusyId(report.id);
     try {
-      const updated = await apiClient.entities.Report.update(report.id, { status });
-      setReports((prev) => prev.map((x) => (x.id === report.id ? updated : x)));
-      toast({ title: status === "approved" ? "הדוח אושר" : "הדוח נדחה" });
+      await apiClient.entities.Report.update(report.id, { status: "approved" });
+      if (report.meeting_id) {
+        await apiClient.entities.Meeting.update(report.meeting_id, {
+          report_status: "approved",
+          is_locked: true,
+        });
+      }
+      await load();
+      toast({ title: "הדוח אושר", description: "עבר לסיכום הישיבות הקודמות אצל המנהל/ת" });
     } catch (err) {
-      toast({ title: "שגיאה", description: err.message || "עדכון הדוח נכשל", variant: "destructive" });
+      console.error("[AdminReports] approve failed", err);
+      toast({ title: "אישור נכשל", variant: "destructive" });
     } finally {
       setBusyId(null);
     }
@@ -53,11 +70,10 @@ export default function AdminReports() {
     );
 
   const filtered = reports.filter((r) => {
-    if (filter !== "all" && r.status !== filter) return false;
     if (typeFilter !== "all" && r.type !== typeFilter) return false;
     if (query) {
       const q = query.toLowerCase();
-      const hay = `${r.submitted_by || ""} ${r.content || ""} ${r.type || ""}`.toLowerCase();
+      const hay = `${r.submitted_by || ""} ${r.content || ""} ${r.type || ""} ${r.status || ""}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -75,24 +91,6 @@ export default function AdminReports() {
           placeholder="חיפוש לפי שם או קבוצה..."
           className="w-full bg-input rounded-xl py-2.5 pr-10 pl-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
         />
-      </div>
-
-      <div className="flex gap-2 overflow-x-auto">
-        {[
-          { k: "all", l: "הכל" },
-          { k: "approved", l: "אושר" },
-          { k: "pending", l: "ממתין" },
-          { k: "rejected", l: "נדחה" },
-        ].map((f) => (
-          <button
-            key={f.k}
-            type="button"
-            onClick={() => setFilter(f.k)}
-            className={`text-xs px-3 py-1.5 rounded-full whitespace-nowrap ${filter === f.k ? "gold-bg text-black font-bold" : "bg-muted"}`}
-          >
-            {f.l}
-          </button>
-        ))}
       </div>
 
       <div className="flex gap-2 overflow-x-auto">
@@ -121,47 +119,33 @@ export default function AdminReports() {
             <p className="text-sm text-muted-foreground">לא נמצאו דוחות תואמים</p>
           </div>
         )}
-        {filtered.map((r) => {
-          const st = statusMeta[r.status] || statusMeta.pending;
-          const Icon = st.icon;
-          return (
-            <div key={r.id} className="card-lux p-3 space-y-2">
-              <div className="flex items-center gap-3">
-                <div className={`w-9 h-9 rounded-lg ${st.bg} flex items-center justify-center`}>
-                  <Icon className={`w-4 h-4 ${st.color}`} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{r.submitted_by || "—"}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {typeLabel[r.type] || r.type} · {new Date(r.created_date).toLocaleDateString("he-IL")}
-                  </p>
-                </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full ${st.bg} ${st.color} font-bold`}>{st.label}</span>
+        {filtered.map((r) => (
+          <div key={r.id} className="card-lux p-3 space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center">
+                <FileText className="w-4 h-4 text-primary" />
               </div>
-              {r.content && <p className="text-xs text-muted-foreground leading-snug line-clamp-3">{r.content}</p>}
-              {(r.status === "pending" || !r.status) && (
-                <div className="flex gap-2 pt-1">
-                  <button
-                    type="button"
-                    disabled={busyId === r.id}
-                    onClick={() => setStatus(r, "approved")}
-                    className="flex-1 text-xs py-2 rounded-lg bg-green-500/15 text-green-500 font-bold disabled:opacity-40"
-                  >
-                    אישור
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busyId === r.id}
-                    onClick={() => setStatus(r, "rejected")}
-                    className="flex-1 text-xs py-2 rounded-lg bg-red-500/15 text-red-500 font-bold disabled:opacity-40"
-                  >
-                    דחייה
-                  </button>
-                </div>
-              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">{r.submitted_by || "—"}</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {typeLabel[r.type] || r.type} · {statusLabel[r.status] || r.status} ·{" "}
+                  {new Date(r.created_date || r.created_at).toLocaleDateString("he-IL")}
+                </p>
+              </div>
             </div>
-          );
-        })}
+            {r.content && <p className="text-xs text-muted-foreground leading-snug line-clamp-3 whitespace-pre-line">{r.content}</p>}
+            {r.status === "pending" && (
+              <button
+                type="button"
+                disabled={busyId === r.id}
+                onClick={() => approve(r)}
+                className="w-full flex items-center justify-center gap-1.5 text-xs px-3 py-2 rounded-lg gold-bg text-black font-bold disabled:opacity-40"
+              >
+                <Check className="w-3.5 h-3.5" /> {busyId === r.id ? "מאשר..." : "אשר דוח"}
+              </button>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );

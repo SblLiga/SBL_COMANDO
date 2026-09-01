@@ -11,3 +11,4 @@ bcrypt==4.0.1
 boto3==1.38.27
 PyJWT==2.10.1
 python-multipart==0.0.20
+tzdata==2025.1

@@ -2,11 +2,12 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import apiClient from "@/api/apiClient";
 import { useAuth } from "@/lib/AuthContext";
-import { needsOnboardingWizard, postAuthPath } from "@/lib/postAuth";
+import { postAuthPath } from "@/lib/postAuth";
+import { canAssignToGroup } from "@/lib/calendarRules";
 import { CheckCircle2, Loader2, PartyPopper } from "lucide-react";
 
 export default function ThankYou() {
-  const { user, isLoadingAuth } = useAuth();
+  const { user, isLoadingAuth, applyUser } = useAuth();
   const navigate = useNavigate();
   const [member, setMember] = useState(null);
   const [polling, setPolling] = useState(() => apiClient.auth.isAuthenticated());
@@ -16,9 +17,23 @@ export default function ThankYou() {
   const settledRef = useRef(user?.subscription_status === "active");
 
   useEffect(() => {
+    const loadMember = async (u) => {
+      if (!u || u.role !== "user") return null;
+      try {
+        const rows = await apiClient.entities.Member.filter({ user_id: u.id });
+        return rows[0] || null;
+      } catch {
+        return null;
+      }
+    };
+
     if (settledRef.current) {
       setPolling(false);
       setStatus("active");
+      (async () => {
+        const row = await loadMember(user);
+        if (row) setMember(row);
+      })();
       return;
     }
 
@@ -34,6 +49,10 @@ export default function ThankYou() {
       settledRef.current = true;
       setStatus("active");
       setPolling(false);
+      (async () => {
+        const row = await loadMember(user);
+        if (row) setMember(row);
+      })();
       return;
     }
 
@@ -49,17 +68,14 @@ export default function ThankYou() {
         const next = u?.subscription_status || "inactive";
         setLatestUser((prev) => (prev?.id === u?.id && prev?.subscription_status === next ? prev : u));
         setStatus((prev) => (prev === next ? prev : next));
-        if (u?.role === "user") {
-          const rows = await apiClient.entities.Member.filter({ user_id: u.id });
-          if (!cancelled && !settledRef.current) {
-            const row = rows[0] || null;
-            setMember((prev) => (prev?.id === row?.id ? prev : row));
-          }
-        }
         if (next === "active") {
-          // Do NOT call checkUserAuth — it flips App-level isLoadingAuth and remounts routes.
-          settledRef.current = true;
-          setPolling(false);
+          applyUser?.(u);
+          const row = await loadMember(u);
+          if (!cancelled) {
+            if (row) setMember((prev) => (prev?.id === row?.id ? prev : row));
+            settledRef.current = true;
+            setPolling(false);
+          }
           return;
         }
       } catch {
@@ -67,7 +83,7 @@ export default function ThankYou() {
       }
       if (cancelled || settledRef.current) return;
       tries += 1;
-      if (tries >= 12) {
+      if (tries >= 24) {
         setPolling(false);
         return;
       }
@@ -79,10 +95,9 @@ export default function ThankYou() {
       cancelled = true;
       if (timerId != null) clearTimeout(timerId);
     };
-    // Mount-once only. Never depend on AuthContext function identities.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // After success is settled, never show the auth loading spinner again.
   if (isLoadingAuth && !user && !settledRef.current) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -93,11 +108,16 @@ export default function ThankYou() {
 
   const activeUser = latestUser || user;
   const isActive = settledRef.current || (Boolean(user || latestUser) && status === "active");
-  const continuePath = isActive
-    ? needsOnboardingWizard(activeUser, member)
-      ? "/onboarding"
-      : postAuthPath(activeUser, member)
-    : "/payment";
+  const waitEnrollment = Boolean(activeUser) && isActive && !canAssignToGroup(activeUser);
+
+  const handleContinue = () => {
+    const u = latestUser || user;
+    if (!apiClient.auth.isAuthenticated() || !u) {
+      navigate("/login", { replace: true });
+      return;
+    }
+    navigate(postAuthPath(u, member), { replace: true });
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
@@ -114,7 +134,9 @@ export default function ThankYou() {
             <div>
               <h1 className="font-display text-xl font-bold mb-2">התשלום התקבל!</h1>
               <p className="text-sm text-muted-foreground">
-                המנוי פעיל. אפשר להמשיך לבחירת המשימות ולהתחיל את המסע.
+                {waitEnrollment
+                  ? "המנוי פעיל. השיבוץ לקבוצות יפתח ב-25 בחודש — בינתיים אפשר להשלים את פרטי ההרשמה."
+                  : "המנוי פעיל. אפשר להמשיך לעמוד הראשי ולבחירת המשימות."}
               </p>
             </div>
             <div className="flex items-center justify-center gap-2 text-sm text-primary font-medium">
@@ -122,10 +144,10 @@ export default function ThankYou() {
             </div>
             <button
               type="button"
-              onClick={() => navigate(continuePath, { replace: true })}
+              onClick={handleContinue}
               className="w-full gold-gradient text-black font-bold rounded-xl py-3 text-sm"
             >
-              המשך לבחירת משימות
+              {waitEnrollment ? "המשך להשלמת ההרשמה" : "המשך"}
             </button>
           </>
         ) : (
@@ -135,7 +157,7 @@ export default function ThankYou() {
               <p className="text-sm text-muted-foreground">
                 {polling
                   ? "בודקים מול השרת שהתשלום אושר…"
-                  : "עדיין לא קיבלנו אישור. אם שילמת — חכי רגע או חזרי מדף הסליקה."}
+                  : "עדיין לא קיבלנו אישור. במידה ובוצע תשלום — אפשר להמתין כמה רגעים או לחזור מדף הסליקה."}
               </p>
             </div>
             <button

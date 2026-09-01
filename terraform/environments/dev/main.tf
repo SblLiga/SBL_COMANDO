@@ -164,7 +164,7 @@ resource "aws_secretsmanager_secret_version" "app" {
     mail_from            = ""
     app_public_url       = ""
     grow_webhook_secret  = ""
-    grow_payment_url     = "https://grow.co.il/subscribe"
+    grow_payment_url     = "https://meshulam.co.il/s/180deaa3-f766-9c23-5820-a8a91ea5a1ff"
     admin_email          = ""
     admin_password       = ""
     dev_admin_password   = ""

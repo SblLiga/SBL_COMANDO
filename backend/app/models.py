@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -37,7 +37,21 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(32), default="user")
+    # Nominated by admin; stays a regular user until manager_effective_on (next 23rd).
+    pending_manager: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Live manager marked to step down; stays manager until manager_effective_on.
+    pending_demotion: Mapped[bool] = mapped_column(Boolean, default=False)
+    manager_effective_on: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     subscription_status: Mapped[str] = mapped_column(String(32), default="inactive")
+    subscription_end_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Future start = paid during wait window; period/assignment open from this instant.
+    subscription_start_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     gender: Mapped[str | None] = mapped_column(String(16), nullable=True)
     target: Mapped[str | None] = mapped_column(String(255), nullable=True)
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -78,6 +92,11 @@ class Member(Base):
     goal_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     next_month_target: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Day-23 manager plan for the upcoming cycle (zone = female|male like user onboarding).
+    next_month_zone: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    next_month_tasks: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    next_month_reward: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    next_month_reward_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
     next_month_selected_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -153,6 +172,8 @@ class Meeting(Base):
     section_reports: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_minutes: Mapped[int] = mapped_column(Integer, default=90)
     is_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # draft → editable last summary; pending → sent to admin (locked); approved → previous list
+    report_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -167,6 +188,7 @@ class Report(Base):
     submitted_by: Mapped[str] = mapped_column(String(255))
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     group_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    meeting_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

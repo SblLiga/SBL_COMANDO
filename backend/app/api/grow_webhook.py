@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.orm import Session
 
 from app.api.subscription_webhooks import (
+    _read_verified_payload,
     apply_subscription_status,
+    apply_successful_payment,
+    is_grow_failed_recurring,
     resolve_user,
-    verify_webhook_auth,
     webhook_secret,
 )
 from app.config import get_settings
@@ -27,8 +29,10 @@ def grow_health():
         "ok": True,
         "webhook_path": "/api/integrations/grow/webhook",
         "payment_success_path": "/api/webhooks/payment-success",
+        "payment_failed_path": "/api/webhooks/payment-failed",
         "subscription_cancelled_path": "/api/webhooks/subscription-cancelled",
         "secret_configured": bool(webhook_secret()),
+        "auth": "grow_ip_or_webhookKey_or_shared_secret",
         "payment_url": settings.grow_payment_url or settings.make_payment_url or None,
         "make_trigger_configured": bool(settings.make_trigger_url),
     }
@@ -45,25 +49,18 @@ async def grow_webhook(
 ):
     """
     Legacy / Grow-compatible webhook.
-    Prefer dedicated Make routes:
+    Prefer dedicated routes:
       POST /api/webhooks/payment-success
+      POST /api/webhooks/payment-failed
       POST /api/webhooks/subscription-cancelled
     """
-    import json
-
-    raw = await request.body()
-    if not verify_webhook_auth(
-        raw,
-        signature=x_grow_signature or x_make_signature,
-        bearer=authorization,
-        plain_secret_header=x_webhook_secret,
-    ):
-        raise HTTPException(status_code=401, detail="Invalid GROW signature")
-
-    try:
-        payload = json.loads(raw.decode("utf-8") or "{}")
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON") from None
+    payload = await _read_verified_payload(
+        request,
+        x_make_signature=x_make_signature,
+        x_grow_signature=x_grow_signature,
+        x_webhook_secret=x_webhook_secret,
+        authorization=authorization,
+    )
 
     event = (payload.get("event") or payload.get("type") or "").lower()
     status_raw = (payload.get("subscription_status") or payload.get("status") or "").lower()
@@ -71,11 +68,8 @@ async def grow_webhook(
     logger.info(
         "GROW webhook received event=%s keys=%s",
         event,
-        list(payload.keys()) if isinstance(payload, dict) else type(payload),
+        list(payload.keys()),
     )
-
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail="Payload must be a JSON object")
 
     user = resolve_user(db, payload)
     if user is None:
@@ -95,20 +89,26 @@ async def grow_webhook(
     }
 
     new_status = None
-    if event in activate_events or status_raw in {"active", "paid", "success"}:
-        new_status = "active"
-    elif event in deactivate_events or status_raw in {
+    if is_grow_failed_recurring(payload) or event in deactivate_events or status_raw in {
         "inactive",
         "cancelled",
         "expired",
         "failed",
     }:
         new_status = "inactive"
+    elif event in activate_events or status_raw in {"active", "paid", "success", "1", "שולם"}:
+        new_status = "active"
+    elif payload.get("payerEmail") or payload.get("transactionCode") or payload.get("directDebitId"):
+        # Official Grow success payloads often omit event/type.
+        new_status = "active"
 
     if new_status is None:
         return {"received": True, "updated": False, "reason": "unmapped_event", "event": event}
 
-    result = apply_subscription_status(db, user, new_status)
     if new_status == "active":
-        result["redirect"] = "/thank-you"
+        return apply_successful_payment(db, payload, user)
+
+    result = apply_subscription_status(db, user, new_status)
+    result["error_message"] = payload.get("error_message")
+    result["regular_payment_id"] = payload.get("regular_payment_id")
     return result

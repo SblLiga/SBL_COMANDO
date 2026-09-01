@@ -1,43 +1,94 @@
 /**
  * Calendar rules from product specs (Israel calendar day).
- * - Managers: next-month target selection from day 23 until chosen.
- * - Users: registration from day 23; group assignment / monthly onboarding from day 25.
+ * - Managers: next-month plan hard-gate on days 23–26 (inclusive).
+ * - Users: registration from day 23; monthly onboarding from day 25.
  * - From day 25 the active cycle is the *next* calendar month (new wheel + group).
+ * - Group assignment window: ONLY days 25–26, and only if subscription is active
+ *   and not waiting on subscription_start_date (deferred payment in window 27→24).
  */
+
+/** Inclusive manager promotion / plan-selection window (aligned with user open on 25–26). */
+export const MANAGER_WINDOW_START_DAY = 23;
+export const MANAGER_WINDOW_END_DAY = 26;
 
 export function calendarDay(date = new Date()) {
   return date.getDate();
 }
 
+/** Days 23–26: managers must set next-month target / zone / tasks / reward. */
 export function isManagerTargetSelectionWindow(date = new Date()) {
-  return calendarDay(date) >= 23;
+  const d = calendarDay(date);
+  return d >= MANAGER_WINDOW_START_DAY && d <= MANAGER_WINDOW_END_DAY;
 }
 
 export function isUserRegistrationWindow(date = new Date()) {
   return calendarDay(date) >= 23;
 }
 
+/** Monthly onboarding / cycle helpers still use day ≥ 25. */
 export function isUserAssignmentWindow(date = new Date()) {
   return calendarDay(date) >= 25;
 }
 
+/** Strict group-assignment open days: 25 and 26 only. */
 /**
  * TEMPORARY MANUAL OVERRIDE — Sept 2026 onboarding push.
- * Opens user/waiting-list group assignment early (before day 25) WITHOUT
- * touching isUserAssignmentWindow itself — needsMonthlyOnboarding still
- * relies on that function unchanged. Overriding it directly would wrongly
- * flag every already-onboarded user as needing to redo onboarding this
- * month, since their onboarding_completed_at isn't dated >= 25.
- * TODO: delete this block once Step 2 (server-side cycle logic) ships.
+ * Extends the exact 25–26 group-assignment day-gate earlier in the month.
+ * Does NOT affect subscription checks in canAssignToGroup (active/pending) —
+ * those stay fully enforced. Does NOT affect isUserAssignmentWindow or
+ * needsMonthlyOnboarding, which are unrelated to this gate.
+ * TODO: delete once Step 2 (server-side cycle logic) ships.
  */
 const TEMP_ASSIGNMENT_OVERRIDE_UNTIL = new Date("2026-09-30T23:59:59+03:00");
 
-export function isAssignmentOpenForNewUsers(date = new Date()) {
-  return isUserAssignmentWindow(date) || date <= TEMP_ASSIGNMENT_OVERRIDE_UNTIL;
+export function isGroupAssignmentOpenDay(date = new Date()) {
+  const d = calendarDay(date);
+  return d === 25 || d === 26 || date <= TEMP_ASSIGNMENT_OVERRIDE_UNTIL;
+}
+
+/**
+ * Paid user whose period has not started yet (paid in wait window 27→24).
+ * Legacy users without subscription_start_date are never pending.
+ */
+export function isSubscriptionStartPending(user, date = new Date()) {
+  if (!user || user.subscription_status !== "active") return false;
+  if (!user.subscription_start_date) return false;
+  const start = new Date(user.subscription_start_date);
+  if (Number.isNaN(start.getTime())) return false;
+  return start.getTime() > date.getTime();
+}
+
+/**
+ * True when the user may use the app now: status active and start date has arrived
+ * (or legacy users with no start date). Deferred wait-window payers are not active yet.
+ */
+export function isSubscriptionActive(user, date = new Date()) {
+  if (!user || String(user.subscription_status || "").toLowerCase() !== "active") {
+    return false;
+  }
+  if (!user.subscription_start_date) return true;
+  const start = new Date(user.subscription_start_date);
+  if (Number.isNaN(start.getTime())) return true;
+  return start.getTime() <= date.getTime();
+}
+
+/**
+ * May actively pick a manager / join a group:
+ * active subscription + not deferred-pending + calendar day is 25 or 26.
+ */
+export function canAssignToGroup(user, date = new Date()) {
+  if (!user || user.subscription_status !== "active") return false;
+  if (isSubscriptionStartPending(user, date)) return false;
+  return isGroupAssignmentOpenDay(date);
 }
 
 export function isMonthlyOnboardingResetDay(date = new Date()) {
   return calendarDay(date) === 25;
+}
+
+/** Managers open / reset their personal cycle during the 23–26 window (users stay on 25). */
+export function isManagerCycleRolloverDay(date = new Date()) {
+  return isManagerTargetSelectionWindow(date);
 }
 
 export function sameCalendarMonth(a, b = new Date()) {
@@ -45,15 +96,42 @@ export function sameCalendarMonth(a, b = new Date()) {
   return d.getMonth() === b.getMonth() && d.getFullYear() === b.getFullYear();
 }
 
-/** Active league cycle label (YYYY-MM). From day 25 → next month. */
-export function currentCycleMonth(date = new Date()) {
+/**
+ * Active league cycle label (YYYY-MM).
+ * Users: day ≥ 25 → next month.
+ * Managers: day ≥ 23 → next month (personal wheel only).
+ * Admins: never auto-rolled by calendar (pass rolloverDay ≥ 32 to stamp plain month).
+ */
+export function currentCycleMonth(date = new Date(), rolloverDay = 25) {
   const d = new Date(date.getFullYear(), date.getMonth(), 1);
-  if (calendarDay(date) >= 25) {
+  if (calendarDay(date) >= rolloverDay) {
     d.setMonth(d.getMonth() + 1);
   }
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   return `${y}-${m}`;
+}
+
+/**
+ * On days 23–26 a manager must complete the next-month plan for this calendar month:
+ * target, zone (gender), tasks (≥4), reward — stamped via next_month_selected_at.
+ */
+export function hasManagerNextMonthPlan(member) {
+  if (!member?.next_month_target || !member?.next_month_zone || !member?.next_month_reward) {
+    return false;
+  }
+  if (!member.next_month_selected_at) return false;
+  const tasks = Array.isArray(member.next_month_tasks) ? member.next_month_tasks : [];
+  return tasks.length >= 4;
+}
+
+export function needsManagerNextMonthTarget(member, date = new Date()) {
+  if (!member || String(member.role || "").toLowerCase() !== "manager") return false;
+  if (!isManagerTargetSelectionWindow(date)) return false;
+  if (hasManagerNextMonthPlan(member) && sameCalendarMonth(member.next_month_selected_at, date)) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -73,10 +151,10 @@ export function needsMonthlyOnboarding(user, date = new Date()) {
   return !doneThisWindow;
 }
 
-/** Waiting-list users must complete manager/group assignment once day ≥ 25. */
+/** Waiting-list users must pick a group only while assignment is actually open (25–26). */
 export function needsWaitingListAssignment(user, member, date = new Date()) {
   if (!user || user.role !== "user") return false;
-  if (!isAssignmentOpenForNewUsers(date)) return false;
+  if (!canAssignToGroup(user, date)) return false;
   if (!user.onboarding_completed) return false;
   return !member?.group_id;
 }

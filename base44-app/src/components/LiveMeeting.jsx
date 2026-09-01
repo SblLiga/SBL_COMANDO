@@ -10,7 +10,7 @@ export const AGENDA = [
   { title: "נושא לדון", minutes: 30 },
 ];
 
-export default function LiveMeeting({ groupName, onEnd }) {
+export default function LiveMeeting({ groupName, onEnd, onDraftSave }) {
   const [section, setSection] = useState(0);
   const [paused, setPaused] = useState(false);
   const [sectionLeft, setSectionLeft] = useState(AGENDA[0].minutes * 60);
@@ -69,6 +69,11 @@ export default function LiveMeeting({ groupName, onEnd }) {
   const globalPct = ((90 * 60 - globalLeft) / (90 * 60)) * 100;
   const isLast = section >= AGENDA.length - 1;
 
+  const persistDraftAndClose = () => {
+    onDraftSave?.(reports);
+    setShowReport(false);
+  };
+
   if (showReport) {
     return (
       <div className="fixed inset-0 z-[100] bg-background flex flex-col">
@@ -77,7 +82,7 @@ export default function LiveMeeting({ groupName, onEnd }) {
             <p className="text-[10px] text-primary font-bold">פגישת קומנדו</p>
             <h2 className="text-sm font-bold">כתיבת דוח / סיכום פגישה</h2>
           </div>
-          <button type="button" onClick={() => setShowReport(false)} className="p-2 rounded-lg bg-muted">
+          <button type="button" onClick={persistDraftAndClose} className="p-2 rounded-lg bg-muted">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -101,7 +106,7 @@ export default function LiveMeeting({ groupName, onEnd }) {
         <div className="p-4 border-t border-border">
           <button
             type="button"
-            onClick={() => setShowReport(false)}
+            onClick={persistDraftAndClose}
             className="w-full gold-bg text-black rounded-xl py-3 font-bold text-sm"
           >
             שמור דוח

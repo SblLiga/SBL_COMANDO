@@ -1,16 +1,40 @@
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.models import Goal, Group, Meeting, Member, Notification, SystemSetting, Task, User
+from app.models import (
+    EmailVerificationToken,
+    Goal,
+    Group,
+    MediaAsset,
+    Meeting,
+    Member,
+    Notification,
+    PasswordResetToken,
+    Report,
+    SystemSetting,
+    Task,
+    User,
+)
 from app.security import hash_password
+from app.subscription import (
+    activate_subscription,
+    end_of_cycle_paid_through_after,
+    end_of_immediate_paid_through_after,
+    next_assignment_open_at,
+)
 
 logger = logging.getLogger(__name__)
 
 # Canonical DEV accounts — created/repaired on every non-prod startup.
+# seed_subscription:
+#   active  → start/end cover "today" (usable dashboard)
+#   pending → start = next 25th, no group (hard-lock /pending)
+#   none    → admin: status active, no date gate
 DEV_SEED_ACCOUNTS = (
     {
         "email": "admin.dev@sbl.local",
@@ -18,6 +42,7 @@ DEV_SEED_ACCOUNTS = (
         "password_fallback": "Admin123!",
         "full_name": "אדמין דמו",
         "role": "admin",
+        "seed_subscription": "none",
     },
     {
         "email": "manager.dev@sbl.local",
@@ -29,6 +54,7 @@ DEV_SEED_ACCOUNTS = (
         "focus_target": "שיפור מכירות",
         "focus_month": "2026-07",
         "group": "alpha",
+        "seed_subscription": "active",
     },
     {
         "email": "manager2.dev@sbl.local",
@@ -40,6 +66,7 @@ DEV_SEED_ACCOUNTS = (
         "focus_target": "גיוס לקוחות",
         "focus_month": "2026-07",
         "group": "beta",
+        "seed_subscription": "active",
     },
     {
         "email": "user.dev@sbl.local",
@@ -49,6 +76,7 @@ DEV_SEED_ACCOUNTS = (
         "target": "שיווק",
         "gender": "female",
         "group": "alpha",
+        "seed_subscription": "active",
     },
     {
         "email": "user2.dev@sbl.local",
@@ -58,6 +86,7 @@ DEV_SEED_ACCOUNTS = (
         "target": "מכירות",
         "gender": "male",
         "group": "alpha",
+        "seed_subscription": "active",
     },
     {
         "email": "user3.dev@sbl.local",
@@ -67,17 +96,72 @@ DEV_SEED_ACCOUNTS = (
         "target": "גיוס",
         "gender": "female",
         "group": "beta",
+        "seed_subscription": "active",
     },
     {
         "email": "user4.dev@sbl.local",
         "password": "User123!",
-        "full_name": "משתמש דמו ד׳ (רשימת המתנה)",
+        "full_name": "משתמש דמו ד׳ (בהמתנה)",
         "role": "user",
         "target": "שיווק",
         "gender": "male",
-        "group": None,  # waiting list — no group yet
+        "group": None,
+        "seed_subscription": "pending",
     },
 )
+
+# Temporary PROD QA accounts for client UAT — cleaned on handoff.
+PROD_QA_SEED_ACCOUNTS = (
+    {
+        "email": "qa.admin@sblliga.com",
+        "password": "SblQa2026!Admin",
+        "full_name": "אדמין בדיקות",
+        "role": "admin",
+    },
+    {
+        "email": "qa.manager@sblliga.com",
+        "password": "SblQa2026!Manager",
+        "full_name": "מנהלת בדיקות",
+        "role": "manager",
+        "target": "מכירות",
+        "gender": "female",
+        "focus_target": "שיפור מכירות",
+        "focus_month": "2026-07",
+        "group": "qa",
+    },
+    {
+        "email": "qa.user@sblliga.com",
+        "password": "SblQa2026!User",
+        "full_name": "משתמשת בדיקות",
+        "role": "user",
+        "target": "שיווק",
+        "gender": "female",
+        "group": "qa",
+    },
+    {
+        "email": "qa.user2@sblliga.com",
+        "password": "SblQa2026!User",
+        "full_name": "משתמש בדיקות ב׳",
+        "role": "user",
+        "target": "מכירות",
+        "gender": "male",
+        "group": "qa",
+    },
+)
+
+# Internal test registrations to wipe before client handoff (never recreate).
+PROD_HANDOFF_JUNK_EMAILS = frozenset(
+    {
+        "esthergenauer@gmail.com",
+        "gen@gmail.com",
+        "esti@gmail.com",
+        "hg0527157320@gmail.com",
+        "dmalky100@gmail.com",
+        "e@gmail.com",
+    }
+)
+
+from app.handoff_accounts import iter_handoff_accounts
 
 _DEMO_TASKS = (
     "שיחת מכירה יומית",
@@ -114,6 +198,34 @@ def _dev_account_password(account: dict, settings: Settings) -> str:
     if "password_attr" in account:
         return getattr(settings, account["password_attr"], None) or account["password_fallback"]
     return account["password"]
+
+
+def _apply_seed_subscription(user: User, mode: str) -> None:
+    """Force demo subscription windows independent of today's wait-window calendar."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        israel = ZoneInfo("Asia/Jerusalem")
+    except Exception:
+        israel = timezone(timedelta(hours=3))
+
+    user.subscription_status = "active"
+    if mode == "pending":
+        start = next_assignment_open_at()
+        user.subscription_start_date = start
+        user.subscription_end_date = end_of_cycle_paid_through_after(start)
+        user.group_id = None
+        return
+    if mode == "active":
+        local = datetime.now(israel)
+        start_local = datetime(local.year, local.month, 1, 0, 0, 0, tzinfo=israel)
+        start = start_local.astimezone(timezone.utc)
+        user.subscription_start_date = start
+        user.subscription_end_date = end_of_immediate_paid_through_after(start)
+        return
+    # admin / none — status only
+    user.subscription_start_date = None
+    user.subscription_end_date = None
 
 
 def _ensure_demo_group(
@@ -214,6 +326,14 @@ def _upsert_member(
     if member is None:
         if role == "manager":
             payload["next_month_target"] = user.target or "מכירות"
+            payload["next_month_zone"] = user.gender or "female"
+            payload["next_month_tasks"] = [
+                "תכנון יומי בבוקר",
+                "חסימת זמן מיקוד",
+                "סינון משימות לפי עדיפות",
+                "סיכום יומי",
+            ]
+            payload["next_month_reward"] = "תגמול למחזור הבא"
             payload["next_month_selected_at"] = datetime.now(timezone.utc)
         session.add(Member(**payload))
     else:
@@ -221,43 +341,57 @@ def _upsert_member(
             setattr(member, key, value)
         if role == "manager" and not member.next_month_selected_at:
             member.next_month_target = member.target or user.target or "מכירות"
+            member.next_month_zone = member.gender or user.gender or "female"
+            if not member.next_month_tasks:
+                member.next_month_tasks = [
+                    "תכנון יומי בבוקר",
+                    "חסימת זמן מיקוד",
+                    "סינון משימות לפי עדיפות",
+                    "סיכום יומי",
+                ]
+            if not member.next_month_reward:
+                member.next_month_reward = "תגמול למחזור הבא"
             member.next_month_selected_at = datetime.now(timezone.utc)
+        elif role == "manager":
+            # Backfill plan fields so day-23 gate stays unlocked for seeded managers.
+            if not member.next_month_zone:
+                member.next_month_zone = member.gender or user.gender or "female"
+            if not member.next_month_tasks:
+                member.next_month_tasks = [
+                    "תכנון יומי בבוקר",
+                    "חסימת זמן מיקוד",
+                    "סינון משימות לפי עדיפות",
+                    "סיכום יומי",
+                ]
+            if not member.next_month_reward:
+                member.next_month_reward = "תגמול למחזור הבא"
 
 
-def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
-    """
-    Idempotent CREATE + repair for DEV demo users, groups, goals and tasks.
-
-    Works even when the DB already has real registered users — missing seed
-    accounts are inserted; existing ones get passwords/roles reset.
-    """
+def _upsert_seed_accounts(
+    session: Session,
+    settings: Settings,
+    accounts: tuple[dict, ...],
+    *,
+    groups: dict[str, Group],
+    manager_links: tuple[tuple[str, str], ...],
+    log_label: str,
+) -> int:
+    """Idempotent CREATE + repair for demo/QA users, groups, goals and tasks."""
     changed = 0
-
-    alpha = _ensure_demo_group(
-        session,
-        name="Dev Alpha Team",
-        description="קבוצת דמו לבדיקות DEV",
-        target="מכירות",
-        gender="female",
-        manager_name="מנהלת דמו א׳",
-    )
-    beta = _ensure_demo_group(
-        session,
-        name="Dev Beta Team",
-        description="קבוצת דמו שנייה לבדיקות DEV",
-        target="גיוס",
-        gender="male",
-        manager_name="מנהל דמו ב׳",
-    )
-    groups = {"alpha": alpha, "beta": beta}
 
     if session.scalar(select(func.count()).select_from(SystemSetting)) == 0:
         session.add(SystemSetting())
         changed += 1
 
-    for account in DEV_SEED_ACCOUNTS:
+    for account in accounts:
         email = account["email"]
         password = _dev_account_password(account, settings)
+        seed_sub = account.get("seed_subscription") or (
+            "pending" if account.get("group") is None and account["role"] == "user" else "active"
+        )
+        if account["role"] == "admin":
+            seed_sub = "none"
+
         user = session.scalar(select(User).where(User.email == email))
         created = False
         if user is None:
@@ -268,6 +402,7 @@ def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
                 role=account["role"],
                 subscription_status="active",
                 onboarding_completed=True,
+                onboarding_completed_at=datetime.now(timezone.utc),
                 email_verified=True,
                 is_active=True,
                 target=account.get("target"),
@@ -285,8 +420,9 @@ def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
             user.password_hash = hash_password(password)
             user.role = account["role"]
             user.full_name = account.get("full_name") or user.full_name
-            user.subscription_status = "active"
             user.onboarding_completed = True
+            if not user.onboarding_completed_at:
+                user.onboarding_completed_at = datetime.now(timezone.utc)
             if "target" in account:
                 user.target = account["target"]
             if "gender" in account:
@@ -297,13 +433,17 @@ def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
                 user.focus_month = account["focus_month"]
             changed += 1
 
+        _apply_seed_subscription(user, seed_sub)
+
         group_key = account.get("group")
         group = groups.get(group_key) if group_key else None
-        if group is not None:
+        if seed_sub == "pending" or group is None:
+            user.group_id = None
+            group = None
+        elif group is not None:
             user.group_id = group.id
 
         if account["role"] == "admin":
-            # Admin is not a league participant
             for row in session.scalars(select(Member).where(Member.user_id == user.id)).all():
                 session.delete(row)
                 changed += 1
@@ -331,21 +471,19 @@ def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
             changed += 1
 
         if created:
-            logger.info("DEV seed created account %s (%s)", email, account["role"])
+            logger.info("%s seed created account %s (%s)", log_label, email, account["role"])
 
-    # Wire managers onto groups
-    for email, group in (
-        ("manager.dev@sbl.local", alpha),
-        ("manager2.dev@sbl.local", beta),
-    ):
+    for email, group_key in manager_links:
+        group = groups.get(group_key)
+        if group is None:
+            continue
         manager = session.scalar(select(User).where(User.email == email))
         if manager:
             group.manager_id = manager.id
             group.manager_name = manager.full_name
             manager.group_id = group.id
 
-    # Refresh participant counts
-    for group in (alpha, beta):
+    for group in groups.values():
         count = (
             session.scalar(
                 select(func.count())
@@ -357,35 +495,293 @@ def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
         group.participant_count = count
 
     session.commit()
-    logger.info("DEV seed accounts upserted/repaired (delta_marker=%s)", changed)
+    logger.info("%s seed accounts upserted/repaired (delta_marker=%s)", log_label, changed)
     return changed
 
 
-def ensure_production_admin(session: Session, settings: Settings) -> bool:
-    if _admin_exists(session):
-        logger.info("Production bootstrap skipped: admin user already exists")
-        return False
+def ensure_dev_seed_accounts(session: Session, settings: Settings) -> int:
+    """
+    Idempotent CREATE + repair for DEV demo users, groups, goals and tasks.
 
+    Works even when the DB already has real registered users — missing seed
+    accounts are inserted; existing ones get passwords/roles reset.
+    """
+    alpha = _ensure_demo_group(
+        session,
+        name="Dev Alpha Team",
+        description="קבוצת דמו לבדיקות DEV",
+        target="מכירות",
+        gender="female",
+        manager_name="מנהלת דמו א׳",
+    )
+    beta = _ensure_demo_group(
+        session,
+        name="Dev Beta Team",
+        description="קבוצת דמו שנייה לבדיקות DEV",
+        target="גיוס",
+        gender="male",
+        manager_name="מנהל דמו ב׳",
+    )
+    groups = {"alpha": alpha, "beta": beta}
+    return _upsert_seed_accounts(
+        session,
+        settings,
+        DEV_SEED_ACCOUNTS,
+        groups=groups,
+        manager_links=(
+            ("manager.dev@sbl.local", "alpha"),
+            ("manager2.dev@sbl.local", "beta"),
+        ),
+        log_label="DEV",
+    )
+
+
+def ensure_prod_qa_accounts(session: Session, settings: Settings) -> int:
+    """Deprecated: temporary UAT seeding must not run on client handoff PROD."""
+    logger.info("PROD QA seed skipped (disabled for client handoff)")
+    return 0
+
+
+def cleanup_prod_qa_accounts(session: Session) -> int:
+    """Remove temporary QA/test users + demo group before client handoff."""
+    from sqlalchemy import or_
+
+    qa_emails = {account["email"].lower() for account in PROD_QA_SEED_ACCOUNTS}
+    junk_emails = set(PROD_HANDOFF_JUNK_EMAILS) | qa_emails
+    qa_group_name = "קבוצת בדיקות QA"
+    removed = 0
+
+    users = session.scalars(select(User).where(User.email.in_(junk_emails))).all()
+    user_ids = [user.id for user in users]
+
+    if user_ids:
+        goals = session.scalars(select(Goal).where(Goal.owner_user_id.in_(user_ids))).all()
+        goal_ids = [goal.id for goal in goals]
+        if goal_ids:
+            for task in session.scalars(select(Task).where(Task.goal_id.in_(goal_ids))).all():
+                session.delete(task)
+                removed += 1
+        for goal in goals:
+            session.delete(goal)
+            removed += 1
+
+        for member in session.scalars(select(Member).where(Member.user_id.in_(user_ids))).all():
+            session.delete(member)
+            removed += 1
+
+        for token in session.scalars(
+            select(EmailVerificationToken).where(EmailVerificationToken.user_id.in_(user_ids))
+        ).all():
+            session.delete(token)
+            removed += 1
+
+        for token in session.scalars(
+            select(PasswordResetToken).where(PasswordResetToken.user_id.in_(user_ids))
+        ).all():
+            session.delete(token)
+            removed += 1
+
+        for note in session.scalars(
+            select(Notification).where(
+                or_(
+                    Notification.target_user_id.in_(user_ids),
+                    Notification.source_user_id.in_(user_ids),
+                )
+            )
+        ).all():
+            session.delete(note)
+            removed += 1
+
+        for asset in session.scalars(
+            select(MediaAsset).where(MediaAsset.owner_user_id.in_(user_ids))
+        ).all():
+            session.delete(asset)
+            removed += 1
+
+        for group in session.scalars(select(Group).where(Group.manager_id.in_(user_ids))).all():
+            group.manager_id = None
+
+        for user in users:
+            user.group_id = None
+            session.delete(user)
+            removed += 1
+
+    qa_group = session.scalar(select(Group).where(Group.name == qa_group_name))
+    if qa_group is not None:
+        for member in session.scalars(
+            select(Member).where(
+                or_(Member.group_id == qa_group.id, Member.group_name == qa_group_name)
+            )
+        ).all():
+            session.delete(member)
+            removed += 1
+        for meeting in session.scalars(
+            select(Meeting).where(
+                or_(Meeting.group_id == qa_group.id, Meeting.group_name == qa_group_name)
+            )
+        ).all():
+            session.delete(meeting)
+            removed += 1
+        for report in session.scalars(select(Report).where(Report.group_id == qa_group.id)).all():
+            session.delete(report)
+            removed += 1
+        session.delete(qa_group)
+        removed += 1
+
+    if removed:
+        session.commit()
+        logger.info("PROD handoff cleanup removed %s rows", removed)
+    else:
+        logger.info("PROD handoff cleanup: nothing to remove")
+    return removed
+
+
+def ensure_production_admin(session: Session, settings: Settings) -> bool:
+    """Create or repair the permanent client admin from Secrets Manager."""
     if not settings.admin_email or not settings.admin_password:
         logger.warning(
             "Production bootstrap skipped: ADMIN_EMAIL and ADMIN_PASSWORD must be set"
         )
         return False
 
-    admin = User(
-        email=settings.admin_email.strip().lower(),
-        password_hash=hash_password(settings.admin_password),
-        full_name="System Administrator",
-        role="admin",
-        subscription_status="active",
-        onboarding_completed=True,
-        email_verified=True,
-        is_active=True,
-    )
-    session.add(admin)
+    email = settings.admin_email.strip().lower()
+    password = settings.admin_password
+    admin = session.scalar(select(User).where(User.email == email))
+    created = False
+
+    if admin is None:
+        admin = User(
+            email=email,
+            password_hash=hash_password(password),
+            full_name="אדמין שולי בן לולו",
+            role="admin",
+            subscription_status="active",
+            onboarding_completed=True,
+            email_verified=True,
+            is_active=True,
+        )
+        session.add(admin)
+        activate_subscription(admin)
+        created = True
+    else:
+        # Create-only for password: never overwrite a password the admin changed in-app.
+        admin.role = "admin"
+        admin.onboarding_completed = True
+        admin.email_verified = True
+        admin.is_active = True
+        if not admin.full_name:
+            admin.full_name = "אדמין שולי בן לולו"
+
     session.commit()
-    logger.info("Production bootstrap created default admin user for %s", admin.email)
+    logger.info(
+        "Production admin %s for %s",
+        "created" if created else "repaired",
+        email,
+    )
     return True
+
+
+def _handoff_password(account: dict, settings: Settings | None) -> str:
+    env_key = (account.get("password_env") or "").strip()
+    from_settings = ""
+    if settings is not None:
+        attr = {
+            "HANDOFF_PASSWORD_COMMITMENT": "handoff_password_commitment",
+            "HANDOFF_PASSWORD_MICHAL": "handoff_password_michal",
+            "HANDOFF_PASSWORD_SHULI": "handoff_password_shuli",
+        }.get(env_key)
+        if attr:
+            from_settings = (getattr(settings, attr, None) or "").strip()
+    return from_settings or (os.environ.get(env_key) or "").strip()
+
+
+def ensure_client_handoff_accounts(session: Session, settings: Settings | None = None) -> int:
+    """
+    Create missing handoff accounts once.
+    Never overwrite password_hash or renew subscription for existing users
+    (avoids wiping Profile password changes on every deploy).
+    """
+    changed = 0
+    for account in iter_handoff_accounts():
+        email = account["email"].strip().lower()
+        user = session.scalar(select(User).where(User.email == email))
+        is_admin = account["role"] == "admin"
+        if user is None:
+            password = _handoff_password(account, settings)
+            if not password:
+                logger.warning(
+                    "Handoff account %s missing — set %s to create (create-only)",
+                    email,
+                    account.get("password_env"),
+                )
+                continue
+            user = User(
+                email=email,
+                password_hash=hash_password(password),
+                full_name=account["full_name"],
+                role=account["role"],
+                subscription_status="active",
+                onboarding_completed=is_admin,
+                email_verified=True,
+                is_active=True,
+            )
+            session.add(user)
+            session.flush()
+            activate_subscription(user)
+            # Paid ₪1 outside the site: they must be able to log in and change password now.
+            # Do not leave start in the future (wait-window would hard-lock /pending).
+            if account.get("paid_commitment") and user.subscription_start_date:
+                start = user.subscription_start_date
+                if start.tzinfo is None:
+                    start = start.replace(tzinfo=timezone.utc)
+                if start > datetime.now(timezone.utc):
+                    user.subscription_start_date = datetime.now(timezone.utc)
+            changed += 1
+            logger.info(
+                "Handoff account created %s (%s)",
+                email,
+                account["role"],
+            )
+        else:
+            if account.get("skip_if_exists"):
+                continue
+            # Soft repair only — never reset password, name, avatar, or subscription.
+            # Overwriting full_name on every boot made Profile "Save name" look broken on PROD.
+            touched = False
+            if email == "sbl.school1@gmail.com" and user.role != "manager":
+                user.role = "manager"
+                touched = True
+                member = session.scalar(select(Member).where(Member.user_id == user.id).limit(1))
+                if member is not None and member.role != "manager":
+                    member.role = "manager"
+            elif user.role != account["role"] and is_admin:
+                user.role = account["role"]
+                touched = True
+            if not user.email_verified:
+                user.email_verified = True
+                touched = True
+            if not user.is_active:
+                user.is_active = True
+                touched = True
+            if is_admin and not user.onboarding_completed:
+                user.onboarding_completed = True
+                touched = True
+            # Paid commitment: ensure active subscription without touching password.
+            if account.get("paid_commitment") and user.subscription_status != "active":
+                activate_subscription(user)
+                if user.subscription_start_date:
+                    start = user.subscription_start_date
+                    if start.tzinfo is None:
+                        start = start.replace(tzinfo=timezone.utc)
+                    if start > datetime.now(timezone.utc):
+                        user.subscription_start_date = datetime.now(timezone.utc)
+                touched = True
+            if touched:
+                changed += 1
+                logger.info("Handoff account soft-repaired %s (%s)", email, account["role"])
+        session.commit()
+    logger.info("Client handoff accounts upserted (delta_marker=%s)", changed)
+    return changed
 
 
 def seed_development_data(session: Session, settings: Settings) -> bool:
@@ -474,8 +870,31 @@ def ensure_manager_operational_alerts(session: Session) -> int:
                 when = when.replace(tzinfo=timezone.utc)
             if now - when < timedelta(days=3):
                 continue
-            title = "דוח חסר"
-            body = f"לא שלחת דוח לאדמין לאחר הפגישה · {when.strftime('%d/%m')}"
+            # Auto-submit draft reports that lingered without "שלח לאדמין".
+            content = (meeting.summary or "").strip() or f"דוח פגישה שבועית - {meeting.group_name}"
+            existing_report = session.scalar(
+                select(Report).where(
+                    Report.meeting_id == meeting.id,
+                    Report.type == "weekly",
+                )
+            )
+            if existing_report is None:
+                session.add(
+                    Report(
+                        type="weekly",
+                        status="pending",
+                        submitted_by=meeting.group_name,
+                        content=content,
+                        group_id=meeting.group_id,
+                        meeting_id=meeting.id,
+                    )
+                )
+            meeting.is_locked = True
+            meeting.report_status = "pending"
+            session.add(meeting)
+
+            title = "דוח נשלח אוטומטית"
+            body = f"הדוח נשלח לאדמין אוטומטית לאחר הפגישה · {when.strftime('%d/%m')}"
             exists = session.scalar(
                 select(Notification).where(
                     Notification.target_user_id == mgr.user_id,
@@ -508,10 +927,14 @@ def ensure_manager_operational_alerts(session: Session) -> int:
 def run_database_bootstrap(session: Session, settings: Settings) -> dict[str, bool | int]:
     if is_production(settings):
         created_admin = ensure_production_admin(session, settings)
+        handoff = ensure_client_handoff_accounts(session, settings)
+        qa_cleaned = cleanup_prod_qa_accounts(session)
         alerts = ensure_manager_operational_alerts(session)
         return {
             "seeded": False,
             "admin_created": created_admin,
+            "client_handoff": handoff,
+            "prod_qa_cleaned": qa_cleaned,
             "dev_repaired": 0,
             "alerts_created": alerts,
         }
@@ -522,11 +945,13 @@ def run_database_bootstrap(session: Session, settings: Settings) -> dict[str, bo
         # Upsert demos even when other users already exist
         repaired = ensure_dev_seed_accounts(session, settings)
         seeded = repaired > 0
+    handoff = ensure_client_handoff_accounts(session, settings)
     alerts = ensure_manager_operational_alerts(session)
 
     return {
         "seeded": seeded,
         "admin_created": False,
+        "client_handoff": handoff,
         "dev_repaired": repaired,
         "alerts_created": alerts,
     }

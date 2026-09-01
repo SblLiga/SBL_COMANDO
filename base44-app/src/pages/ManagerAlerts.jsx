@@ -74,29 +74,46 @@ export default function ManagerAlerts() {
 
   const markRead = async (n) => {
     if (n.is_read) return;
-    const updated = await apiClient.entities.Notification.update(n.id, { is_read: true });
-    setNotifications((prev) => prev.map((x) => (x.id === n.id ? updated : x)));
+    try {
+      const updated = await apiClient.entities.Notification.update(n.id, { is_read: true });
+      setNotifications((prev) => prev.map((x) => (x.id === n.id ? updated : x)));
+    } catch (err) {
+      console.error("[ManagerAlerts] markRead failed", err);
+    }
   };
 
   const markHandled = async (n) => {
-    const updated = await apiClient.entities.Notification.update(n.id, { is_read: true, is_handled: true });
-    setNotifications((prev) => {
-      const updated_list = prev.map((x) => (x.id === n.id ? updated : x));
-      return [...updated_list.filter((x) => !x.is_handled), ...updated_list.filter((x) => x.is_handled)];
-    });
-    setDetail(null);
-    toast({ title: "סומן כטופל", description: "ההתראה טופלה בהצלחה" });
+    if (!n?.id) return;
+    if (n.is_handled) {
+      setDetail(null);
+      return;
+    }
+    try {
+      const updated = await apiClient.entities.Notification.update(n.id, {
+        is_read: true,
+        is_handled: true,
+      });
+      setNotifications((prev) => {
+        const updated_list = prev.map((x) => (x.id === n.id ? updated : x));
+        return [...updated_list.filter((x) => !x.is_handled), ...updated_list.filter((x) => x.is_handled)];
+      });
+      setDetail(null);
+      window.dispatchEvent(new Event("sbl:notifications-changed"));
+      toast({ title: "סומן כטופל", description: "ההתראה טופלה בהצלחה" });
+    } catch (err) {
+      console.error("[ManagerAlerts] markHandled failed", err);
+      toast({
+        title: "עדכון נכשל",
+        description: err?.message || "לא ניתן לסמן כטופל",
+        variant: "destructive",
+      });
+    }
   };
 
+  /** X and "טופל" share the same persist path: grey out via is_handled (no hard delete). */
   const dismiss = async (n, event) => {
     event?.stopPropagation();
-    setNotifications((prev) => prev.filter((x) => x.id !== n.id));
-    try {
-      await apiClient.entities.Notification.delete(n.id);
-    } catch (err) {
-      console.error("[ManagerAlerts] dismiss failed", err);
-      apiClient.entities.Notification.update(n.id, { is_read: true }).catch(() => {});
-    }
+    await markHandled(n);
   };
 
   const openCard = async (n) => {

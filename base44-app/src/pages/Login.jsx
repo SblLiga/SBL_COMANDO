@@ -7,23 +7,32 @@ import { Label } from "@/components/ui/label";
 import { Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import { postAuthPath } from "@/lib/postAuth";
+import { isAdmin, isManager, isPendingAccessLocked, shouldBypassOnboarding } from "@/lib/subscriptionUtils";
 
-function resolveReturnPath(searchParams, user) {
-  const role = (user?.role || "user").toLowerCase();
-  // Incomplete registration (no wheel yet) always resumes onboarding
-  if (role === "user" && !user?.onboarding_completed) {
+function resolveReturnPath(searchParams, user, member = null) {
+  if (isAdmin(user)) {
+    return postAuthPath(user, member);
+  }
+  if (isPendingAccessLocked(user, member)) {
+    if (!isManager(user) && user?.role === "user" && !user?.onboarding_completed) return "/onboarding";
+    return "/pending";
+  }
+  if (!isManager(user) && user?.role === "user" && shouldBypassOnboarding(user, member)) {
+    return postAuthPath(user, member);
+  }
+  if (!isManager(user) && user?.role === "user" && !user?.onboarding_completed) {
     return "/onboarding";
   }
   const raw = searchParams.get("return");
   if (!raw || !raw.startsWith("/") || raw.startsWith("//")) {
-    return postAuthPath(user);
+    return postAuthPath(user, member);
   }
-  if (role === "admin" && raw.startsWith("/admin")) return raw;
-  if (role === "manager" && raw.startsWith("/manager")) return raw;
-  if (role === "user" && !raw.startsWith("/admin") && !raw.startsWith("/manager")) {
-    return raw === "/" || raw === "/goal" ? postAuthPath(user) : raw;
+  if (isAdmin(user) && raw.startsWith("/admin")) return raw;
+  if (isManager(user) && raw.startsWith("/manager")) return raw;
+  if (!isAdmin(user) && !isManager(user) && !raw.startsWith("/admin") && !raw.startsWith("/manager")) {
+    return raw === "/" || raw === "/goal" ? postAuthPath(user, member) : raw;
   }
-  return postAuthPath(user);
+  return postAuthPath(user, member);
 }
 
 export default function Login() {
@@ -42,15 +51,29 @@ export default function Login() {
     try {
       await apiClient.auth.loginViaEmailPassword(email, password);
       const u = await apiClient.auth.me();
-      window.location.href = resolveReturnPath(searchParams, u);
+      let member = null;
+      try {
+        if (u?.role === "user" && u?.subscription_status === "active") {
+          const rows = await apiClient.entities.Member.filter({ user_id: u.id });
+          member = rows[0] || null;
+        }
+      } catch {
+        member = null;
+      }
+      window.location.href = resolveReturnPath(searchParams, u, member);
     } catch (err) {
       const msg = (err.message || "").toLowerCase();
-      if (msg.includes("verif") || err.status === 403) {
+      const needsEmailVerify =
+        msg.includes("not verified") ||
+        msg.includes("email not verified") ||
+        (err.status === 403 && msg.includes("verif"));
+      if (needsEmailVerify) {
         window.location.href = `/register?verify=true&email=${encodeURIComponent(email)}`;
         return;
       }
       setError(err.message || "אימייל או סיסמה לא תקינים");
-      setShowVerifyButton(true);
+      // Only offer verify jump when the error is clearly about email verification
+      setShowVerifyButton(needsEmailVerify || msg.includes("verif"));
     } finally {
       setLoading(false);
     }

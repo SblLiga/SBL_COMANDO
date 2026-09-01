@@ -68,13 +68,18 @@ class Settings(BaseSettings):
     # DEV seed only — never use as a real secret store; override via APP_SECRET_ARN
     dev_admin_password: str = Field(default="Admin123!", alias="DEV_ADMIN_PASSWORD")
 
+    # Shared temp password for Grow ₪1 payers created on first boot (create-only).
+    handoff_password_commitment: str = Field(default="", alias="HANDOFF_PASSWORD_COMMITMENT")
+    handoff_password_michal: str = Field(default="", alias="HANDOFF_PASSWORD_MICHAL")
+    handoff_password_shuli: str = Field(default="", alias="HANDOFF_PASSWORD_SHULI")
+
     mail_from: str = Field(default="", alias="MAIL_FROM")
     app_public_url: str = Field(default="", alias="APP_PUBLIC_URL")
     aws_region: str = Field(default="", alias="AWS_REGION")
 
     grow_webhook_secret: str = Field(default="", alias="GROW_WEBHOOK_SECRET")
     grow_payment_url: str = Field(
-        default="https://grow.co.il/subscribe",
+        default="https://meshulam.co.il/s/180deaa3-f766-9c23-5820-a8a91ea5a1ff",
         alias="GROW_PAYMENT_URL",
     )
     # Make.com — outbound checkout trigger + inbound webhook auth (falls back to GROW_*)
@@ -82,10 +87,9 @@ class Settings(BaseSettings):
     make_trigger_url: str = Field(default="", alias="MAKE_TRIGGER_URL")
     make_payment_url: str = Field(default="", alias="MAKE_PAYMENT_URL")
 
-    # Temporary until SES production access works: show OTP on-screen + accept 000000.
-    # Set ALLOW_OTP_SCREEN_FALLBACK=false in secrets once real email delivery is reliable.
+    # OTP on-screen / 000000 bypass — keep OFF in PROD now that SES production access is live.
     allow_otp_screen_fallback: bool = Field(
-        default=True,
+        default=False,
         alias="ALLOW_OTP_SCREEN_FALLBACK",
     )
 
@@ -111,6 +115,18 @@ class Settings(BaseSettings):
             "admin_email": ("admin_email", "ADMIN_EMAIL"),
             "admin_password": ("admin_password", "ADMIN_PASSWORD"),
             "dev_admin_password": ("dev_admin_password", "DEV_ADMIN_PASSWORD"),
+            "handoff_password_commitment": (
+                "handoff_password_commitment",
+                "HANDOFF_PASSWORD_COMMITMENT",
+            ),
+            "handoff_password_michal": (
+                "handoff_password_michal",
+                "HANDOFF_PASSWORD_MICHAL",
+            ),
+            "handoff_password_shuli": (
+                "handoff_password_shuli",
+                "HANDOFF_PASSWORD_SHULI",
+            ),
         }
         updates = {}
         for attr, keys in mapping.items():
