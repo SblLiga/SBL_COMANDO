@@ -109,7 +109,7 @@ async function ensureStaffMember(apiClient, user, defaults = {}) {
  * Missing cycle_month is stamped once (no wipe) so legacy rows migrate safely mid-cycle.
  * Only updates xp/progress/streak — never next_month_target / group fields.
  */
-async function ensureGoalCycle(apiClient, { user, member, goal }) {
+async function ensureGoalCycle(apiClient, { user, member, goal }, { resetStats = true } = {}) {
   if (!goal) return { user, member, goal };
 
   const rolloverDay = cycleRolloverDayFor(user, member);
@@ -126,6 +126,13 @@ async function ensureGoalCycle(apiClient, { user, member, goal }) {
 
   if (goal.cycle_month === cycle) {
     return { user, member, goal };
+  }
+
+  // A mid-month promotion keeps the existing score while moving the goal onto
+  // the manager cycle label. Regular user/manager flows retain the reset below.
+  if (!resetStats) {
+    const stamped = await apiClient.entities.Goal.update(goal.id, { cycle_month: cycle });
+    return { user, member, goal: stamped };
   }
 
   // New monthly cycle: zero XP/progress and reopen tasks for a clean league board.
@@ -163,7 +170,7 @@ async function ensureGoalCycle(apiClient, { user, member, goal }) {
   return { user, member: nextMember, goal: resetGoal };
 }
 
-export async function ensureMyGoal(apiClient, defaults = {}) {
+export async function ensureMyGoal(apiClient, defaults = {}, { resetStats = true } = {}) {
   let loaded = await loadMyGoal(apiClient);
   const role = (loaded.user?.role || "user").toLowerCase();
 
@@ -180,7 +187,7 @@ export async function ensureMyGoal(apiClient, defaults = {}) {
       });
       loaded = { ...loaded, member };
     }
-    return ensureGoalCycle(apiClient, loaded);
+    return ensureGoalCycle(apiClient, loaded, { resetStats });
   }
 
   const rolloverDay = cycleRolloverDayFor(loaded.user, loaded.member);
@@ -190,27 +197,33 @@ export async function ensureMyGoal(apiClient, defaults = {}) {
       ? currentCycleMonth(new Date(), 32)
       : currentCycleMonth(new Date(), rolloverDay);
   const target = defaults.target || loaded.user?.target || loaded.member?.target || "מכירות";
-  const goal = await apiClient.entities.Goal.create({
+  const goalCreate = {
     title: defaults.title || `יעד חודשי - ${target}`,
     target,
     is_hidden: false,
     reward_text: defaults.reward_text || "",
-    progress: 0,
-    xp_total: 0,
-    streak: 0,
     owner_user_id: loaded.user.id,
     cycle_month: cycle,
-  });
+  };
+  if (resetStats) {
+    goalCreate.progress = 0;
+    goalCreate.xp_total = 0;
+    goalCreate.streak = 0;
+  }
+  const goal = await apiClient.entities.Goal.create(goalCreate);
 
   let member = loaded.member;
   if (member) {
-    member = await apiClient.entities.Member.update(member.id, {
+    const memberUpdate = {
       goal_id: goal.id,
       goal_title: goal.title,
       target: member.target || target,
-      xp: 0,
-      progress: 0,
-    });
+    };
+    if (resetStats) {
+      memberUpdate.xp = 0;
+      memberUpdate.progress = 0;
+    }
+    member = await apiClient.entities.Member.update(member.id, memberUpdate);
   }
 
   return { ...loaded, member, goal };

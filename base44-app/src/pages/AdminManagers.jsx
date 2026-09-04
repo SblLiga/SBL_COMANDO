@@ -5,6 +5,17 @@ import PageHeader from "@/components/PageHeader";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 import UserAvatar from "@/components/UserAvatar";
+import { isManagerTargetSelectionWindow } from "@/lib/calendarRules";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 /**
  * Build admin-facing rows from Users + Members.
@@ -85,6 +96,7 @@ export default function AdminManagers() {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  const [immediateCandidate, setImmediateCandidate] = useState(null);
   const [showSched, setShowSched] = useState(false);
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -117,6 +129,16 @@ export default function AdminManagers() {
   const toggleRole = async (row) => {
     const switchOn = (row.role === "manager" && !row.pending_demotion) || row.pending_manager;
     const newRole = switchOn ? "user" : "manager";
+    if (
+      newRole === "manager" &&
+      row.role === "user" &&
+      !row.pending_manager &&
+      row.user_id &&
+      !isManagerTargetSelectionWindow()
+    ) {
+      setImmediateCandidate(row);
+      return;
+    }
     setBusyId(row.key);
     try {
       let updatedUser = null;
@@ -150,6 +172,31 @@ export default function AdminManagers() {
       toast({
         title: "שגיאה",
         description: err.message || "עדכון התפקיד נכשל",
+        variant: "destructive",
+      });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const confirmImmediatePromotion = async () => {
+    const row = immediateCandidate;
+    if (!row || busyId) return;
+    setBusyId(row.key);
+    try {
+      const result = await apiClient.admin.promoteImmediate(row.user_id);
+      await load();
+      toast({
+        title: "המשתמש קודם למנהל",
+        description:
+          result?.message || "המשתמש יצא מהקבוצה ועליו לבחור יעד חדש. הניקוד והרצף נשמרו.",
+      });
+      setImmediateCandidate(null);
+    } catch (err) {
+      console.error("[AdminManagers] immediate promotion failed:", err);
+      toast({
+        title: "הקידום המיידי נכשל",
+        description: err.message || "לא ניתן היה להשלים את הקידום.",
         variant: "destructive",
       });
     } finally {
@@ -296,6 +343,33 @@ export default function AdminManagers() {
           </div>
         ))}
       </div>
+
+      <AlertDialog
+        open={Boolean(immediateCandidate)}
+        onOpenChange={(open) => {
+          if (!open && !busyId) setImmediateCandidate(null);
+        }}
+      >
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader className="text-right sm:text-right">
+            <AlertDialogTitle>אישור קידום מיידי</AlertDialogTitle>
+            <AlertDialogDescription className="leading-relaxed">
+              הקידום יתבצע מיידית, המשתמש יצא מהקבוצה הנוכחית שלו (הניקוד והרצף יישמרו),
+              ויידרש לבחור יעד חדש. פעולה זו אינה הפיכה אוטומטית. להמשיך?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="sm:space-x-reverse">
+            <AlertDialogCancel disabled={Boolean(busyId)}>ביטול</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmImmediatePromotion}
+              disabled={Boolean(busyId)}
+              className="gold-bg text-black"
+            >
+              {busyId ? "מקדם..." : "כן, לקדם מיידית"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

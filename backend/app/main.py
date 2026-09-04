@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.entities import router as entities_router
+from app.api.admin import router as admin_router
 from app.api.grow_webhook import router as grow_router
 from app.api.make_checkout import router as make_router
 from app.api.subscription_webhooks import router as webhooks_router
@@ -71,6 +72,7 @@ if not settings.is_production:
     )
 
 app.include_router(auth_router)
+app.include_router(admin_router)
 app.include_router(entities_router)
 app.include_router(upload_router)
 app.include_router(grow_router)

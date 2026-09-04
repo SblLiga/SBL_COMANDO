@@ -233,6 +233,13 @@ const integrations = {
 export const apiClient = {
   auth,
   entities,
+  admin: {
+    promoteImmediate: (userId) =>
+      request(`/admin/users/${encodeURIComponent(userId)}/promote-immediate`, {
+        method: "POST",
+        body: "{}",
+      }),
+  },
   integrations,
   functions: {
     invoke: async () => {
