@@ -3,6 +3,8 @@ import { Outlet } from "react-router-dom";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
 import ManagerGoalSelection from "@/components/ManagerGoalSelection";
+import { useAuth } from "@/lib/AuthContext";
+import { isManagerTargetSelectionWindow } from "@/lib/calendarRules";
 import { Home, Target, Users, UserCog, Trophy, Calendar, Bell } from "lucide-react";
 
 const items = [
@@ -16,7 +18,10 @@ const items = [
 ];
 
 export default function ManagerLayout() {
+  const { user } = useAuth();
   const [gate, setGate] = useState({ locked: true, ready: false });
+  const midMonthPromotionFlow =
+    user?.role === "manager" && !user?.group_id && !isManagerTargetSelectionWindow();
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -29,7 +34,11 @@ export default function ManagerLayout() {
           <BottomNav items={items} />
         </>
       )}
-      <ManagerGoalSelection onGateState={setGate} />
+      <ManagerGoalSelection
+        onGateState={setGate}
+        forceOpen={midMonthPromotionFlow}
+        resetStats={!midMonthPromotionFlow}
+      />
     </div>
   );
 }

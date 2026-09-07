@@ -6,7 +6,7 @@
  * only via resetAdminWheelOnTargetSave when they intentionally save a new target.
  * Never clears next_month_target / group_id on cycle reset.
  */
-import { currentCycleMonth } from "@/lib/calendarRules";
+import { currentCycleMonth } from "./calendarRules.js";
 
 function cycleRolloverDayFor(user, member) {
   const role = String(user?.role || member?.role || "user").toLowerCase();
@@ -109,7 +109,7 @@ async function ensureStaffMember(apiClient, user, defaults = {}) {
  * Missing cycle_month is stamped once (no wipe) so legacy rows migrate safely mid-cycle.
  * Only updates xp/progress/streak — never next_month_target / group fields.
  */
-async function ensureGoalCycle(apiClient, { user, member, goal }) {
+async function ensureGoalCycle(apiClient, { user, member, goal }, { resetStats = true } = {}) {
   if (!goal) return { user, member, goal };
 
   const rolloverDay = cycleRolloverDayFor(user, member);
@@ -126,6 +126,13 @@ async function ensureGoalCycle(apiClient, { user, member, goal }) {
 
   if (goal.cycle_month === cycle) {
     return { user, member, goal };
+  }
+
+  // A mid-month promotion keeps the existing score while moving the goal onto
+  // the manager cycle label. Regular user/manager flows retain the reset below.
+  if (!resetStats) {
+    const stamped = await apiClient.entities.Goal.update(goal.id, { cycle_month: cycle });
+    return { user, member, goal: stamped };
   }
 
   // New monthly cycle: zero XP/progress and reopen tasks for a clean league board.
@@ -163,7 +170,7 @@ async function ensureGoalCycle(apiClient, { user, member, goal }) {
   return { user, member: nextMember, goal: resetGoal };
 }
 
-export async function ensureMyGoal(apiClient, defaults = {}) {
+export async function ensureMyGoal(apiClient, defaults = {}, { resetStats = true } = {}) {
   let loaded = await loadMyGoal(apiClient);
   const role = (loaded.user?.role || "user").toLowerCase();
 
@@ -180,7 +187,7 @@ export async function ensureMyGoal(apiClient, defaults = {}) {
       });
       loaded = { ...loaded, member };
     }
-    return ensureGoalCycle(apiClient, loaded);
+    return ensureGoalCycle(apiClient, loaded, { resetStats });
   }
 
   const rolloverDay = cycleRolloverDayFor(loaded.user, loaded.member);
@@ -190,28 +197,151 @@ export async function ensureMyGoal(apiClient, defaults = {}) {
       ? currentCycleMonth(new Date(), 32)
       : currentCycleMonth(new Date(), rolloverDay);
   const target = defaults.target || loaded.user?.target || loaded.member?.target || "מכירות";
-  const goal = await apiClient.entities.Goal.create({
+  const goalCreate = {
     title: defaults.title || `יעד חודשי - ${target}`,
     target,
     is_hidden: false,
     reward_text: defaults.reward_text || "",
-    progress: 0,
-    xp_total: 0,
-    streak: 0,
     owner_user_id: loaded.user.id,
     cycle_month: cycle,
-  });
+  };
+  if (resetStats) {
+    goalCreate.progress = 0;
+    goalCreate.xp_total = 0;
+    goalCreate.streak = 0;
+  }
+  const goal = await apiClient.entities.Goal.create(goalCreate);
 
   let member = loaded.member;
   if (member) {
-    member = await apiClient.entities.Member.update(member.id, {
+    const memberUpdate = {
       goal_id: goal.id,
       goal_title: goal.title,
       target: member.target || target,
-      xp: 0,
-      progress: 0,
-    });
+    };
+    if (resetStats) {
+      memberUpdate.xp = 0;
+      memberUpdate.progress = 0;
+    }
+    member = await apiClient.entities.Member.update(member.id, memberUpdate);
   }
 
   return { ...loaded, member, goal };
+}
+
+/** Create only for the newly supported manager-without-Member case. */
+export async function ensureManagerGoalSelectionMember(
+  apiClient,
+  user,
+  member,
+  { resetStats = true } = {}
+) {
+  if (member || String(user?.role || "").toLowerCase() !== "manager") return member;
+  const loaded = await ensureMyGoal(apiClient, {}, { resetStats });
+  return loaded.member;
+}
+
+/**
+ * Persist the four-step manager plan. ensureMyGoal intentionally runs before
+ * the Member guard so a manager promoted before onboarding can save normally.
+ */
+export async function saveManagerGoalSelection(
+  apiClient,
+  {
+    member: knownMember = null,
+    target,
+    zone,
+    tasks,
+    goalTitle = "",
+    rewardText,
+    rewardImage = "",
+    resetStats = true,
+    now = new Date(),
+  }
+) {
+  const reward = rewardText.trim();
+  const title = goalTitle.trim() || `יעד חודשי - ${target}`;
+  const cycle = currentCycleMonth(now, 23);
+  const loaded = await ensureMyGoal(apiClient, { target, title }, { resetStats });
+  const currentMember = loaded.member || knownMember;
+  if (!currentMember?.id) {
+    throw new Error("לא ניתן ליצור רשומת מנהל. נסו שוב.");
+  }
+
+  let goal = loaded.goal;
+  if (goal?.id) {
+    const oldTasks = await apiClient.entities.Task.filter({ goal_id: goal.id });
+    await Promise.all((oldTasks || []).map((task) => apiClient.entities.Task.delete(task.id)));
+    const goalUpdate = {
+      title,
+      target,
+      reward_text: reward,
+      reward_image: rewardImage || null,
+      cycle_month: cycle,
+    };
+    if (resetStats) {
+      goalUpdate.progress = 0;
+      goalUpdate.xp_total = 0;
+      goalUpdate.streak = 0;
+    }
+    goal = await apiClient.entities.Goal.update(goal.id, goalUpdate);
+  } else {
+    const goalCreate = {
+      title,
+      target,
+      is_hidden: false,
+      reward_text: reward,
+      reward_image: rewardImage || null,
+      owner_user_id: loaded.user.id,
+      cycle_month: cycle,
+    };
+    if (resetStats) {
+      goalCreate.progress = 0;
+      goalCreate.xp_total = 0;
+      goalCreate.streak = 0;
+    }
+    goal = await apiClient.entities.Goal.create(goalCreate);
+  }
+
+  if (tasks.length) {
+    await apiClient.entities.Task.bulkCreate(
+      tasks.map((task, index) => ({
+        goal_id: goal.id,
+        title: task,
+        order_index: index,
+        is_completed: false,
+        priority: "בינוני",
+        xp_value: 100,
+      }))
+    );
+  }
+
+  const memberUpdate = {
+    target,
+    gender: zone,
+    next_month_target: target,
+    next_month_zone: zone,
+    next_month_tasks: tasks,
+    next_month_reward: reward,
+    next_month_reward_image: rewardImage || null,
+    next_month_selected_at: now.toISOString(),
+    goal_id: goal.id,
+    goal_title: goal.title || title,
+  };
+  if (resetStats) {
+    memberUpdate.progress = 0;
+    memberUpdate.xp = 0;
+    memberUpdate.streak = 0;
+  }
+  const member = await apiClient.entities.Member.update(currentMember.id, memberUpdate);
+
+  if (currentMember.user_id) {
+    try {
+      await apiClient.entities.User.update(currentMember.user_id, { target, gender: zone });
+    } catch {
+      /* optional — managers may lack User.update privilege */
+    }
+  }
+
+  return { user: loaded.user, member, goal };
 }
