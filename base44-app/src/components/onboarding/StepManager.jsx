@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { Users, Check, MessageCircle, Clock, LogOut } from "lucide-react";
 import { canAssignToGroup } from "@/lib/calendarRules";
+import { getMatchingManagers } from "@/lib/managerCandidates";
 import UserAvatar from "@/components/UserAvatar";
 
 export default function StepManager({
@@ -18,26 +19,8 @@ export default function StepManager({
   // Payment (active) ≠ assignment. Assignment only on days 25–26 when not deferred-pending.
   const assignmentOpen = canAssignToGroup(user);
 
-  const filteredManagers = (managers || []).filter((m) => {
-    if (m.role !== "manager") return false;
-    // Fail closed: women → managers with female gender; men → male. Missing gender excluded.
-    if (!gender || !m.gender || m.gender !== gender) return false;
-    // Prefer day-23 next_month_target so users assign to the choice that survives day 25.
-    const effectiveTarget = m.next_month_target || m.target;
-    if (target && effectiveTarget && effectiveTarget !== target) return false;
-    if (target && !effectiveTarget) return false;
-    return Boolean(m.user_id);
-  });
-
-  // One row per manager user — API may return duplicate Member rows.
-  const seenManagerIds = new Set();
-  const uniqueManagers = [];
-  for (const m of filteredManagers) {
-    const uid = String(m.user_id);
-    if (seenManagerIds.has(uid)) continue;
-    seenManagerIds.add(uid);
-    uniqueManagers.push(m);
-  }
+  // Fail closed on gender/target and show one row per manager user.
+  const uniqueManagers = getMatchingManagers(managers, { gender, target });
 
   const managerCapacity = (mgr) => {
     const mgrUserId = mgr?.user_id;
