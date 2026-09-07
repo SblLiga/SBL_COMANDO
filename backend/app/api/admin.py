@@ -74,55 +74,54 @@ def promote_user_immediately(
             detail="המשתמש כבר מנהל או ממתין לקידום.",
         )
 
-    # Member has no is_active column. Exactly one linked row is therefore the
-    # only unambiguous representation of the active member for this active User.
+    # Member has no is_active column. Multiple linked rows are ambiguous and
+    # still require manual repair. No linked row is valid for users promoted
+    # before onboarding; the minimal row is created in this transaction below.
     members = list(
         db.scalars(
             select(Member).where(Member.user_id == target_user_id).with_for_update()
         ).all()
     )
-    if len(members) != 1:
-        detail = (
-            "לא נמצאה רשומת Member פעילה עבור המשתמש."
-            if not members
-            else "נמצאו מספר רשומות Member עבור המשתמש; נדרשת בדיקה ידנית."
+    if len(members) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="נמצאו מספר רשומות Member עבור המשתמש; נדרשת בדיקה ידנית.",
         )
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
-    member = members[0]
-    if member.role == "manager":
+    member = members[0] if members else None
+    if member is not None and member.role == "manager":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="המשתמש כבר מנהל או ממתין לקידום.",
         )
-    if member.group_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="לא ניתן לקדם: המשתמש אינו משויך לקבוצה.",
-        )
 
-    previous_group_id = int(member.group_id)
-    previous_group = db.scalar(
-        select(Group).where(Group.id == previous_group_id).with_for_update()
+    previous_group_id = (
+        int(member.group_id)
+        if member is not None and member.group_id is not None
+        else None
     )
-    if previous_group is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="לא ניתן לקדם: הקבוצה המשויכת אינה קיימת.",
+    if previous_group_id is not None:
+        previous_group = db.scalar(
+            select(Group).where(Group.id == previous_group_id).with_for_update()
         )
-    if previous_group.manager_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="לא ניתן לקדם: לקבוצה המשויכת אין מנהל.",
-        )
-    if int(previous_group.manager_id) == int(target.id):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="לא ניתן לקדם: המשתמש כבר מוגדר כמנהל הקבוצה.",
-        )
+        if previous_group is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="לא ניתן לקדם: הקבוצה המשויכת אינה קיימת.",
+            )
+        if previous_group.manager_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="לא ניתן לקדם: לקבוצה המשויכת אין מנהל.",
+            )
+        if int(previous_group.manager_id) == int(target.id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="לא ניתן לקדם: המשתמש כבר מוגדר כמנהל הקבוצה.",
+            )
 
     goal = None
-    if member.goal_id is not None:
+    if member is not None and member.goal_id is not None:
         goal = db.scalar(select(Goal).where(Goal.id == int(member.goal_id)).with_for_update())
 
     # All guards above are read-only. Mutations start here and remain in the
@@ -133,6 +132,14 @@ def promote_user_immediately(
     target.manager_effective_on = None
     target.onboarding_completed = True
     target.group_id = None
+
+    if member is None:
+        member = Member(
+            name=target.full_name or target.email,
+            user_id=target.id,
+            role="manager",
+        )
+        db.add(member)
 
     member.role = "manager"
     member.group_id = None
@@ -147,20 +154,21 @@ def promote_user_immediately(
             rollover_day=MANAGER_CYCLE_ROLLOVER_DAY,
         )
 
-    decrement = db.execute(
-        update(Group)
-        .where(Group.id == previous_group_id, Group.participant_count > 0)
-        .values(participant_count=Group.participant_count - 1)
-    )
-    if decrement.rowcount == 0:
-        logger.warning(
-            'admin_action action="mid_month_promotion" actor_admin_id=%s '
-            "target_user_id=%s previous_group_id=%s timestamp=%s warning=participant_count_not_decremented",
-            actor_admin_id,
-            target_user_id,
-            previous_group_id,
-            timestamp.isoformat(),
+    if previous_group_id is not None:
+        decrement = db.execute(
+            update(Group)
+            .where(Group.id == previous_group_id, Group.participant_count > 0)
+            .values(participant_count=Group.participant_count - 1)
         )
+        if decrement.rowcount == 0:
+            logger.warning(
+                'admin_action action="mid_month_promotion" actor_admin_id=%s '
+                "target_user_id=%s previous_group_id=%s timestamp=%s warning=participant_count_not_decremented",
+                actor_admin_id,
+                target_user_id,
+                previous_group_id,
+                timestamp.isoformat(),
+            )
 
     db.flush()
     logger.info(
@@ -174,7 +182,7 @@ def promote_user_immediately(
     return {
         "user_id": str(target.id),
         "role": "manager",
-        "previous_group_id": str(previous_group_id),
+        "previous_group_id": str(previous_group_id) if previous_group_id is not None else None,
         "timestamp": timestamp.isoformat(),
         "requires_manager_goal_selection": True,
         "manager_goal_selection": {"reset_stats": False},

@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.api.admin import promote_user_immediately, require_admin_without_auth_side_effects
@@ -175,8 +175,55 @@ class MidMonthPromotionTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 403)
         self.assertEqual(raised.exception.detail, "Admin access required")
 
-    def test_missing_group_is_a_clear_client_error(self):
+    def test_missing_group_skips_leave_and_decrement(self):
         user, members, group, _goal = self.seed_target(with_group=False)
+
+        result = promote_user_immediately(
+            self.db,
+            actor_admin_id=42,
+            target_user_id=user.id,
+            now=OUTSIDE_MANAGER_WINDOW,
+        )
+        self.db.commit()
+
+        self.db.refresh(user)
+        self.db.refresh(members[0])
+        self.db.refresh(group)
+        self.assertEqual(user.role, "manager")
+        self.assertEqual(members[0].role, "manager")
+        self.assertIsNone(members[0].group_id)
+        self.assertEqual(group.participant_count, 3)
+        self.assertIsNone(result["previous_group_id"])
+
+    def test_missing_member_is_created_as_manager(self):
+        user, _members, group, _goal = self.seed_target(with_group=False, member_count=0)
+
+        result = promote_user_immediately(
+            self.db,
+            actor_admin_id=42,
+            target_user_id=user.id,
+            now=OUTSIDE_MANAGER_WINDOW,
+        )
+        self.db.commit()
+
+        created = list(
+            self.db.scalars(select(Member).where(Member.user_id == user.id)).all()
+        )
+        self.db.refresh(user)
+        self.db.refresh(group)
+        self.assertEqual(result["role"], "manager")
+        self.assertIsNone(result["previous_group_id"])
+        self.assertEqual(user.role, "manager")
+        self.assertEqual(len(created), 1)
+        self.assertEqual(created[0].role, "manager")
+        self.assertEqual(created[0].user_id, user.id)
+        self.assertIsNone(created[0].group_id)
+        self.assertEqual(group.participant_count, 3)
+
+    def test_existing_manager_role_is_rejected_without_member_creation(self):
+        user, _members, group, _goal = self.seed_target(with_group=False, member_count=0)
+        user.role = "manager"
+        self.db.commit()
 
         with self.assertRaises(HTTPException) as raised:
             promote_user_immediately(
@@ -186,10 +233,12 @@ class MidMonthPromotionTests(unittest.TestCase):
                 now=OUTSIDE_MANAGER_WINDOW,
             )
 
-        self.assertEqual(raised.exception.status_code, 400)
-        self.assertIn("אינו משויך לקבוצה", raised.exception.detail)
-        self.assertEqual(user.role, "user")
-        self.assertIsNone(members[0].group_id)
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(
+            list(self.db.scalars(select(Member).where(Member.user_id == user.id)).all()),
+            [],
+        )
+        self.db.refresh(group)
         self.assertEqual(group.participant_count, 3)
 
     def test_regular_23_to_26_window_is_rejected_without_writes(self):

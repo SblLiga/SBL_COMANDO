@@ -5,7 +5,6 @@ import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/lib/AuthContext";
 import {
   needsManagerNextMonthTarget,
-  currentCycleMonth,
   hasManagerNextMonthPlan,
   sameCalendarMonth,
 } from "@/lib/calendarRules";
@@ -16,7 +15,10 @@ import StepGender from "@/components/onboarding/StepGender";
 import StepTasks from "@/components/onboarding/StepTasks";
 import StepReward from "@/components/onboarding/StepReward";
 import { prepareImageForUpload, formatUploadError } from "@/lib/prepareImageUpload";
-import { ensureMyGoal } from "@/lib/myGoal";
+import {
+  ensureManagerGoalSelectionMember,
+  saveManagerGoalSelection,
+} from "@/lib/myGoal";
 
 /**
  * Hard gate on days 23–26 until the full next-month plan is saved:
@@ -59,15 +61,23 @@ export default function ManagerGoalSelection({ onGateState, resetStats = true, f
           return;
         }
         const myMembers = await apiClient.entities.Member.filter({ user_id: user.id });
-        const me = myMembers[0] || null;
-        if (cancelled) return;
-        setMember(me);
-
+        let me = myMembers[0] || null;
         const role = String(user?.role || me?.role || "").toLowerCase();
         if (role !== "manager") {
+          if (cancelled) return;
+          setMember(me);
           emit(false, true);
           return;
         }
+
+        // A newly promoted manager may never have completed user onboarding,
+        // so ensure the personal Member row before any member-dependent guard.
+        // Existing managers are left untouched by this additive branch.
+        if (!me) {
+          me = await ensureManagerGoalSelectionMember(apiClient, user, me, { resetStats });
+        }
+        if (cancelled) return;
+        setMember(me);
 
         // Prefill from prior plan / current profile when re-opening mid-flow.
         if (me?.next_month_target) setTarget(me.next_month_target);
@@ -96,7 +106,7 @@ export default function ManagerGoalSelection({ onGateState, resetStats = true, f
     return () => {
       cancelled = true;
     };
-  }, [forceOpen]);
+  }, [forceOpen, resetStats]);
 
   const toggleTask = (t) => {
     setTasks((prev) => {
@@ -147,91 +157,20 @@ export default function ManagerGoalSelection({ onGateState, resetStats = true, f
   };
 
   const save = async () => {
-    if (!canNext() || !member || step !== MANAGER_CYCLE_STEPS.length - 1) return;
+    if (!canNext() || step !== MANAGER_CYCLE_STEPS.length - 1) return;
     setSaving(true);
     try {
-      const reward = rewardText.trim();
-      const title = goalTitle.trim() || `יעד חודשי - ${target}`;
-      const cycle = currentCycleMonth(new Date(), 23);
-
-      // Apply personal wheel like user onboarding: goal + tasks + reset progress.
-      const loaded = await ensureMyGoal(apiClient, { target, title }, { resetStats });
-      let goal = loaded.goal;
-      if (goal?.id) {
-        const oldTasks = await apiClient.entities.Task.filter({ goal_id: goal.id });
-        await Promise.all((oldTasks || []).map((t) => apiClient.entities.Task.delete(t.id)));
-        const goalUpdate = {
-          title,
-          target,
-          reward_text: reward,
-          reward_image: rewardImage || null,
-          cycle_month: cycle,
-        };
-        if (resetStats) {
-          goalUpdate.progress = 0;
-          goalUpdate.xp_total = 0;
-          goalUpdate.streak = 0;
-        }
-        goal = await apiClient.entities.Goal.update(goal.id, goalUpdate);
-      } else {
-        const goalCreate = {
-          title,
-          target,
-          is_hidden: false,
-          reward_text: reward,
-          reward_image: rewardImage || null,
-          owner_user_id: loaded.user.id,
-          cycle_month: cycle,
-        };
-        if (resetStats) {
-          goalCreate.progress = 0;
-          goalCreate.xp_total = 0;
-          goalCreate.streak = 0;
-        }
-        goal = await apiClient.entities.Goal.create(goalCreate);
-      }
-      if (tasks.length) {
-        await apiClient.entities.Task.bulkCreate(
-          tasks.map((t, i) => ({
-            goal_id: goal.id,
-            title: t,
-            order_index: i,
-            is_completed: false,
-            priority: "בינוני",
-            xp_value: 100,
-          }))
-        );
-      }
-
-      const memberUpdate = {
+      const saved = await saveManagerGoalSelection(apiClient, {
+        member,
         target,
-        gender: zone,
-        next_month_target: target,
-        next_month_zone: zone,
-        next_month_tasks: tasks,
-        next_month_reward: reward,
-        next_month_reward_image: rewardImage || null,
-        next_month_selected_at: new Date().toISOString(),
-        goal_id: goal.id,
-        goal_title: goal.title || title,
-      };
-      if (resetStats) {
-        memberUpdate.progress = 0;
-        memberUpdate.xp = 0;
-        memberUpdate.streak = 0;
-      }
-      const updated = await apiClient.entities.Member.update(member.id, memberUpdate);
-      setMember(updated);
-      if (member.user_id) {
-        try {
-          await apiClient.entities.User.update(member.user_id, {
-            target,
-            gender: zone,
-          });
-        } catch {
-          /* optional — managers may lack User.update privilege */
-        }
-      }
+        zone,
+        tasks,
+        goalTitle,
+        rewardText,
+        rewardImage,
+        resetStats,
+      });
+      setMember(saved.member);
       // Soft session refresh only — checkUserAuth sets isLoadingAuth and unmounts
       // AuthenticatedApp (see ThankYou), which drops emit(false) and re-locks the gate.
       try {
