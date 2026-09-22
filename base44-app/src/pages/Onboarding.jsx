@@ -190,7 +190,7 @@ export default function Onboarding() {
           title: isNewCycle ? "סבב חדש נשמר" : "נרשמת לרשימת המתנה",
           description: isNewCycle
             ? "הגלגל החדש מוכן. השיבוץ לקבוצה ייפתח לפי לוח השנה."
-            : "נשבץ אותך לקבוצה מה־25 לחודש.",
+            : "נשבץ אותך לקבוצה מה־24 לחודש.",
         });
         navigate("/");
         return;

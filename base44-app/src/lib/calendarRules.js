@@ -1,9 +1,11 @@
 /**
  * Calendar rules from product specs (Israel calendar day).
  * - Managers: next-month target selection from day 23 until chosen.
- * - Users: registration from day 23; group assignment / monthly onboarding from day 25.
- * - From day 25 the active cycle is the *next* calendar month (new wheel + group).
+ * - Users: registration from day 23; group assignment / monthly onboarding from day 24.
+ * - From day 24 the active cycle is the *next* calendar month (new wheel + group).
  */
+
+export const USER_ASSIGNMENT_START_DAY = 24;
 
 export function calendarDay(date = new Date()) {
   return date.getDate();
@@ -18,11 +20,11 @@ export function isUserRegistrationWindow(date = new Date()) {
 }
 
 export function isUserAssignmentWindow(date = new Date()) {
-  return calendarDay(date) >= 25;
+  return calendarDay(date) >= USER_ASSIGNMENT_START_DAY;
 }
 
 export function isMonthlyOnboardingResetDay(date = new Date()) {
-  return calendarDay(date) === 25;
+  return calendarDay(date) === USER_ASSIGNMENT_START_DAY;
 }
 
 export function sameCalendarMonth(a, b = new Date()) {
@@ -30,10 +32,10 @@ export function sameCalendarMonth(a, b = new Date()) {
   return d.getMonth() === b.getMonth() && d.getFullYear() === b.getFullYear();
 }
 
-/** Active league cycle label (YYYY-MM). From day 25 → next month. */
+/** Active league cycle label (YYYY-MM). From day 24 → next month. */
 export function currentCycleMonth(date = new Date()) {
   const d = new Date(date.getFullYear(), date.getMonth(), 1);
-  if (calendarDay(date) >= 25) {
+  if (calendarDay(date) >= USER_ASSIGNMENT_START_DAY) {
     d.setMonth(d.getMonth() + 1);
   }
   const y = d.getFullYear();
@@ -43,7 +45,7 @@ export function currentCycleMonth(date = new Date()) {
 
 /**
  * True when the user must run the onboarding wizard again for a new monthly cycle.
- * From day ≥ 25: required unless they already completed onboarding on/after the 25th this month.
+ * From day ≥ 24: required unless they already completed onboarding on/after the 24th this month.
  */
 export function needsMonthlyOnboarding(user, date = new Date()) {
   if (!user) return true;
@@ -54,11 +56,11 @@ export function needsMonthlyOnboarding(user, date = new Date()) {
   const doneThisWindow =
     completed.getFullYear() === date.getFullYear() &&
     completed.getMonth() === date.getMonth() &&
-    completed.getDate() >= 25;
+    completed.getDate() >= USER_ASSIGNMENT_START_DAY;
   return !doneThisWindow;
 }
 
-/** Waiting-list users must complete manager/group assignment once day ≥ 25. */
+/** Waiting-list users must complete manager/group assignment once day ≥ 24. */
 export function needsWaitingListAssignment(user, member, date = new Date()) {
   if (!user || user.role !== "user") return false;
   if (!isUserAssignmentWindow(date)) return false;

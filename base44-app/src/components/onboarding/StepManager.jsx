@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { Users, Check, MessageCircle, Clock } from "lucide-react";
-import { isUserAssignmentWindow } from "@/lib/calendarRules";
+import { isUserAssignmentWindow, USER_ASSIGNMENT_START_DAY } from "@/lib/calendarRules";
 import UserAvatar from "@/components/UserAvatar";
 
 export default function StepManager({ managers, groups, gender, target, manager, setManager }) {
@@ -17,15 +17,15 @@ export default function StepManager({ managers, groups, gender, target, manager,
       <>
         <div className="text-center">
           <Clock className="w-8 h-8 text-primary mx-auto mb-2" />
-          <h2 className="font-display text-xl font-bold">שיבוץ לקבוצה מה־25</h2>
+          <h2 className="font-display text-xl font-bold">{`שיבוץ לקבוצה מה־${USER_ASSIGNMENT_START_DAY}`}</h2>
           <p className="text-xs text-muted-foreground mt-1">
-            ניתן להירשם עכשיו, אך השיבוץ לקבוצה ומנהל/ת מתחיל רק ב־25 לחודש.
+            {`ניתן להירשם עכשיו, אך השיבוץ לקבוצה ומנהל/ת מתחיל רק ב־${USER_ASSIGNMENT_START_DAY} לחודש.`}
           </p>
         </div>
         <div className="card-lux p-4 space-y-2">
           <p className="text-sm font-bold">נרשמת לרשימת המתנה</p>
           <p className="text-xs text-muted-foreground">
-            יעד: {target} · {gender === "female" ? "נשים" : "גברים"}. מה־25 לחודש תוכלי לבחור מנהל/ת ולהצטרף לקבוצה.
+            יעד: {target} · {gender === "female" ? "נשים" : "גברים"}. {`מה־${USER_ASSIGNMENT_START_DAY} לחודש תוכלי לבחור מנהל/ת ולהצטרף לקבוצה.`}
           </p>
           <div className="flex items-center gap-2 text-xs text-primary">
             <Check className="w-4 h-4" /> רשימת המתנה נבחרה
