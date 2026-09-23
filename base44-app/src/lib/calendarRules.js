@@ -30,6 +30,12 @@ export function isUserAssignmentWindow(date = new Date()) {
   return calendarDay(date) >= 25;
 }
 
+/** Days 25–26 only: users may re-pick target + manager for the new cycle. */
+export function isUserTargetSelectionWindow(date = new Date()) {
+  const d = calendarDay(date);
+  return d === 25 || d === 26;
+}
+
 /** Strict group-assignment open days: 25 and 26 only. */
 /**
  * TEMPORARY MANUAL OVERRIDE — Sept 2026 onboarding push.
@@ -112,6 +118,17 @@ export function currentCycleMonth(date = new Date(), rolloverDay = 25) {
   return `${y}-${m}`;
 }
 
+/** True when `selectedAt` falls in the same manager cycle (rollover day 23) as `date`. */
+export function sameManagerCycle(selectedAt, date = new Date()) {
+  if (!selectedAt) return false;
+  const d = selectedAt instanceof Date ? selectedAt : new Date(selectedAt);
+  if (Number.isNaN(d.getTime())) return false;
+  return (
+    currentCycleMonth(d, MANAGER_WINDOW_START_DAY) ===
+    currentCycleMonth(date, MANAGER_WINDOW_START_DAY)
+  );
+}
+
 /**
  * On days 23–26 a manager must complete the next-month plan for this calendar month:
  * target, zone (gender), tasks (≥4), reward — stamped via next_month_selected_at.
@@ -128,7 +145,7 @@ export function hasManagerNextMonthPlan(member) {
 export function needsManagerNextMonthTarget(member, date = new Date()) {
   if (!member || String(member.role || "").toLowerCase() !== "manager") return false;
   if (!isManagerTargetSelectionWindow(date)) return false;
-  if (hasManagerNextMonthPlan(member) && sameCalendarMonth(member.next_month_selected_at, date)) {
+  if (hasManagerNextMonthPlan(member) && sameManagerCycle(member.next_month_selected_at, date)) {
     return false;
   }
   return true;
@@ -141,7 +158,7 @@ export function needsManagerNextMonthTarget(member, date = new Date()) {
 export function needsMonthlyOnboarding(user, date = new Date()) {
   if (!user) return true;
   if (!user.onboarding_completed) return true;
-  if (!isUserAssignmentWindow(date)) return false;
+  if (!isUserTargetSelectionWindow(date)) return false;
   if (!user.onboarding_completed_at) return true;
   const completed = new Date(user.onboarding_completed_at);
   const doneThisWindow =
