@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/AuthContext";
 import {
   needsManagerNextMonthTarget,
   hasManagerNextMonthPlan,
-  sameCalendarMonth,
+  sameManagerCycle,
 } from "@/lib/calendarRules";
 import { MANAGER_CYCLE_STEPS } from "@/components/onboarding/onboardingData";
 import StepProgress from "@/components/onboarding/StepProgress";
@@ -91,7 +91,7 @@ export default function ManagerGoalSelection({ onGateState, resetStats = true, f
         if (me?.next_month_reward_image) setRewardImage(me.next_month_reward_image);
 
         const completedForcedPlan =
-          hasManagerNextMonthPlan(me) && sameCalendarMonth(me?.next_month_selected_at, new Date());
+          hasManagerNextMonthPlan(me) && sameManagerCycle(me?.next_month_selected_at, new Date());
         const needsForcedPlan = forceOpen && !user?.group_id && !me?.group_id && !completedForcedPlan;
         if (needsForcedPlan || needsManagerNextMonthTarget(me || { role: "manager" })) {
           emit(true, true);
