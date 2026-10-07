@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import apiClient from "@/api/apiClient";
 import { Bell, CheckCircle2, AlertCircle, Info, Flame, Send, X, Reply, CheckCheck } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { formatNotificationSender, resolveReplyTargetUserId } from "@/lib/notificationSender";
 
 const FILTERS = [
   { id: "all", label: "הכל" },
@@ -10,12 +11,36 @@ const FILTERS = [
   { id: "inactive", label: "חוסר פעילות" },
 ];
 
-function getMsgCategory(n) {
+const ADMIN_SOURCE_RE = /(סופר-?אדמין|הנהל|אדמין)/i;
+const SYSTEM_SOURCES = new Set(["המערכת", "אוטומציה", "system"]);
+
+function isAdminLikeSource(n, usersById, membersByUserId) {
+  if (ADMIN_SOURCE_RE.test(String(n.source || "")) || ADMIN_SOURCE_RE.test(String(n.title || ""))) {
+    return true;
+  }
+  const uid = n.source_user_id != null ? Number(n.source_user_id) : null;
+  if (uid != null) {
+    if (usersById?.get(uid)?.role === "admin") return true;
+    if (membersByUserId?.get(uid)?.role === "admin") return true;
+  }
+  return false;
+}
+
+function getMsgCategory(n, usersById, membersByUserId) {
   if (n.type === "warning" || (n.body && n.body.includes("ימים") && n.title?.includes("פעיל"))) return "inactive";
   if (n.type === "nudge") return "manager";
-  if (n.source && !["המערכת", "אוטומציה", "system"].includes(n.source)) return "manager";
+  if (isAdminLikeSource(n, usersById, membersByUserId)) return "manager";
+  if (n.source && !SYSTEM_SOURCES.has(n.source)) return "manager";
   if (n.type === "success" || n.title?.includes("משימ") || n.body?.includes("משימ")) return "tasks";
   return "tasks";
+}
+
+function resolveDisplayTitle(n, usersById, membersByUserId) {
+  if (!n?.title) return "";
+  if (isAdminLikeSource(n, usersById, membersByUserId) && /מנהל/.test(n.title)) {
+    return "הודעה מהנהלה";
+  }
+  return n.title;
 }
 
 const typeStyle = {
@@ -38,6 +63,8 @@ export default function Messages() {
   const [currentMember, setCurrentMember] = useState(null);
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyText, setReplyText] = useState("");
+  const [usersById, setUsersById] = useState(() => new Map());
+  const [membersByUserId, setMembersByUserId] = useState(() => new Map());
 
   useEffect(() => {
     (async () => {
@@ -51,7 +78,6 @@ export default function Messages() {
         const sorted = n.sort(
           (a, b) => new Date(b.created_date || b.created_at) - new Date(a.created_date || a.created_at)
         );
-        // Deduplicate: remove notifications with same title+body+source within 60 seconds
         const deduped = sorted.filter((item, i, arr) => {
           if (i === 0) return true;
           const prev = arr[i - 1];
@@ -66,6 +92,22 @@ export default function Messages() {
           );
         });
         setNotifications(deduped);
+
+        const allMembers = await apiClient.entities.Member.list().catch(() => []);
+        const mMap = new Map();
+        (allMembers || []).forEach((m) => {
+          if (m.user_id != null) mMap.set(Number(m.user_id), m);
+        });
+        setMembersByUserId(mMap);
+
+        try {
+          const users = await apiClient.entities.User.list().catch(() => []);
+          const map = new Map();
+          (users || []).forEach((u) => map.set(Number(u.id), u));
+          setUsersById(map);
+        } catch {
+          /* ignore */
+        }
       } finally {
         setLoading(false);
       }
@@ -112,27 +154,30 @@ export default function Messages() {
   const sendReply = async (n) => {
     if (!replyText.trim() || !currentMember) return;
     try {
-      let targetUserId = n.source_user_id;
-      if (!targetUserId && n.source) {
-        const allMembers = await apiClient.entities.Member.list();
-        const sender = allMembers.find((m) => m.name === n.source);
-        targetUserId = sender?.user_id;
-      }
-      if (targetUserId) {
-        await apiClient.entities.Notification.create({
-          target_user_id: targetUserId,
-          title: "תגובה על הודעה",
-          body: replyText.trim(),
-          type: "info",
-          source: currentMember?.name || "משתמש",
-          source_user_id: currentMember.user_id,
-        });
-        toast({ title: "התגובה נשלחה 📨" });
-        setReplyingTo(null);
-        setReplyText("");
-      } else {
+      const members = [...membersByUserId.values()];
+      const targetUserId = await resolveReplyTargetUserId(n, {
+        members,
+        fetchAdmins: () => apiClient.entities.User.filter({ role: "admin" }),
+      });
+      if (!targetUserId) {
         toast({ title: "שגיאה", description: "לא ניתן למצוא את השולח", variant: "destructive" });
+        return;
       }
+      if (currentMember.user_id != null && Number(targetUserId) === Number(currentMember.user_id)) {
+        toast({ title: "שגיאה", description: "לא ניתן לשלוח הודעה לעצמך", variant: "destructive" });
+        return;
+      }
+      await apiClient.entities.Notification.create({
+        target_user_id: Number(targetUserId),
+        title: "תגובה על הודעה",
+        body: replyText.trim(),
+        type: "info",
+        source: currentMember?.name || "משתמש",
+        source_user_id: currentMember.user_id,
+      });
+      toast({ title: "התגובה נשלחה 📨" });
+      setReplyingTo(null);
+      setReplyText("");
     } catch (err) {
       toast({ title: "שגיאה", description: "שליחת התגובה נכשלה", variant: "destructive" });
     }
@@ -226,9 +271,10 @@ export default function Messages() {
     );
   }
 
-  const typed = notifications.map((n) => ({ ...n, _cat: getMsgCategory(n) }));
+  const typed = notifications.map((n) => ({ ...n, _cat: getMsgCategory(n, usersById, membersByUserId) }));
   const filtered = filter === "all" ? typed : typed.filter((n) => n._cat === filter);
   const unread = notifications.filter((n) => !n.is_read).length;
+  const senderCtx = { usersById, membersByUserId };
 
   return (
     <div className="p-4 space-y-4 pb-4">
@@ -295,7 +341,7 @@ export default function Messages() {
               <Icon className={`w-5 h-5 ${st.color} shrink-0 mt-0.5`} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-bold truncate">{n.title}</p>
+                  <p className="text-sm font-bold truncate">{resolveDisplayTitle(n, usersById, membersByUserId)}</p>
                   <div className="flex items-center gap-1 shrink-0">
                     {!n.is_read && <span className="w-2 h-2 rounded-full bg-primary" />}
                     <button
@@ -309,7 +355,12 @@ export default function Messages() {
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{n.body}</p>
-                {n.source && <p className="text-[10px] text-primary/70 mt-1">— {n.source}</p>}
+                {(() => {
+                  const senderLabel = formatNotificationSender(n, senderCtx);
+                  return senderLabel ? (
+                    <p className="text-[10px] text-primary/70 mt-1">— {senderLabel}</p>
+                  ) : null;
+                })()}
 
                 <div className="flex items-center gap-2 mt-2">
                   {!n.is_read && (

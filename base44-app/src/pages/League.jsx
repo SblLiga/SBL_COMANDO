@@ -196,6 +196,9 @@ export default function League({ zoneBadge = "אזור משתמש", readOnly = t
           member={selected}
           onClose={() => setSelected(null)}
           readOnly={readOnly}
+          allowNudge
+          sourceName={members.find((m) => currentUserId && m.user_id === currentUserId)?.name}
+          sourceUserId={currentUserId}
         />
       )}
     </div>

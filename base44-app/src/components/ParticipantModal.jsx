@@ -29,6 +29,7 @@ export default function ParticipantModal({
   sourceUserId,
   onNudgeSent,
   readOnly = false,
+  allowNudge = true,
 }) {
   const { toast } = useToast();
   const [tab, setTab] = useState("templates");
@@ -75,12 +76,14 @@ export default function ParticipantModal({
     if (!msg || !member?.user_id || sending) return;
     setSending(true);
     try {
+      const adminSender = Boolean(sourceName && /(סופר-?אדמין|הנהל|אדמין)/i.test(String(sourceName)));
+      const stampedSource = adminSender ? "הנהלה" : sourceName || "משתמש/ת";
       await apiClient.entities.Notification.create({
-        target_user_id: member.user_id,
-        title: sourceName ? "הודעה מהקבוצה" : "הודעה מהמנהל/ת",
+        target_user_id: Number(member.user_id),
+        title: adminSender ? "הודעה מהנהלה" : sourceName ? "הודעה מהקבוצה" : "הודעה חדשה",
         body: msg,
         type: "nudge",
-        source: sourceName || "המנהל/ת שלך",
+        source: stampedSource,
         source_user_id: sourceUserId || undefined,
       });
       toast({ title: "הדחיפה נשלחה", description: `הודעה נשלחה ל${member.name}` });
@@ -126,8 +129,8 @@ export default function ParticipantModal({
 
   const hidden = member?.goal_hidden;
   const canSendNudge = tab === "templates" ? Boolean(selectedTemplate) : Boolean(customMsg.trim());
-  // Push is always available when there is a recipient — independent of readOnly / goal_hidden.
-  const showNudge = Boolean(member?.user_id);
+  // Push available when allowed by parent and there is a recipient.
+  const showNudge = Boolean(allowNudge && member?.user_id);
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center" onClick={onClose}>

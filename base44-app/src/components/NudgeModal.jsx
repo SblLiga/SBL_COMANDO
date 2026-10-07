@@ -10,6 +10,10 @@ const NUDGE_TEMPLATES = [
   "כל הכבוד על ההתקדמות! ממשיכים קדימה",
 ];
 
+function isAdminSourceName(name) {
+  return Boolean(name && /(סופר-?אדמין|הנהל|אדמין)/i.test(String(name)));
+}
+
 /**
  * Spec §7 — Nudge modal: templates | free text, Cancel + Send.
  */
@@ -24,17 +28,21 @@ export default function NudgeModal({ member, sourceName, sourceUserId, onClose, 
 
   const body = tab === "templates" ? selectedTemplate : customMsg.trim();
   const canSend = Boolean(body) && Boolean(member.user_id);
+  const adminSender = isAdminSourceName(sourceName);
+  const nudgeTitle = adminSender ? "הודעה מהנהלה" : sourceName ? "הודעה מהקבוצה" : "הודעה חדשה";
+  // Store real sender identity; inbox formats "ממנהל/ת {name}" from source_user_id + role.
+  const nudgeSource = adminSender ? "הנהלה" : sourceName || "משתמש/ת";
 
   const send = async () => {
     if (!canSend || sending) return;
     setSending(true);
     try {
       await apiClient.entities.Notification.create({
-        target_user_id: member.user_id,
-        title: sourceName ? "הודעה מהקבוצה" : "הודעה מהמנהל/ת",
+        target_user_id: Number(member.user_id),
+        title: nudgeTitle,
         body,
         type: "nudge",
-        source: sourceName || "המנהל/ת שלך",
+        source: nudgeSource,
         source_user_id: sourceUserId || undefined,
       });
       toast({

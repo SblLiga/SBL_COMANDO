@@ -5,19 +5,23 @@ import PageHeader from "@/components/PageHeader";
 import { useToast } from "@/components/ui/use-toast";
 import ParticipantModal from "@/components/ParticipantModal";
 import NudgeModal from "@/components/NudgeModal";
+import { formatNotificationSender, resolveReplyTargetUserId } from "@/lib/notificationSender";
 
 const FILTERS = [
   { id: "all", label: "הכל" },
-  { id: "manager_msg", label: "הודעה ממנהל" },
+  { id: "incoming", label: "הודעות נכנסות" },
   { id: "inactive", label: "לא עודכנו נתונים" },
   { id: "missing_report", label: "דוח חסר" },
 ];
 
+const ADMIN_SOURCE_RE = /(סופר-?אדמין|הנהל|אדמין)/i;
+
 function getNotifType(n) {
-  if (n.type === "nudge" && n.source && n.source !== "המערכת") return "manager_msg";
   if (n.type === "warning" && n.body && (n.body.includes("ימים") || n.title?.includes("לא פעיל"))) return "inactive";
   if (n.type === "info" && n.title && n.title.includes("דוח")) return "missing_report";
-  if (n.type === "info" && n.source && n.source !== "המערכת" && n.source !== "אוטומציה") return "manager_msg";
+  if (n.type === "nudge" || (n.type === "info" && n.source && n.source !== "המערכת" && n.source !== "אוטומציה")) {
+    return "incoming";
+  }
   return "system";
 }
 
@@ -27,8 +31,19 @@ function formatWhen(iso) {
   return `${d.toLocaleDateString("he-IL")} ${d.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}`;
 }
 
+function resolveKindLabel(n) {
+  if (ADMIN_SOURCE_RE.test(String(n.source || "")) || ADMIN_SOURCE_RE.test(String(n.title || ""))) {
+    return "הודעה מהנהלה";
+  }
+  if (n.title?.includes("משתתף") || n.title?.includes("משתמש") || n.title?.includes("מהקבוצה")) {
+    return "הודעה מחבר/ת צוות";
+  }
+  if (n.type === "nudge") return "דחיפה";
+  return "הודעה נכנסת";
+}
+
 const typeStyle = {
-  manager_msg: { icon: Bell, color: "text-blue-400", label: "הודעה ממנהל" },
+  incoming: { icon: Bell, color: "text-blue-400", label: "הודעה נכנסת" },
   inactive: { icon: AlertCircle, color: "text-orange-400", label: "לא עודכנו נתונים" },
   missing_report: { icon: FileText, color: "text-red-400", label: "דוח חסר" },
   system: { icon: Info, color: "text-primary", label: "מערכת" },
@@ -67,6 +82,10 @@ export default function ManagerAlerts() {
       }
     })();
   }, []);
+
+  const membersByUserId = new Map(
+    members.filter((m) => m.user_id != null).map((m) => [Number(m.user_id), m])
+  );
 
   const resolveInactiveMember = (n) =>
     members.find((m) => m.name === n.title.replace(" - לא פעיל", "")) ||
@@ -110,7 +129,6 @@ export default function ManagerAlerts() {
     }
   };
 
-  /** X and "טופל" share the same persist path: grey out via is_handled (no hard delete). */
   const dismiss = async (n, event) => {
     event?.stopPropagation();
     await markHandled(n);
@@ -118,27 +136,42 @@ export default function ManagerAlerts() {
 
   const openCard = async (n) => {
     await markRead(n);
-    if (n._cat === "manager_msg") setDetail(n);
+    if (n._cat === "incoming") setDetail(n);
   };
+
+  const senderCtx = { membersByUserId };
 
   const sendReply = async () => {
     if (!replyMsg.trim() || !replyTo) return;
-    const targetId = replyTo.source_user_id;
+    const targetId = await resolveReplyTargetUserId(replyTo, {
+      members,
+      fetchAdmins: () => apiClient.entities.User.filter({ role: "admin" }),
+    });
     if (!targetId) {
       toast({ title: "שגיאה", description: "לא ניתן לזהות את השולח", variant: "destructive" });
       return;
     }
-    await apiClient.entities.Notification.create({
-      target_user_id: targetId,
-      title: "הודעה ממנהל",
-      body: replyMsg.trim(),
-      type: "info",
-      source: currentName || "מנהל/ת",
-      source_user_id: currentUserId,
-    });
-    toast({ title: "ההודעה נשלחה", description: `ההודעה נשלחה ל${replyTo.source}` });
-    setReplyMsg("");
-    setReplyTo(null);
+    if (currentUserId != null && Number(targetId) === Number(currentUserId)) {
+      toast({ title: "שגיאה", description: "לא ניתן לשלוח הודעה לעצמך", variant: "destructive" });
+      return;
+    }
+    try {
+      await apiClient.entities.Notification.create({
+        target_user_id: Number(targetId),
+        title: "תשובה ממנהל/ת",
+        body: replyMsg.trim(),
+        type: "info",
+        source: currentName || "משתמש/ת",
+        source_user_id: currentUserId,
+      });
+      const label = formatNotificationSender(replyTo, senderCtx);
+      toast({ title: "ההודעה נשלחה", description: `ההודעה נשלחה ל${label}` });
+      setReplyMsg("");
+      setReplyTo(null);
+    } catch (err) {
+      console.error("[ManagerAlerts] sendReply", err);
+      toast({ title: "שגיאה", description: "שליחת ההודעה נכשלה", variant: "destructive" });
+    }
   };
 
   if (loading)
@@ -175,6 +208,8 @@ export default function ManagerAlerts() {
         {sorted.map((n) => {
           const cat = typeStyle[n._cat] || typeStyle.system;
           const Icon = cat.icon;
+          const senderLabel = formatNotificationSender(n, senderCtx);
+          const kindLabel = n._cat === "incoming" ? resolveKindLabel(n) : cat.label;
           return (
             <div
               key={n.id}
@@ -185,7 +220,7 @@ export default function ManagerAlerts() {
                 <Icon className={`w-5 h-5 ${cat.color} shrink-0 mt-0.5`} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-bold text-muted-foreground">{cat.label}</span>
+                    <span className="text-[10px] font-bold text-muted-foreground">{kindLabel}</span>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-[9px] text-muted-foreground">{formatWhen(n.created_date || n.created_at)}</span>
                       {!n.is_read && <span className="w-2 h-2 rounded-full bg-primary" />}
@@ -196,11 +231,9 @@ export default function ManagerAlerts() {
                   </div>
                   <p className="text-sm font-bold truncate mt-0.5">{n.title}</p>
                   <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{n.body}</p>
-                  {n.source && (
-                    <p className="text-[10px] text-primary/70 mt-1">
-                      שולח: {n.source} · {n.is_read ? "נקראה" : "חדשה"}
-                    </p>
-                  )}
+                  <p className="text-[10px] text-primary/70 mt-1">
+                    שולח: {senderLabel} · {n.is_read ? "נקראה" : "חדשה"}
+                  </p>
                 </div>
               </div>
               <div className="flex gap-2 pt-1 border-t border-border">
@@ -228,7 +261,7 @@ export default function ManagerAlerts() {
                     </button>
                   </>
                 )}
-                {n._cat === "manager_msg" && (
+                {n._cat === "incoming" && (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -266,12 +299,12 @@ export default function ManagerAlerts() {
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center" onClick={() => setDetail(null)}>
           <div className="card-lux w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-sm">הודעה ממנהל</h3>
+              <h3 className="font-bold text-sm">{resolveKindLabel(detail)}</h3>
               <button type="button" onClick={() => setDetail(null)} className="p-2 rounded-lg bg-muted">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-muted-foreground">שולח: {detail.source}</p>
+            <p className="text-xs text-muted-foreground">שולח: {formatNotificationSender(detail, senderCtx)}</p>
             <p className="text-sm leading-relaxed">{detail.body}</p>
             <p className="text-[10px] text-muted-foreground">
               {formatWhen(detail.created_date)} · {detail.is_read ? "נקראה" : "חדשה"}
@@ -299,7 +332,7 @@ export default function ManagerAlerts() {
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center" onClick={() => setReplyTo(null)}>
           <div className="card-lux w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-sm">שלח הודעה ל{replyTo.source}</h3>
+              <h3 className="font-bold text-sm">שלח הודעה ל{formatNotificationSender(replyTo, senderCtx)}</h3>
               <button type="button" onClick={() => setReplyTo(null)} className="p-2 rounded-lg bg-muted">
                 <X className="w-4 h-4" />
               </button>
@@ -323,7 +356,7 @@ export default function ManagerAlerts() {
       )}
 
       {selected && (
-        <ParticipantModal member={selected} onClose={() => setSelected(null)} sourceName={currentName} sourceUserId={currentUserId} />
+        <ParticipantModal member={selected} onClose={() => setSelected(null)} sourceName={currentName} sourceUserId={currentUserId} allowNudge />
       )}
       {nudgeTarget && (
         <NudgeModal member={nudgeTarget} sourceName={currentName} sourceUserId={currentUserId} onClose={() => setNudgeTarget(null)} />
