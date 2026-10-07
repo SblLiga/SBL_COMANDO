@@ -237,7 +237,9 @@ export default function HQ() {
           onClose={() => setSelectedMember(null)}
           onNudgeSent={handleNudgeSent}
           sourceName={currentMember?.name}
+          sourceUserId={currentMember?.user_id}
           readOnly
+          allowNudge
         />
       )}
     </div>

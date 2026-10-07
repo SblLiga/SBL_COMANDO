@@ -169,7 +169,7 @@ export default function AdminWheel() {
       {nudgeTarget && (
         <NudgeModal
           member={nudgeTarget}
-          sourceName="סופר-אדמין"
+          sourceName="הנהלה"
           sourceUserId={adminUserId}
           onClose={() => setNudgeTarget(null)}
         />
@@ -178,9 +178,10 @@ export default function AdminWheel() {
         <ParticipantModal
           member={selected}
           onClose={() => setSelected(null)}
-          sourceName="סופר-אדמין"
+          sourceName="הנהלה"
           sourceUserId={adminUserId}
           readOnly={false}
+          allowNudge
         />
       )}
     </div>

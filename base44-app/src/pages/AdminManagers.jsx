@@ -210,15 +210,24 @@ export default function AdminManagers() {
       return;
     }
     const dayName = new Date(`${date}T${startTime}`).toLocaleDateString("he-IL", { weekday: "long" });
-    const managersOnly = rows.filter((r) => r.role === "manager" && !r.pending_manager && r.user_id);
+    const me = await apiClient.auth.me().catch(() => null);
+    const adminId = me?.id ?? null;
+    const managersOnly = rows.filter(
+      (r) =>
+        r.role === "manager" &&
+        !r.pending_manager &&
+        r.user_id != null &&
+        Number(r.user_id) !== Number(adminId)
+    );
     try {
       await apiClient.entities.Notification.bulkCreate(
         managersOnly.map((m) => ({
-          target_user_id: m.user_id,
+          target_user_id: Number(m.user_id),
           title: "נקבעה פגישה עם שולי",
           body: `נקבעה פגישה עם שולי ל${dayName} ${startTime}`,
           type: "info",
-          source: "סופר-אדמין",
+          source: "הנהלה",
+          source_user_id: adminId || undefined,
         }))
       );
       toast({ title: "נקבעה פגישה עם שולי ✅", description: `${dayName} בשעה ${startTime} · ${duration} שעות` });

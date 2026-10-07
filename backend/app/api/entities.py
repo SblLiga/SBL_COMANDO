@@ -3,7 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import asc, desc, select
+from sqlalchemy import asc, desc, or_, select
 from sqlalchemy.orm import Session
 
 from app.auth.deps import require_active_subscription
@@ -136,6 +136,29 @@ def _actor_group_ids(db: Session, actor: User) -> set[int]:
     return ids
 
 
+def _user_may_message_target(db: Session, actor: User, target_user_id: Any) -> bool:
+    """Users may message any other active app user (league peers, managers, admins)."""
+    if target_user_id is None or target_user_id == "":
+        return False
+    try:
+        tid = int(target_user_id)
+    except (TypeError, ValueError):
+        return False
+    if tid == int(actor.id):
+        return False
+    target = db.get(User, tid)
+    if target is None:
+        return False
+    role = (target.role or "").lower()
+    return role in {"admin", "manager", "user"}
+
+
+def _assert_user_notification_target(db: Session, actor: User, data: dict[str, Any]) -> None:
+    tid = data.get("target_user_id")
+    if not _user_may_message_target(db, actor, tid):
+        raise HTTPException(status_code=403, detail="Forbidden notification target")
+
+
 def _goal_owner_in_actor_groups(db: Session, goal: Goal, actor: User) -> bool:
     """True when goal owner shares at least one group with actor (peer read)."""
     if goal.owner_user_id is None:
@@ -182,7 +205,8 @@ def _can_access_row(entity_name: str, row: Any, actor: User, db: Session) -> boo
     if actor.role == "admin":
         return True
     if entity_name == "User":
-        return int(row.id) == int(actor.id)
+        # Self always; also allow resolving admin accounts for support messaging.
+        return int(row.id) == int(actor.id) or (getattr(row, "role", None) or "").lower() == "admin"
     if entity_name == "SystemSetting":
         return True
     if entity_name == "Member":
@@ -284,7 +308,8 @@ def _scope_list_query(entity_name: str, query, model, actor: User, db: Session):
     if actor.role == "admin":
         return query
     if entity_name == "User":
-        return query.where(model.id == actor.id)
+        # Self + admins (so users/managers can address support messages).
+        return query.where(or_(model.id == actor.id, model.role == "admin"))
     if entity_name == "Notification":
         return query.where(model.target_user_id == actor.id)
     if entity_name == "Goal" and actor.role == "user":
@@ -325,8 +350,8 @@ def _assert_can_create(entity_name: str, actor: User) -> None:
         if entity_name in {"Member", "Goal", "Task", "Group", "Meeting", "Report", "Notification"}:
             return
         raise HTTPException(status_code=403, detail="Forbidden")
-    # Regular users: self-service onboarding + wheel (+ group join count updates)
-    if entity_name in {"Member", "Goal", "Task", "Group"}:
+    # Regular users: self-service onboarding + wheel + messaging allowed targets
+    if entity_name in {"Member", "Goal", "Task", "Group", "Notification"}:
         return
     raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -426,7 +451,7 @@ def create_entity(
             data["user_id"] = current_user.id
             data.pop("role", None)
         if entity_name == "Notification":
-            data["target_user_id"] = current_user.id
+            _assert_user_notification_target(db, current_user, data)
     elif current_user.role in {"manager", "admin"}:
         # Personal wheel: force ownership onto the acting staff account.
         if entity_name == "Goal":
@@ -527,7 +552,7 @@ def bulk_create(
     for item in payload.items:
         data = _strip_privileged(entity_name, _coerce_payload(item), current_user)
         if current_user.role == "user" and entity_name == "Notification":
-            data["target_user_id"] = current_user.id
+            _assert_user_notification_target(db, current_user, data)
         if current_user.role == "user" and entity_name == "Task":
             # Tasks must belong to a goal owned by the actor (checked loosely via goal_id presence)
             pass
